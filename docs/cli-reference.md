@@ -44,6 +44,16 @@ lists use the terminal height as a viewport, keeping the active row visible and 
 `↑ N more` / `↓ N more` when rows exist outside the current window. Browse Sessions also
 answers to `p` on a session row.
 
+The selection is remembered per harness, period, and subagent setting in a local state
+file. A rescan — including one triggered by changing a setting that clears the scan —
+restores the previous selection, with session ids that no longer exist dropped
+automatically; periods with no stored selection start from the noise-free default.
+
+On a repository row, `e` adds the repository to the persistent
+`report.exclude_repositories` setting and rescans, so the repository vanishes from the
+review and from every future scan. The same setting can be edited with
+`config set report.exclude_repositories ...` and reset with `config unset`.
+
 Interactive reports use the normal default output path. If that path already exists, the
 recovery screen offers **Overwrite once**; it does not silently replace the file. After a
 successful report, the result screen can return to the main menu, start another report

@@ -102,11 +102,18 @@ Select sessions to include in the report:
   2. ▸ ████░░░░░░░░  24% ● obsidian-wiki   2 / 2    Aug 4 │ 60 msgs
   3. ▸ █░░░░░░░░░░░   5% ● dotfiles   1 / 1         Aug 3 │ 12 msgs
 
-↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ a All │ g Generate │ / Search │ ? Help │ b Back
+↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ e Exclude │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
 
-Press `p` on a session row to scroll its transcript inline — redacted before it
-is drawn, so the preview never shows more than the report itself would.
+Press `p` on a session row to scroll its transcript inline — redacted before
+it is drawn, so the preview never shows more than the report itself would.
+Your selection is remembered per period: a rescan (or a changed setting that
+rescans) restores what you unselected, and sessions that no longer exist are
+dropped automatically. Press `e` on a repository row to exclude it from every
+future scan — the repository is appended to `report.exclude_repositories`, the
+same persistent setting `config set` writes, and the review rescans so the
+repository disappears immediately. Undo with
+`agent-worklog config unset report.exclude_repositories`.
 
 Or drive the commands directly:
 

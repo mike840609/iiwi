@@ -109,6 +109,9 @@ def _actions() -> InteractiveActions:
         ),
         doctor=lambda harness: ["OK opencode version: 1.0", "OK git: git version 2.0"],
         edit_settings=lambda: None,
+        restore_selection=lambda harness, period, include_subagents: None,
+        save_selection=lambda harness, period, include_subagents, selected: None,
+        exclude_repository=lambda repository_id, display_name: "excluded",
     )
 
 
