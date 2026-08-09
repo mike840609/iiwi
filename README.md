@@ -158,12 +158,15 @@ behind. Pronounced the anglicised way, "ee-wee".
 ```bash
 git clone https://github.com/mike840609/iiwi.git
 cd iiwi
-uv sync --locked --extra dev
+uv sync --locked --extra dev                    # install the project and its dev tools
 
-uv run pytest --cov=iiwi --cov-fail-under=80
-uv run ruff check .
-uv run pyright
+uv run iiwi                                     # run your working copy
+uv run pytest --cov=iiwi --cov-fail-under=80    # tests, with the coverage gate CI enforces
+uv run ruff check .                             # lint
+uv run pyright                                  # type check
 ```
+
+The last three are exactly what CI runs, so a green local run means a green PR.
 
 ## License
 

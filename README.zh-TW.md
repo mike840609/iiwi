@@ -149,12 +149,15 @@ iiwi config unset report.timezone                         # 回到預設值
 ```bash
 git clone https://github.com/mike840609/iiwi.git
 cd iiwi
-uv sync --locked --extra dev
+uv sync --locked --extra dev                    # 安裝專案本身與開發工具
 
-uv run pytest --cov=iiwi --cov-fail-under=80
-uv run ruff check .
-uv run pyright
+uv run iiwi                                     # 執行你目前修改中的版本
+uv run pytest --cov=iiwi --cov-fail-under=80    # 測試，含 CI 要求的覆蓋率門檻
+uv run ruff check .                             # lint
+uv run pyright                                  # 型別檢查
 ```
+
+後三行就是 CI 實際執行的指令，本機過了 PR 就會過。
 
 ## 授權
 
