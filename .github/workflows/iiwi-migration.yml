@@ -48,24 +48,17 @@ jobs:
           path = Path("tools/iiwi_brand_migration.py")
           text = path.read_text(encoding="utf-8")
 
-          # The connector sandbox cannot expand this shell glob; make the runner
-          # pass only actual wheel/sdist paths to twine on the Actions runner.
           text = text.replace(
               'run("uv", "tool", "run", "twine", "check", "dist/*")',
               'run("uv", "tool", "run", "twine", "check", '
               '*(str(path) for path in sorted(dist.iterdir()) '
               'if path.name.endswith((".whl", ".tar.gz"))))',
           )
-
-          # Insert the new history helper where Ruff expects it alphabetically.
           text = text.replace(
               'history = history.replace("    HistoryEntry,\\n", "    HistoryEntry,\\n    history_file_path,\\n", 1)',
               'history = history.replace("    append_history,\\n", "    append_history,\\n    history_file_path,\\n", 1)',
               1,
           )
-
-          # Task 2 owns all runtime identity tests, including the interactive
-          # repository-exclusion path that reads the config environment.
           text = text.replace(
               '        "tests/unit/test_cli.py",\n    )\n    for path in runtime_test_files:',
               '        "tests/unit/test_cli.py",\n'
@@ -77,11 +70,6 @@ jobs:
               '    for path in runtime_test_files:\n        replace(path, (("AGENT_WORKLOG", "IIWI"),))\n',
               '    for path in runtime_test_files:\n'
               '        replace(path, (("AGENT_WORKLOG", "IIWI"),))\n'
-              '    # Runtime identity is a project-wide test contract, not only a\n'
-              '    # unit-test contract. Integration and service tests construct\n'
-              '    # environment variables too, so migrate every Python test. The\n'
-              '    # one deliberate old-prefix negative test splits AGENT_ + WORKLOG\n'
-              '    # and therefore remains intentionally unchanged.\n'
               '    for test_path in sorted((ROOT / "tests").rglob("*.py")):\n'
               '        replace(str(test_path.relative_to(ROOT)), (("AGENT_WORKLOG", "IIWI"),))\n',
               1,
@@ -109,22 +97,10 @@ jobs:
               '    commit("refactor: move runtime identity to iiwi")',
               1,
           )
-
-          # Shortening the title from 13 cells (Agent Worklog) to 4 (Iiwi)
-          # legitimately moves the version fit boundary from 20 to 11 cells.
-          # Preserve the layout contract rather than preserving obsolete widths.
           text = text.replace(
               '    render_test = read("tests/unit/interactive/test_render.py")\n',
-              '    # Product display identity is also asserted outside the\n'
-              '    # interactive unit tests (integration CLI/transcript tests).\n'
-              '    # Migrate every current test expectation before the focused\n'
-              '    # CLI/terminal RED gate.\n'
               '    for test_path in sorted((ROOT / "tests").rglob("*.py")):\n'
               '        replace(str(test_path.relative_to(ROOT)), (("Agent Worklog", "Iiwi"),))\n\n'
-              '    # Two occurrences are fixture data, not product identity: a\n'
-              '    # repository literally named agent-worklog is expected to\n'
-              '    # humanize to Agent Worklog in the report. Preserve those\n'
-              '    # assertions rather than changing production repository naming.\n'
               '    replace(\n'
               '        "tests/unit/repositories/test_remote.py",\n'
               '        ((\'== "Iiwi"\', \'== "Agent Worklog"\'),),\n'
@@ -148,9 +124,6 @@ jobs:
               '    render_test = render_test.replace("_console(width=20)", "_console(width=11)", 1)\n',
               1,
           )
-
-          # The approved README intentionally bolds the product name before the
-          # pronunciation. Keep the documentation contract exact to that markup.
           text = text.replace(
               '    add_brand_guard()\n    expect_red(',
               '    replace(\n'
@@ -160,7 +133,6 @@ jobs:
               '    add_brand_guard()\n    expect_red(',
               1,
           )
-
           path.write_text(text, encoding="utf-8")
           PY
 
@@ -172,13 +144,22 @@ jobs:
           set -o pipefail
           uv run python tools/iiwi_brand_migration.py 2>&1 | tee iiwi-migration.log
 
-      - name: Upload migration log
+      - name: Export verified git bundle
+        if: steps.guard.outputs.done != 'true' && steps.migration.outcome == 'success'
+        run: |
+          git bundle create iiwi-verified.bundle --all
+          git log --oneline -8 > iiwi-verified-commits.txt
+
+      - name: Upload migration evidence
         if: always() && steps.guard.outputs.done != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: iiwi-migration-log
-          path: iiwi-migration.log
-          if-no-files-found: error
+          name: iiwi-migration-evidence
+          path: |
+            iiwi-migration.log
+            iiwi-verified.bundle
+            iiwi-verified-commits.txt
+          if-no-files-found: warn
 
       - name: Push verified migration commits
         if: steps.guard.outputs.done != 'true' && steps.migration.outcome == 'success'
