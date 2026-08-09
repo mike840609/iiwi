@@ -4,7 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
-- `agent-worklog --version` prints the installed version.
+- Rename the project to **Iiwi**: the distribution, Python package, CLI, environment
+  prefix, config/data directories, update index, documentation, and release flow now use
+  `iiwi` / `IIWI_*`. No compatibility alias is provided because the project has no user
+  migration requirement yet.
+- `iiwi --version` prints the installed version.
 - `update` checks PyPI for a newer release and prints the upgrade command. It
   is the only command that touches the network and is never run implicitly;
   an available update exits with code 8, an unreachable index is reported but

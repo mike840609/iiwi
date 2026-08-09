@@ -1,10 +1,10 @@
 # Configuration
 
-Agent Worklog reads every setting from an environment variable, and reads a settings
+Iiwi reads every setting from an environment variable, and reads a settings
 file for the ones the environment does not set. For each setting it takes the
 environment variable, then the settings file, then the default.
 
-- Prefix: `AGENT_WORKLOG_`
+- Prefix: `IIWI_`
 - Nested delimiter: `__`
 - Boolean values: `true` or `false`
 
@@ -13,31 +13,31 @@ the default listed in the tables below.
 
 ## The settings file
 
-`agent-worklog config` reads and writes a settings file so that a value survives the
+`iiwi config` reads and writes a settings file so that a value survives the
 shell it was set in:
 
 ```bash
-agent-worklog config path                        # where the file is
-agent-worklog config list                        # every setting, value, and source
-agent-worklog config init                        # walk through every setting
-agent-worklog config set harnesses.opencode.cli.model deepseek-r1   # write one setting
-agent-worklog config set harnesses.opencode.cli.model               # ask for the value
-agent-worklog config set harnesses.opencode.cli.model ""            # empty: back to the default
-agent-worklog config unset harnesses.opencode.cli.model             # same thing, spelled out
+iiwi config path                        # where the file is
+iiwi config list                        # every setting, value, and source
+iiwi config init                        # walk through every setting
+iiwi config set harnesses.opencode.cli.model deepseek-r1   # write one setting
+iiwi config set harnesses.opencode.cli.model               # ask for the value
+iiwi config set harnesses.opencode.cli.model ""            # empty: back to the default
+iiwi config unset harnesses.opencode.cli.model             # same thing, spelled out
 ```
 
 ## Setting values interactively
 
-`agent-worklog config init` walks through every setting in turn, showing the value in
+`iiwi config init` walks through every setting in turn, showing the value in
 force in brackets:
 
 ```
-$ agent-worklog config init
-Settings file: /home/dev/.config/agent-worklog/config.env
+$ iiwi config init
+Settings file: /home/dev/.config/iiwi/config.env
 Press Enter to keep the value in brackets. Every setting is optional.
 report.timezone [Asia/Taipei]:
 llm.model [gpt-5-mini]: gpt-5
-Wrote 1 setting to /home/dev/.config/agent-worklog/config.env
+Wrote 1 setting to /home/dev/.config/iiwi/config.env
 ```
 
 Pressing Enter leaves a setting alone; nothing is written for it. Only the settings you
@@ -45,7 +45,7 @@ answer are recorded, so a run where you answer nothing writes no file at all. Us
 `config unset` to take a setting that is already in the file back to its default —
 an empty answer means "leave this as it is", not "erase it".
 
-`agent-worklog config set <key>` with no value asks for that one setting the same way.
+`iiwi config set <key>` with no value asks for that one setting the same way.
 A value the settings would reject is refused and asked again, so a typo partway through
 `config init` does not throw away the answers before it.
 
@@ -53,24 +53,24 @@ Both need a terminal. In a pipeline or in CI there is nobody to answer, so they 
 with code 3 rather than reading from stdin; pass the value as an argument there.
 
 Keys are the lowercase, dot-separated form of the variable name, so
-`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL` is `opencode.cli.model` and
-`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` is
+`IIWI_HARNESSES__OPENCODE__CLI__MODEL` is `opencode.cli.model` and
+`IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE` is
 `harnesses.opencode.cli.executable`. `config list` shows every setting's key, its
 current value, whether that value came from the environment, the file, or the default,
 and what the default is.
 
 The file is a `config.env` in the user configuration directory — run
-`agent-worklog config path` to see the exact location, which differs by platform. Set
-`AGENT_WORKLOG_CONFIG_FILE` to use a different file — for example a dedicated
-`agent-worklog.env` for one project, not a general project `.env` file, which invites
-foreign variables and secrets that have nothing to do with Agent Worklog into the same
+`iiwi config path` to see the exact location, which differs by platform. Set
+`IIWI_CONFIG_FILE` to use a different file — for example a dedicated
+`iiwi.env` for one project, not a general project `.env` file, which invites
+foreign variables and secrets that have nothing to do with Iiwi into the same
 file. The file is created readable and writable only by its owner on macOS and Linux.
 
 `config list` prints every value — including whatever you put in the file — unredacted,
 by design: these are your own settings, shown at your own request.
 
 An exported variable always beats the file, so
-`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL=deepseek-r1 agent-worklog report` still
+`IIWI_HARNESSES__OPENCODE__CLI__MODEL=deepseek-r1 iiwi report` still
 wins over a file that sets the same key. `config set` and `config unset` say so when
 the setting they just touched is already exported.
 
@@ -81,29 +81,29 @@ fails at the moment you make it rather than on the next report. Both exit with c
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `AGENT_WORKLOG_HARNESSES__OPENCODE__ENABLED` | `true` | Set to `false` to make `--harness opencode` fail with a configuration error (exit code 3). |
-| `AGENT_WORKLOG_HARNESSES__OPENCODE__SOURCE` | `cli` | Source identifier; only `cli` is implemented. |
-| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` | `opencode` | OpenCode executable name or path. |
-| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__TIMEOUT_SECONDS` | `30` | Timeout for OpenCode commands. |
+| `IIWI_HARNESSES__OPENCODE__ENABLED` | `true` | Set to `false` to make `--harness opencode` fail with a configuration error (exit code 3). |
+| `IIWI_HARNESSES__OPENCODE__SOURCE` | `cli` | Source identifier; only `cli` is implemented. |
+| `IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE` | `opencode` | OpenCode executable name or path. |
+| `IIWI_HARNESSES__OPENCODE__CLI__TIMEOUT_SECONDS` | `30` | Timeout for OpenCode commands. |
 
 Example:
 
 ```bash
-export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE="$HOME/bin/opencode"
-export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__TIMEOUT_SECONDS="60"
-agent-worklog doctor
+export IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE="$HOME/bin/opencode"
+export IIWI_HARNESSES__OPENCODE__CLI__TIMEOUT_SECONDS="60"
+iiwi doctor
 ```
 
 ## Claude Code harness
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED` | `true` | Set to `false` to make `--harness claude-code` fail with a configuration error (exit code 3). |
-| `AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY` | `~/.claude/projects` | Directory containing per-project session transcripts. |
+| `IIWI_HARNESSES__CLAUDE_CODE__ENABLED` | `true` | Set to `false` to make `--harness claude-code` fail with a configuration error (exit code 3). |
+| `IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY` | `~/.claude/projects` | Directory containing per-project session transcripts. |
 
 Selecting the harness is a CLI concern, not a settings one: pass `--harness claude-code`
 to `doctor`, `scan`, or `report`. No executable or CLI timeout setting applies, because
-Agent Worklog reads the JSONL transcripts under `projects_directory` directly and never
+Iiwi reads the JSONL transcripts under `projects_directory` directly and never
 launches a Claude Code process.
 
 `ENABLED` is a refusal, not a default: setting it to `false` does not switch the other
@@ -113,19 +113,19 @@ forbid reading a transcript store on a machine where that is not permitted.
 Example:
 
 ```bash
-export AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED="true"
-export AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY="$HOME/.claude/projects"
-agent-worklog doctor --harness claude-code
+export IIWI_HARNESSES__CLAUDE_CODE__ENABLED="true"
+export IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY="$HOME/.claude/projects"
+iiwi doctor --harness claude-code
 ```
 
 ## Codex harness
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `AGENT_WORKLOG_HARNESSES__CODEX__ENABLED` | `true` | Set to `false` to make `--harness codex` fail with a configuration error (exit code 3). |
-| `AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY` | `~/.codex` | Directory holding the Codex state database and rollout files. |
+| `IIWI_HARNESSES__CODEX__ENABLED` | `true` | Set to `false` to make `--harness codex` fail with a configuration error (exit code 3). |
+| `IIWI_HARNESSES__CODEX__HOME_DIRECTORY` | `~/.codex` | Directory holding the Codex state database and rollout files. |
 
-One setting covers all three locations Agent Worklog reads — `state_<n>.sqlite`,
+One setting covers all three locations Iiwi reads — `state_<n>.sqlite`,
 `sessions/`, and `archived_sessions/` are fixed positions under it.
 
 Selecting the harness is a CLI concern, not a settings one: pass `--harness codex` to
@@ -139,18 +139,18 @@ switch another harness on, it makes `doctor`, `scan`, and `report` refuse the di
 Example:
 
 ```bash
-export AGENT_WORKLOG_HARNESSES__CODEX__ENABLED="true"
-export AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY="$HOME/.codex"
-agent-worklog doctor --harness codex
+export IIWI_HARNESSES__CODEX__ENABLED="true"
+export IIWI_HARNESSES__CODEX__HOME_DIRECTORY="$HOME/.codex"
+iiwi doctor --harness codex
 ```
 
 ## Report settings
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `AGENT_WORKLOG_REPORT__TIMEZONE` | `Asia/Taipei` | Calendar-week and naive ISO timestamp timezone. |
-| `AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY` | `reports` | Default Markdown output directory. |
-| `AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES` | `""` | Comma-separated repository ids to permanently leave out of every scan and report. |
+| `IIWI_REPORT__TIMEZONE` | `Asia/Taipei` | Calendar-week and naive ISO timestamp timezone. |
+| `IIWI_REPORT__OUTPUT_DIRECTORY` | `reports` | Default Markdown output directory. |
+| `IIWI_REPORT__EXCLUDE_REPOSITORIES` | `""` | Comma-separated repository ids to permanently leave out of every scan and report. |
 
 The `--output` CLI option overrides the configured output directory for one invocation.
 
@@ -161,7 +161,7 @@ the number of sessions dropped, and when exclusion removes everything the comman
 instead of reporting "no activity found".
 
 ```bash
-agent-worklog config set report.exclude_repositories "dotfiles,notes-vault"
+iiwi config set report.exclude_repositories "dotfiles,notes-vault"
 ```
 
 ## OpenCode run settings
@@ -171,26 +171,26 @@ settings control that invocation. An empty `MODEL` uses opencode's default model
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE` | `opencode` | The `opencode` executable used for export, stats, and the narrative report. |
-| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS` | `600.0` | How long a single `opencode run` may take before Agent Worklog falls back to the structured report. |
-| `AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL` | `""` | Optional model passed as `--model` to `opencode run`. Empty means opencode's default. |
+| `IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE` | `opencode` | The `opencode` executable used for export, stats, and the narrative report. |
+| `IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS` | `600.0` | How long a single `opencode run` may take before Iiwi falls back to the structured report. |
+| `IIWI_HARNESSES__OPENCODE__CLI__MODEL` | `""` | Optional model passed as `--model` to `opencode run`. Empty means opencode's default. |
 
 To pin a specific model for report narratives:
 
 ```bash
-export AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL="gpt-5.3"
-agent-worklog report --period last-week
+export IIWI_HARNESSES__OPENCODE__CLI__MODEL="gpt-5.3"
+iiwi report --period last-week
 ```
 
 To disable the narrative for one command and emit the deterministic structured report:
 
 ```bash
-agent-worklog report --period last-week --no-llm
+iiwi report --period last-week --no-llm
 ```
 
 ## Precedence
 
-For each setting, Agent Worklog takes the environment variable, then the settings file,
+For each setting, Iiwi takes the environment variable, then the settings file,
 then the default. CLI period and output options apply to the current invocation only
 and override the settings that back them. Environment settings provide defaults for
 harness execution, timezone, output directory, and the narrative `opencode run`
@@ -198,6 +198,6 @@ invocation.
 
 ## OpenCode export privacy
 
-`AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE` defaults to `false`.
+`IIWI_HARNESSES__OPENCODE__CLI__SANITIZE` defaults to `false`.
 Set it to `true` to request `opencode export --sanitize`. The CLI flags
 `--sanitize` and `--no-sanitize` override this setting for one invocation.
