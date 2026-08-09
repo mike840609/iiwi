@@ -14,6 +14,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from iiwi.config import AppSettings
 from iiwi.errors import ConfigurationError
+from iiwi.paths import LEGACY_APP_NAME, adopt_legacy
 
 ENV_PREFIX = "IIWI_"
 CONFIG_FILE_VARIABLE = "IIWI_CONFIG_FILE"
@@ -29,7 +30,10 @@ def config_file_path() -> Path:
     override = os.environ.get(CONFIG_FILE_VARIABLE)
     if override:
         return Path(override).expanduser()
-    return Path(user_config_dir("iiwi")) / "config.env"
+    return adopt_legacy(
+        Path(user_config_dir("iiwi")) / "config.env",
+        Path(user_config_dir(LEGACY_APP_NAME)) / "config.env",
+    )
 
 
 def _as_text(value: object) -> str:
