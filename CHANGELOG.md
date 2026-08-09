@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- The main menu shows the installed version in its subtitle, and
+  `agent-worklog --version` prints it for scripts.
 - `update` checks PyPI for a newer release and prints the upgrade command. It
   is the only command that touches the network and is never run implicitly;
   an available update exits with code 8, an unreachable index is reported but

@@ -754,3 +754,12 @@ def test_update_network_failure_is_not_an_error(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert "could not reach" in result.stdout
+
+
+def test_version_flag_prints_the_installed_version() -> None:
+    import agent_worklog
+
+    result = CliRunner().invoke(agent_worklog.cli.app, ["--version"])
+
+    assert result.exit_code == 0
+    assert f"agent-worklog {agent_worklog.__version__}" in result.stdout

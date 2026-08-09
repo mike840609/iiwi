@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 
-from agent_worklog import config_store
+from agent_worklog import __version__, config_store
 from agent_worklog.config import AppSettings
 from agent_worklog.errors import (
     ConfigurationError,
@@ -1224,8 +1224,18 @@ def _interactive_menu() -> None:
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        help="Show the version and exit.",
+    ),
+) -> None:
     """Open the menu when no subcommand was named."""
 
+    if version:
+        typer.echo(f"agent-worklog {__version__}")
+        raise typer.Exit()
     if ctx.invoked_subcommand is None:
         _interactive_menu()

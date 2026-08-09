@@ -17,7 +17,8 @@ Every command, option, and exit code. For a guided tour instead, see the
 | `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
 
 Running `agent-worklog` with no arguments opens the key-driven interactive menu.
-`agent-worklog --help` prints the command list instead. Direct subcommands remain unchanged
+`agent-worklog --help` prints the command list instead, and `agent-worklog
+--version` prints the installed version. Direct subcommands remain unchanged
 and are still the supported interface for scripts, CI, and pipelines.
 
 ## Interactive mode
