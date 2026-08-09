@@ -251,6 +251,45 @@ def test_selection_is_saved_when_it_changes_but_not_when_it_does_not() -> None:
     assert recorder.save_calls == []
 
 
+def test_a_failing_selection_save_does_not_crash_the_tui() -> None:
+    """A selection that cannot be persisted is forgotten, not fatal.
+
+    The state file is bookkeeping, like the history log: an unwritable home
+    directory (or a full disk) must not take the interactive app down with a
+    traceback mid-session.
+    """
+
+    class FailingRecorder(Recorder):
+        def save_selection(
+            self,
+            harness: str,
+            period: DateRange,
+            include_subagents: bool,
+            selected_session_ids: set[str],
+        ) -> None:
+            raise OSError("disk full")
+
+    recorder = FailingRecorder()
+    console, _ = _console()
+
+    run_interactive(
+        actions=recorder.actions(),
+        input_source=ScriptedInput(
+            [
+                char("1"),
+                char("r"),
+                KeyPress(key=Key.RIGHT),
+                KeyPress(key=Key.DOWN),
+                KeyPress(key=Key.SPACE),
+                char("b"),
+                char("b"),
+                char("q"),
+            ]
+        ),
+        console=console,
+    )
+
+
 def test_exclude_key_on_a_repository_row_excludes_and_rescans() -> None:
     recorder = Recorder()
     console, stream = _console()

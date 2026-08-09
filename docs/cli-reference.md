@@ -117,8 +117,9 @@ it is emitted, matching the redaction the interactive and file paths apply.
 
 `doctor --json` emits `{"harness": "...", "ok": true, "checks": [{"name": "...",
 "ok": true, "detail": "..."}]}`, and `history --json` emits an array of
-recorded reports. When stdout is not a terminal, `scan` and `doctor` switch to
-JSON automatically, so `agent-worklog scan --period last-week | jq '.repositories'`
+recorded reports. When stdout is not a terminal, `scan`, `doctor`, `history`,
+and `update` switch to JSON automatically, so
+`agent-worklog scan --period last-week | jq '.repositories'`
 just works; `--quiet` keeps its human contract and opts out of the auto-switch.
 
 ## Progress output

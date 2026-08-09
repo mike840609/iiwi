@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -566,12 +567,16 @@ def _sync_selection(state: _State, actions: InteractiveActions) -> None:
     if set(draft.selected_session_ids) == selection.selected_session_ids:
         return
     draft.selected_session_ids = set(selection.selected_session_ids)
-    actions.save_selection(
-        draft.harness,
-        draft.period,
-        draft.include_subagents,
-        draft.selected_session_ids,
-    )
+    # The state file is bookkeeping, like the history log: a full disk or
+    # read-only home must not take the interactive app down. The selection
+    # simply is not remembered.
+    with contextlib.suppress(OSError, AgentWorklogError):
+        actions.save_selection(
+            draft.harness,
+            draft.period,
+            draft.include_subagents,
+            draft.selected_session_ids,
+        )
 
 
 def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> None:

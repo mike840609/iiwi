@@ -135,6 +135,27 @@ def test_exclude_repository_keeps_already_configured_exclusions(
     )
 
 
+def test_exclude_repository_refuses_when_the_environment_owns_the_setting(
+    monkeypatch, tmp_path
+) -> None:
+    """An exported override outranks the settings file, so persisting an
+    exclusion there would be a lie the next run ignores: refuse to write and
+    say which variable owns the setting instead."""
+
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES",
+        "git:github.com/mike/env-driven",
+    )
+
+    message = cli_actions._exclude_repository(
+        "git:github.com/mike/dotfiles", "Dotfiles"
+    )
+
+    assert "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES" in message
+    assert not (tmp_path / "config.env").exists()
+
+
 def test_exclude_repository_is_idempotent(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
     cli_actions._exclude_repository("git:github.com/mike/dotfiles", "Dotfiles")

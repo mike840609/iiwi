@@ -387,14 +387,18 @@ def render_main_menu(console: Console, *, selected: int) -> None:
         padding = console.size.width - cell_len(title) - cell_len(version)
         title_line = Text.assemble((title, "bold"), " " * padding, (version, "dim"))
         _print_viewport_text(console, title_line)
+        _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
+        if console.size.height >= _MIN_SUBTITLE_HEIGHT:
+            _print_viewport_line(
+                console,
+                "Turn coding-agent sessions into engineering reports",
+                style="dim",
+            )
     else:
-        _print_viewport_line(console, title, style="bold")
-    _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
-    if console.size.height >= _MIN_SUBTITLE_HEIGHT:
-        _print_viewport_line(
+        _print_header(
             console,
-            "Turn coding-agent sessions into engineering reports",
-            style="dim",
+            "Agent Worklog",
+            subtitle="Turn coding-agent sessions into engineering reports",
         )
     console.print()
     label_width = max(cell_len(label) for label in _MAIN_OPTIONS)

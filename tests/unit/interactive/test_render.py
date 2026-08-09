@@ -1182,3 +1182,17 @@ def test_main_menu_omits_the_version_on_a_narrow_terminal() -> None:
     text = stream.getvalue()
     assert "Agent Worklog" in text
     assert f"v{agent_worklog.__version__}" not in text
+
+
+def test_main_menu_fits_the_version_at_exactly_twenty_cells() -> None:
+    """The title row is 13 title cells + 1 gap + 6 version cells, so width 20
+    is exactly the fit boundary: the version must still appear (1-cell padding)."""
+
+    import agent_worklog
+    from agent_worklog.interactive.render import render_main_menu
+
+    console, stream = _console(width=20)
+    render_main_menu(console, selected=0)
+
+    title_line = _row(stream.getvalue(), "Agent Worklog")
+    assert f"v{agent_worklog.__version__}" in title_line
