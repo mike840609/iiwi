@@ -123,6 +123,17 @@ All notable changes to this project are documented in this file.
   many sessions were dropped, and when the exclusion removes everything the command
   says the sessions were excluded rather than that none were found.
 
+## [0.9.0]
+
+### Changed
+
+- Renamed the project from Agent Worklog to Iiwi. The command is now `iiwi`,
+  the distribution is `iiwi` on PyPI, environment variables use the `IIWI_`
+  prefix, and settings, history and session-selection state move to the `iiwi`
+  application directories. State left by the previous name is adopted
+  automatically on first run. There is no compatibility alias — `agent-worklog`
+  is not published beyond 0.8.x.
+
 ## 0.8.0 - 2026-08-07
 
 - Running `agent-worklog` with no arguments opens a menu for generating a report, scanning
