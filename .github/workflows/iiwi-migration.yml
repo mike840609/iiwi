@@ -49,11 +49,12 @@ jobs:
           text = path.read_text(encoding="utf-8")
 
           # The connector sandbox cannot expand this shell glob; make the runner
-          # pass concrete dist paths to twine on the Actions runner.
+          # pass only actual wheel/sdist paths to twine on the Actions runner.
           text = text.replace(
               'run("uv", "tool", "run", "twine", "check", "dist/*")',
               'run("uv", "tool", "run", "twine", "check", '
-              '*(str(path) for path in sorted(dist.iterdir())))',
+              '*(str(path) for path in sorted(dist.iterdir()) '
+              'if path.name.endswith((".whl", ".tar.gz"))))',
           )
 
           # Insert the new history helper where Ruff expects it alphabetically.
