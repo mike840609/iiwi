@@ -361,7 +361,8 @@ uv run pyright
 Final sweep. Both commands must return nothing:
 
 ```bash
-rg -i 'agent[-_ ]?worklog' -g '!docs/**' -g '!CHANGELOG.md' -g '!uv.lock' .
+rg -i --hidden -g '!.git/**' -g '!docs/**' -g '!CHANGELOG.md' -g '!uv.lock' \
+  'agent[-_ ]?worklog' .
 
 rg -i 'agent[-_ ]?worklog' docs/configuration.md docs/guides.md docs/privacy.md \
   docs/releasing.md docs/cli-reference.md docs/limitations.md docs/usage-statistics.md
@@ -370,6 +371,12 @@ rg -i 'agent[-_ ]?worklog' docs/configuration.md docs/guides.md docs/privacy.md 
 The first excludes `docs/` wholesale and the second names the seven living
 documents. Two plain commands beat one clever glob, and the explicit list is
 also the definition of which documents are living.
+
+`--hidden` is required: `rg` skips dotted directories by default, which would
+leave `.github/workflows/` and `.codex/` unswept — the two places a leftover
+`--cov=agent_worklog` could hide. `-g '!.git/**'` then keeps the reflog and
+worktree metadata, which carries the old name permanently and correctly, out of
+the results.
 
 ## Testing
 
