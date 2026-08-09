@@ -21,6 +21,7 @@ def test_only_iiwi_import_package_exists() -> None:
     assert importlib.util.find_spec("iiwi") is not None
     assert importlib.util.find_spec(old_package) is None
 
+
 CURRENT_TEXT_FILES = (
     Path("pyproject.toml"),
     Path("README.md"),
@@ -35,6 +36,8 @@ CURRENT_TEXT_FILES = (
     Path("docs/releasing.md"),
     Path("docs/assets/architecture.mmd"),
     Path("docs/assets/architecture.svg"),
+    Path(".github/workflows/ci.yml"),
+    Path(".github/workflows/release.yml"),
 )
 
 
