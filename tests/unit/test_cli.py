@@ -642,3 +642,115 @@ def test_report_records_a_history_entry_after_writing(monkeypatch, tmp_path) -> 
     assert entries[0].session_count == 4
     assert entries[0].narrative is False
     assert str(entries[0].output_path) == str(tmp_path / "report.md")
+
+
+def _stub_update(monkeypatch, info):
+    """Point the `update` command's check seam at a canned result."""
+    import agent_worklog.cli as cli
+
+    monkeypatch.setattr(
+        cli,
+        "check_for_update",
+        lambda **kwargs: info,
+    )
+    return cli
+
+
+def test_update_json_flag_emits_machine_readable_output(monkeypatch) -> None:
+    import json
+
+    from agent_worklog.update import UpdateInfo
+
+    cli = _stub_update(
+        monkeypatch,
+        UpdateInfo(
+            current="0.8.0",
+            latest="0.9.0",
+            update_available=True,
+            upgrade_command="pipx upgrade agent-worklog",
+        ),
+    )
+
+    result = CliRunner().invoke(cli.app, ["update", "--json"])
+
+    assert result.exit_code == 8
+    payload = json.loads(result.stdout)
+    assert payload["current"] == "0.8.0"
+    assert payload["latest"] == "0.9.0"
+    assert payload["update_available"] is True
+    assert payload["upgrade_command"] == "pipx upgrade agent-worklog"
+
+
+def test_update_emits_json_automatically_when_piped(monkeypatch) -> None:
+    import json
+
+    from agent_worklog.update import UpdateInfo
+
+    cli = _stub_update(
+        monkeypatch,
+        UpdateInfo(
+            current="0.9.0",
+            latest="0.9.0",
+            update_available=False,
+            upgrade_command="pipx upgrade agent-worklog",
+        ),
+    )
+
+    result = CliRunner().invoke(cli.app, ["update"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["update_available"] is False
+
+
+def test_update_reports_upgrade_command_when_behind(monkeypatch) -> None:
+    from agent_worklog.update import UpdateInfo
+
+    cli = _stub_update(
+        monkeypatch,
+        UpdateInfo(
+            current="0.8.0",
+            latest="0.9.0",
+            update_available=True,
+            upgrade_command="pipx upgrade agent-worklog",
+        ),
+    )
+
+    result = CliRunner().invoke(cli.app, ["update", "--no-json"])
+
+    assert result.exit_code == 8
+    assert "0.9.0" in result.stdout
+    assert "pipx upgrade agent-worklog" in result.stdout
+
+
+def test_update_says_up_to_date(monkeypatch) -> None:
+    from agent_worklog.update import UpdateInfo
+
+    cli = _stub_update(
+        monkeypatch,
+        UpdateInfo(
+            current="0.9.0",
+            latest="0.9.0",
+            update_available=False,
+            upgrade_command="pipx upgrade agent-worklog",
+        ),
+    )
+
+    result = CliRunner().invoke(cli.app, ["update", "--no-json"])
+
+    assert result.exit_code == 0
+    assert "up to date" in result.stdout
+
+
+def test_update_network_failure_is_not_an_error(monkeypatch) -> None:
+    import agent_worklog.cli as cli
+    from agent_worklog.update import UpdateCheckError
+
+    def fail(**kwargs):
+        raise UpdateCheckError("could not reach the version index: connection refused")
+
+    monkeypatch.setattr(cli, "check_for_update", fail)
+
+    result = CliRunner().invoke(cli.app, ["update", "--no-json"])
+
+    assert result.exit_code == 0
+    assert "could not reach" in result.stdout

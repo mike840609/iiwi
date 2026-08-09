@@ -122,6 +122,7 @@ agent-worklog doctor                       # is the harness ready?
 agent-worklog scan --period last-week      # preview how sessions group
 agent-worklog report --period last-week    # write the report
 agent-worklog history                      # list the reports already written
+agent-worklog update                       # check PyPI for a newer release
 ```
 
 `scan` and `doctor` emit JSON when stdout is piped, or when asked with `--json` —
@@ -172,9 +173,10 @@ reading from stdin.
 OpenCode exports are raw by default so reports retain useful work details. Agent Worklog
 redacts common secret patterns locally, then hands a grouped, redacted transcript to
 your locally installed `opencode run`, which writes the narrative — nothing leaves your
-machine and no API key is needed. Use `--no-llm` for the deterministic structured
-report, or `--sanitize` for OpenCode's stronger redaction, which intentionally removes
-most work evidence.
+machine and no API key is needed. The only command that touches the network is
+`update`, which checks PyPI for a newer release when you run it. Use `--no-llm` for the
+deterministic structured report, or `--sanitize` for OpenCode's stronger redaction,
+which intentionally removes most work evidence.
 
 Reports may still contain private goals, filenames, commands, and full working paths.
 Always review a report before sharing it. See
