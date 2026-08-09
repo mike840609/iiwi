@@ -126,11 +126,23 @@ jobs:
           PY
 
       - name: Execute approved TDD migration plan
+        id: migration
         if: steps.guard.outputs.done != 'true'
-        run: uv run python tools/iiwi_brand_migration.py
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run python tools/iiwi_brand_migration.py 2>&1 | tee iiwi-migration.log
+
+      - name: Upload migration log
+        if: always() && steps.guard.outputs.done != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: iiwi-migration-log
+          path: iiwi-migration.log
+          if-no-files-found: error
 
       - name: Push verified migration commits
-        if: steps.guard.outputs.done != 'true'
+        if: steps.guard.outputs.done != 'true' && steps.migration.outcome == 'success'
         run: |
           git status --short
           git log --oneline -8
