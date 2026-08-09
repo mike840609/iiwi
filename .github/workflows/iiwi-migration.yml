@@ -48,17 +48,22 @@ jobs:
           path = Path("tools/iiwi_brand_migration.py")
           text = path.read_text(encoding="utf-8")
 
+          # Pass only actual built distributions to Twine.
           text = text.replace(
               'run("uv", "tool", "run", "twine", "check", "dist/*")',
               'run("uv", "tool", "run", "twine", "check", '
               '*(str(path) for path in sorted(dist.iterdir()) '
               'if path.name.endswith((".whl", ".tar.gz"))))',
           )
+
+          # Keep the test import order Ruff-clean.
           text = text.replace(
               'history = history.replace("    HistoryEntry,\\n", "    HistoryEntry,\\n    history_file_path,\\n", 1)',
               'history = history.replace("    append_history,\\n", "    append_history,\\n    history_file_path,\\n", 1)',
               1,
           )
+
+          # Runtime identity is project-wide across unit/integration tests.
           text = text.replace(
               '        "tests/unit/test_cli.py",\n    )\n    for path in runtime_test_files:',
               '        "tests/unit/test_cli.py",\n'
@@ -97,6 +102,10 @@ jobs:
               '    commit("refactor: move runtime identity to iiwi")',
               1,
           )
+
+          # Product display identity is asserted across integration tests too.
+          # Preserve two occurrences that are fixture data for a repository
+          # literally named agent-worklog.
           text = text.replace(
               '    render_test = read("tests/unit/interactive/test_render.py")\n',
               '    for test_path in sorted((ROOT / "tests").rglob("*.py")):\n'
@@ -124,6 +133,8 @@ jobs:
               '    render_test = render_test.replace("_console(width=20)", "_console(width=11)", 1)\n',
               1,
           )
+
+          # Match the approved README's bold product-name markup.
           text = text.replace(
               '    add_brand_guard()\n    expect_red(',
               '    replace(\n'
@@ -133,6 +144,19 @@ jobs:
               '    add_brand_guard()\n    expect_red(',
               1,
           )
+
+          # GitHub Actions' GITHUB_TOKEN cannot safely be used to push commits
+          # that mutate workflow files in this setup. The migration still runs
+          # its full direct verification with --cov=iiwi; the two official
+          # workflow files are updated afterward through the GitHub connector.
+          for workflow_line in (
+              '        Path(".github/workflows/ci.yml"),\n',
+              '        Path(".github/workflows/release.yml"),\n',
+              '        ".github/workflows/ci.yml",\n',
+              '        ".github/workflows/release.yml",\n',
+          ):
+              text = text.replace(workflow_line, "")
+
           path.write_text(text, encoding="utf-8")
           PY
 
@@ -142,24 +166,15 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          uv run python tools/iiwi_brand_migration.py 2>&1 | tee iiwi-migration.log
-
-      - name: Export verified git bundle
-        if: steps.guard.outputs.done != 'true' && steps.migration.outcome == 'success'
-        run: |
-          git bundle create iiwi-verified.bundle --all
-          git log --oneline -8 > iiwi-verified-commits.txt
+          uv run python tools/iiwi_brand_migration.py 2>&1 | tee /tmp/iiwi-migration.log
 
       - name: Upload migration evidence
         if: always() && steps.guard.outputs.done != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: iiwi-migration-evidence
-          path: |
-            iiwi-migration.log
-            iiwi-verified.bundle
-            iiwi-verified-commits.txt
-          if-no-files-found: warn
+          path: /tmp/iiwi-migration.log
+          if-no-files-found: error
 
       - name: Push verified migration commits
         if: steps.guard.outputs.done != 'true' && steps.migration.outcome == 'success'
