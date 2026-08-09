@@ -35,7 +35,7 @@ jobs:
         run: uv sync --locked --extra dev
 
       - name: Test with coverage
-        run: uv run pytest --cov=agent_worklog --cov-fail-under=80
+        run: uv run pytest --cov=iiwi --cov-fail-under=80
 
       - name: Lint
         run: uv run ruff check .
