@@ -46,7 +46,10 @@ Run `iiwi` with no arguments if you would rather not remember flags:
 
 ```text
 $ iiwi
-Iiwi
+ ___ _        _
+|_ _(_)_ __ _(_)
+ | || \ V  V / |
+|___|_|\_/\_/|_|                                v0.9.1
 ══════════════════════════════════════════════════════
 Turn coding-agent sessions into engineering reports
 

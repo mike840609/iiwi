@@ -44,7 +44,10 @@ iiwi report --period last-week    # 產生報告
 
 ```text
 $ iiwi
-Iiwi
+ ___ _        _
+|_ _(_)_ __ _(_)
+ | || \ V  V / |
+|___|_|\_/\_/|_|                                v0.9.1
 ══════════════════════════════════════════════════════
 Turn coding-agent sessions into engineering reports
 
