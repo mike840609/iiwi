@@ -365,9 +365,16 @@ def test_scan_passes_root_only_to_the_scan_service(monkeypatch: pytest.MonkeyPat
     class StubScanService:
         def scan(self):
             return SimpleNamespace(
+                candidate_session_count=1,
                 loaded_session_count=1,
+                failed_session_count=0,
+                excluded_session_count=0,
                 sessions_by_repository={},
                 warnings=[],
+                period=DateRange(
+                    since=datetime(2026, 7, 20, tzinfo=TZ),
+                    until=datetime(2026, 7, 27, tzinfo=TZ),
+                ),
             )
 
     def build(
@@ -1041,6 +1048,7 @@ def test_run_scans_once_then_generates(
                 output_path=self.output_path,
                 content="# Engineering Worklog\n",
                 report=report,
+                scan=scan,
             )
 
     def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
@@ -1271,6 +1279,7 @@ def test_run_accepts_a_non_opencode_harness(
                         )
                     ],
                 ),
+                scan=scan,
             )
 
     def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
@@ -1357,6 +1366,7 @@ def test_run_dry_run_prints_without_writing(
                 output_path=self.output_path,
                 content="# Engineering Worklog\n",
                 report=report,
+                scan=scan,
             )
 
     def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
@@ -1444,6 +1454,7 @@ def test_a_dry_run_does_not_ask_where_to_write(
                         )
                     ],
                 ),
+                scan=scan,
             )
 
     def build_report(
@@ -1666,6 +1677,7 @@ def test_run_walks_the_real_prompts_on_defaults(
                         )
                     ],
                 ),
+                scan=scan,
             )
 
     def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
@@ -1715,10 +1727,11 @@ def test_bare_invocation_runs_doctor_against_the_chosen_harness(
 ) -> None:
     seen: dict[str, object] = {}
 
-    def stub_doctor(*, harness, verbose: bool, quiet: bool) -> None:
+    def stub_doctor(*, harness, verbose: bool, quiet: bool, json) -> None:
         seen["harness"] = harness
         seen["verbose"] = verbose
         seen["quiet"] = quiet
+        seen["json"] = json
 
     monkeypatch.setattr(cli, "doctor", stub_doctor)
     monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.OPENCODE)
@@ -1731,6 +1744,7 @@ def test_bare_invocation_runs_doctor_against_the_chosen_harness(
         "harness": cli.Harness.OPENCODE,
         "verbose": False,
         "quiet": False,
+        "json": False,
     }
 
 
@@ -1740,7 +1754,7 @@ def test_bare_invocation_runs_scan_against_the_chosen_harness(
     seen: dict[str, object] = {}
 
     def stub_scan(
-        *, days, period, since, until, root_only, sanitize, harness, verbose, quiet
+        *, days, period, since, until, root_only, sanitize, harness, verbose, quiet, json
     ) -> None:
         seen["harness"] = harness
         seen["days"] = days
@@ -1749,6 +1763,7 @@ def test_bare_invocation_runs_scan_against_the_chosen_harness(
         seen["until"] = until
         seen["root_only"] = root_only
         seen["sanitize"] = sanitize
+        seen["json"] = json
 
     monkeypatch.setattr(cli, "scan", stub_scan)
     monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.CLAUDE_CODE)
@@ -1768,6 +1783,9 @@ def test_bare_invocation_runs_scan_against_the_chosen_harness(
     assert seen["until"] is None
     assert seen["root_only"] is False
     assert seen["sanitize"] is None
+    # The menu is a person-facing surface, so its dispatch forces human output
+    # even though CliRunner's piped stdout would otherwise auto-switch to JSON.
+    assert seen["json"] is False
 
 
 def test_the_menu_runs_the_real_scan_command_over_the_last_week(
@@ -1787,13 +1805,28 @@ def test_the_menu_runs_the_real_scan_command_over_the_last_week(
     class StubScanService:
         def scan(self):
             return SimpleNamespace(
+                candidate_session_count=1,
                 loaded_session_count=1,
+                failed_session_count=0,
+                excluded_session_count=0,
                 sessions_by_repository={
                     "git:github.com/mike/agent-worklog": [
-                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                        SimpleNamespace(
+                            session=SimpleNamespace(
+                                session_id="ses-1",
+                                title="Menu scan",
+                                working_directory="/tmp/agent-worklog",
+                                activities=[],
+                            ),
+                            repository=SimpleNamespace(display_name="Agent Worklog"),
+                        )
                     ]
                 },
                 warnings=[],
+                period=DateRange(
+                    since=datetime(2026, 7, 20, tzinfo=TZ),
+                    until=datetime(2026, 7, 27, tzinfo=TZ),
+                ),
             )
 
     def build(
@@ -1845,8 +1878,14 @@ def test_the_menu_passes_every_parameter_of_the_commands_it_dispatches() -> None
         "harness",
         "verbose",
         "quiet",
+        "json",
     }
-    assert set(inspect.signature(cli.doctor).parameters) == {"harness", "verbose", "quiet"}
+    assert set(inspect.signature(cli.doctor).parameters) == {
+        "harness",
+        "verbose",
+        "quiet",
+        "json",
+    }
     assert set(inspect.signature(cli.run).parameters) == {"verbose", "dry_run"}
 
 

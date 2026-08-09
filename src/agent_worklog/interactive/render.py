@@ -22,7 +22,7 @@ from agent_worklog.interactive.density import (
 from agent_worklog.interactive.models import ReportDraft
 from agent_worklog.interactive.selection import SelectionMark, SelectionState, noise_reason
 from agent_worklog.models.repository import ResolvedSession
-from agent_worklog.models.session import AgentSession
+from agent_worklog.models.session import ActivityType, AgentSession
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.scan import ScanResult
@@ -683,6 +683,7 @@ def render_session_review(
         "a All",
         "n None",
         "g Generate",
+        "p Preview",
         "R Rescan",
         "/ Search",
         "? Help",
@@ -812,6 +813,7 @@ def render_session_browser(
     hints = [
         "↑↓ jk",
         "←→ hl",
+        "p Preview",
         "R Rescan",
         "/ Search",
         "? Help",
@@ -954,6 +956,82 @@ def render_report_preview(console: Console, *, content: str, offset: int) -> Non
     )
 
 
+_ACTIVITY_LABELS = {
+    ActivityType.USER_MESSAGE: "You",
+    ActivityType.ASSISTANT_MESSAGE: "Assistant",
+    ActivityType.TOOL_CALL: "Tool call",
+    ActivityType.TOOL_RESULT: "Tool result",
+    ActivityType.COMMAND: "Command",
+    ActivityType.FILE_CHANGE: "File change",
+    ActivityType.ERROR: "Error",
+    ActivityType.SYSTEM: "System",
+}
+
+
+def build_session_preview_lines(session: AgentSession) -> list[str]:
+    """Render one session as scrollable preview lines, redacted before display.
+
+    The preview shows what the session actually said, so it cannot rely on the
+    report pipeline's redaction that happens later: every line leaves here
+    already scrubbed, the same boundary the CLI's verbose listing uses.
+    """
+    lines: list[str] = []
+    lines.append(redact_text((session.title or "").strip() or session.session_id))
+    if session.working_directory:
+        lines.append(redact_text(session.working_directory))
+    if session.branch:
+        lines.append(f"branch: {redact_text(session.branch)}")
+    volume = message_volume(session)
+    if volume:
+        lines.append(volume_label(volume))
+    lines.append("")
+    for activity in session.activities:
+        label = _ACTIVITY_LABELS.get(
+            activity.activity_type, activity.activity_type.value
+        )
+        if activity.tool_name:
+            label = f"{label}: {redact_text(activity.tool_name)}"
+        stamp = f"[{activity.timestamp:%m-%d %H:%M}] " if activity.timestamp else ""
+        lines.append(f"{stamp}{label}")
+        content = redact_text(activity.content).strip()
+        if content:
+            lines.extend(f"  {content_line}" for content_line in content.splitlines())
+    return lines
+
+
+def render_session_preview(
+    console: Console,
+    session: AgentSession,
+    *,
+    offset: int,
+) -> None:
+    """Render a scrollable, redacted preview of one session's transcript."""
+
+    _print_header(console, "Session Preview")
+    console.print()
+    lines = build_session_preview_lines(session) or [""]
+    capacity = report_preview_capacity(console.size.height)
+    max_start = max(0, len(lines) - capacity) if capacity else len(lines)
+    start = min(max(offset, 0), max_start)
+    end = min(len(lines), start + capacity)
+    if start:
+        _print_viewport_line(console, f"↑ {start} more", style="dim")
+    for line in lines[start:end]:
+        _print_viewport_line(console, line)
+    if end < len(lines):
+        _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
+    _print_hints(
+        console,
+        [
+            "↑↓ jk Scroll",
+            "PgUp/PgDn",
+            "g/G Top/Bottom",
+            "? Help",
+            "b Back",
+        ],
+    )
+
+
 def _detail_window(
     lines: list[str],
     *,
@@ -1033,6 +1111,7 @@ def render_help(console: Console) -> None:
         "Enter / Space  Activate / toggle",
         "PgUp / PgDn    Scroll error details or report preview by a page",
         "g / G          Jump to top / bottom in report preview",
+        "p              Preview a session's transcript",
         "R              Rescan sessions",
         "/              Search repositories and session titles",
         "?              Open this help",

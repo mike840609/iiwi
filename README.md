@@ -102,8 +102,11 @@ Select sessions to include in the report:
   2. ▸ ████░░░░░░░░  24% ● obsidian-wiki   2 / 2    Aug 4 │ 60 msgs
   3. ▸ █░░░░░░░░░░░   5% ● dotfiles   1 / 1         Aug 3 │ 12 msgs
 
-↑↓ jk │ ←→ hl │ Space Toggle │ a All │ g Generate │ / Search │ ? Help │ b Back
+↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
+
+Press `p` on a session row to scroll its transcript inline — redacted before it
+is drawn, so the preview never shows more than the report itself would.
 
 Or drive the commands directly:
 
@@ -111,7 +114,13 @@ Or drive the commands directly:
 agent-worklog doctor                       # is the harness ready?
 agent-worklog scan --period last-week      # preview how sessions group
 agent-worklog report --period last-week    # write the report
+agent-worklog history                      # list the reports already written
 ```
+
+`scan` and `doctor` emit JSON when stdout is piped, or when asked with `--json` —
+`agent-worklog scan --period last-week | jq '.repositories'` works out of the box,
+and every value is redacted before it is emitted. `--no-json` forces the human
+output, and `history --json` returns the recorded reports as an array.
 
 The report defaults to a narrative weekly review written by your local `opencode run`.
 Add `--no-llm` for the deterministic structured report, which works for every harness
@@ -145,6 +154,7 @@ reading from stdin.
 | [CLI reference](https://github.com/mike840609/agent-worklog/blob/main/docs/cli-reference.md) | Every command, option, and exit code |
 | [Configuration](https://github.com/mike840609/agent-worklog/blob/main/docs/configuration.md) | Settings file, environment variables, precedence |
 | [Privacy and security](https://github.com/mike840609/agent-worklog/blob/main/docs/privacy.md) | Data flow, redaction boundary, what reports still contain |
+| [Security policy](https://github.com/mike840609/agent-worklog/blob/main/SECURITY.md) | Threat model and how to report a vulnerability |
 | [Usage guides](https://github.com/mike840609/agent-worklog/blob/main/docs/guides.md) | Reporting periods, subagents, repository grouping, output handling |
 | [Usage statistics](https://github.com/mike840609/agent-worklog/blob/main/docs/usage-statistics.md) | How the usage section is built, and its window caveat |
 | [Support and limits](https://github.com/mike840609/agent-worklog/blob/main/docs/limitations.md) | The per-harness caveat list |

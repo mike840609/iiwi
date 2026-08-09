@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from agent_worklog.cli import app
@@ -356,3 +358,287 @@ def test_load_settings_does_not_echo_a_secret_looking_value_in_its_error(
 
     assert "sk-proj-not-a-real-secret-key" not in str(error.value)
     assert "[REDACTED]" in str(error.value)
+
+
+def _stub_scan_service(monkeypatch, scan):
+    """Point `scan`'s service seam at a canned result, keeping the command's
+    option plumbing and output handling under test."""
+
+    import agent_worklog.cli as cli
+
+    class StubScanService:
+        def scan(self):
+            return scan
+
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        lambda *args, **kwargs: StubScanService(),
+    )
+    return cli
+
+
+def _stub_scan(monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import agent_worklog.cli as cli
+    from agent_worklog.models.repository import (
+        RepositoryIdentity,
+        RepositoryIdentityType,
+        ResolvedSession,
+    )
+    from agent_worklog.models.session import (
+        ActivityType,
+        AgentSession,
+        SessionActivity,
+    )
+    from agent_worklog.models.time_range import DateRange
+    from agent_worklog.services.scan import ScanResult
+
+    tz = ZoneInfo("Asia/Taipei")
+    session = AgentSession(
+        harness="opencode",
+        session_id="sess-1",
+        title="Tune dotfiles",
+        working_directory="/Users/me/dotfiles",
+        activities=[
+            SessionActivity(
+                activity_id="a-1",
+                activity_type=ActivityType.USER_MESSAGE,
+                timestamp=datetime(2026, 7, 21, 8, 0, tzinfo=tz),
+                content="hi",
+            )
+        ],
+    )
+    resolved = ResolvedSession(
+        session=session,
+        repository=RepositoryIdentity(
+            repository_id="git:github.com/mike/dotfiles",
+            display_name="Dotfiles",
+            identity_type=RepositoryIdentityType.GIT_REMOTE,
+            resolution_method="stub",
+        ),
+    )
+    _stub_scan_service(
+        monkeypatch,
+        ScanResult(
+            period=DateRange(
+                since=datetime(2026, 7, 20, 0, 0, tzinfo=tz),
+                until=datetime(2026, 7, 27, 0, 0, tzinfo=tz),
+            ),
+            candidate_session_count=1,
+            loaded_session_count=1,
+            failed_session_count=0,
+            resolved_sessions=[resolved],
+            sessions_by_repository={"git:github.com/mike/dotfiles": [resolved]},
+            warnings=[],
+            excluded_session_count=0,
+        ),
+    )
+    return cli
+
+
+def test_scan_json_flag_emits_parsable_json(monkeypatch) -> None:
+    import json
+
+    cli = _stub_scan(monkeypatch)
+
+    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["loaded_session_count"] == 1
+    assert payload["repositories"][0]["sessions"][0]["title"] == "Tune dotfiles"
+
+
+def test_scan_emits_json_automatically_when_stdout_is_piped(monkeypatch) -> None:
+    import json
+
+    cli = _stub_scan(monkeypatch)
+
+    result = CliRunner().invoke(cli.app, ["scan", "--days", "7"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["repositories"][0]["name"] == "Dotfiles"
+
+
+def test_scan_no_json_forces_the_human_table_when_piped(monkeypatch) -> None:
+    cli = _stub_scan(monkeypatch)
+
+    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--no-json"])
+
+    assert result.exit_code == 0
+    assert "Dotfiles" in result.stdout
+    assert result.stdout.strip().startswith("{" ) is False
+
+
+def test_doctor_json_flag_emits_machine_readable_output(monkeypatch) -> None:
+    import json
+
+    import agent_worklog.cli as cli
+    from agent_worklog.services.doctor import DoctorCheck, DoctorResult
+
+    monkeypatch.setattr(
+        cli,
+        "run_doctor",
+        lambda settings, runner, harness: DoctorResult(
+            checks=[DoctorCheck(name="git", ok=True, detail="git version 2.47.0")]
+        ),
+    )
+
+    result = CliRunner().invoke(cli.app, ["doctor", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["harness"] == "opencode"
+    assert payload["ok"] is True
+    assert payload["checks"][0]["name"] == "git"
+
+
+def test_json_and_quiet_are_rejected_together(monkeypatch) -> None:
+    cli = _stub_scan(monkeypatch)
+
+    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--json", "--quiet"])
+
+    assert result.exit_code == 2
+
+
+def _seed_history(monkeypatch, tmp_path) -> Path:
+    """Point the history log at a temp file holding one entry, and return it."""
+    from datetime import datetime
+    from pathlib import Path
+    from zoneinfo import ZoneInfo
+
+    import agent_worklog.history as history
+
+    path = tmp_path / "history.jsonl"
+    monkeypatch.setenv("AGENT_WORKLOG_HISTORY_FILE", str(path))
+    history.append_history(
+        history.HistoryEntry(
+            generated_at=datetime(2026, 8, 3, 9, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+            harness="opencode",
+            since=datetime(2026, 7, 27, 0, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+            until=datetime(2026, 8, 3, 0, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+            output_path=Path("reports/worklog.md"),
+            repository_count=2,
+            session_count=10,
+            narrative=True,
+            detail="full",
+        ),
+        path=path,
+    )
+    return path
+
+
+def test_history_json_flag_emits_entries(monkeypatch, tmp_path) -> None:
+    import json
+
+    import agent_worklog.cli as cli
+
+    _seed_history(monkeypatch, tmp_path)
+
+    result = CliRunner().invoke(cli.app, ["history", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert len(payload) == 1
+    assert payload[0]["harness"] == "opencode"
+    assert payload[0]["repository_count"] == 2
+    assert payload[0]["session_count"] == 10
+    assert payload[0]["narrative"] is True
+    assert payload[0]["output_path"] == "reports/worklog.md"
+
+
+def test_history_emits_json_automatically_when_piped(monkeypatch, tmp_path) -> None:
+    import json
+
+    import agent_worklog.cli as cli
+
+    _seed_history(monkeypatch, tmp_path)
+
+    result = CliRunner().invoke(cli.app, ["history"])
+
+    assert result.exit_code == 0
+    assert isinstance(json.loads(result.stdout), list)
+
+
+def test_history_empty_file_prints_a_message(monkeypatch, tmp_path) -> None:
+    import agent_worklog.cli as cli
+
+    monkeypatch.setenv("AGENT_WORKLOG_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+
+    result = CliRunner().invoke(cli.app, ["history", "--no-json"])
+
+    assert result.exit_code == 0
+    assert "No reports" in result.stdout
+
+
+def test_report_records_a_history_entry_after_writing(monkeypatch, tmp_path) -> None:
+    from datetime import datetime
+    from types import SimpleNamespace
+    from zoneinfo import ZoneInfo
+
+    import agent_worklog.cli as cli
+    import agent_worklog.history as history
+    from agent_worklog.models.report import RepositorySummary, WorklogReport
+
+    history_path = tmp_path / "history.jsonl"
+    monkeypatch.setenv("AGENT_WORKLOG_HISTORY_FILE", str(history_path))
+
+    class StubReportService:
+        def __init__(self, output_path, period) -> None:
+            self.output_path = output_path
+            self.period = period
+
+        def generate(self, *, force: bool = False, dry_run: bool = False):
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content="# Engineering Worklog\n",
+                report=WorklogReport(
+                    generated_at=datetime(2026, 8, 3, 9, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+                    period=self.period,
+                    repositories=[
+                        RepositorySummary(
+                            repository_id="repo-a",
+                            display_name="repo-a",
+                        )
+                    ],
+                ),
+                scan=SimpleNamespace(
+                    loaded_session_count=4,
+                    excluded_session_count=0,
+                    failed_session_count=0,
+                ),
+            )
+
+    def build(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness=cli.Harness.OPENCODE,
+        sanitize=False,
+        progress=None,
+        detail=cli.DetailLevel.FULL,
+    ):
+        return StubReportService(output_path, period)
+
+    monkeypatch.setattr(cli, "_build_report_service", build)
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["report", "--days", "7", "--no-llm", "--output", str(tmp_path / "report.md")],
+    )
+
+    assert result.exit_code == 0
+    entries = history.read_history(path=history_path)
+    assert len(entries) == 1
+    assert entries[0].harness == "opencode"
+    assert entries[0].session_count == 4
+    assert entries[0].narrative is False
+    assert str(entries[0].output_path) == str(tmp_path / "report.md")

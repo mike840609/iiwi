@@ -6,8 +6,10 @@ import ``build_interactive_actions`` without creating an import cycle.
 
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime
 
+from agent_worklog.history import HistoryEntry, append_history
 from agent_worklog.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
@@ -122,6 +124,24 @@ def _generate(
             progress=progress,
         )
         result = service.generate(force=force, dry_run=draft.dry_run, scan=scan)
+    if not draft.dry_run:
+        # The TUI paints the next frame over the last, so a stray console line
+        # from a failed log write would be painted over and never seen; the log
+        # is bookkeeping, so the loss is accepted silently here.
+        with contextlib.suppress(OSError):
+            append_history(
+                HistoryEntry(
+                    generated_at=now,
+                    harness=harness.value,
+                    since=draft.period.since,
+                    until=draft.period.until,
+                    output_path=result.output_path,
+                    repository_count=len(scan.sessions_by_repository),
+                    session_count=scan.loaded_session_count,
+                    narrative=draft.narrative,
+                    detail=draft.detail.value,
+                )
+            )
     return InteractiveReportResult(
         output_path=None if draft.dry_run else result.output_path,
         content=result.content,
