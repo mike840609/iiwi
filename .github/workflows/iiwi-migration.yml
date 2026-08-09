@@ -47,10 +47,23 @@ jobs:
 
           path = Path("tools/iiwi_brand_migration.py")
           text = path.read_text(encoding="utf-8")
+
+          # The connector sandbox cannot expand this shell glob; make the runner
+          # pass concrete dist paths to twine on the Actions runner.
           text = text.replace(
               'run("uv", "tool", "run", "twine", "check", "dist/*")',
               'run("uv", "tool", "run", "twine", "check", '
               '*(str(path) for path in sorted(dist.iterdir())))',
+          )
+
+          # Task 2 owns all runtime identity tests, including the interactive
+          # repository-exclusion path that reads the config environment.
+          text = text.replace(
+              '        "tests/unit/test_cli.py",\n    )\n    for path in runtime_test_files:',
+              '        "tests/unit/test_cli.py",\n'
+              '        "tests/unit/interactive/test_cli_actions.py",\n'
+              '    )\n    for path in runtime_test_files:',
+              1,
           )
           text = text.replace(
               '    replace("tests/unit/test_config_store.py", (("agent-worklog", "iiwi"),))\n',
@@ -60,10 +73,43 @@ jobs:
           )
           text = text.replace(
               '        "tests/unit/test_update.py",\n        "-q",\n    )\n\n    replace_python_tree',
-              '        "tests/unit/test_update.py",\n        "tests/unit/test_cli.py",\n'
+              '        "tests/unit/test_update.py",\n'
+              '        "tests/unit/test_cli.py",\n'
+              '        "tests/unit/interactive/test_cli_actions.py",\n'
               '        "-q",\n    )\n\n    replace_python_tree',
               1,
           )
+          text = text.replace(
+              '        "tests/unit/test_update.py",\n        "tests/unit/test_cli.py",\n        "-q",\n    )\n    commit("refactor: move runtime identity to iiwi")',
+              '        "tests/unit/test_update.py",\n'
+              '        "tests/unit/test_cli.py",\n'
+              '        "tests/unit/interactive/test_cli_actions.py",\n'
+              '        "-q",\n    )\n'
+              '    commit("refactor: move runtime identity to iiwi")',
+              1,
+          )
+
+          # Shortening the title from 13 cells (Agent Worklog) to 4 (Iiwi)
+          # legitimately moves the version fit boundary from 20 to 11 cells.
+          # Preserve the layout contract rather than preserving obsolete widths.
+          text = text.replace(
+              '    render_test = read("tests/unit/interactive/test_render.py")\n',
+              '    render_test = read("tests/unit/interactive/test_render.py")\n'
+              '    render_test = render_test.replace("_console(width=19)", "_console(width=10)", 1)\n'
+              '    render_test = render_test.replace(\n'
+              '        "test_main_menu_fits_the_version_at_exactly_twenty_cells",\n'
+              '        "test_main_menu_fits_the_version_at_exactly_eleven_cells",\n'
+              '        1,\n'
+              '    )\n'
+              '    render_test = render_test.replace(\n'
+              '        "13 title cells + 1 gap + 6 version cells, so width 20",\n'
+              '        "4 title cells + 1 gap + 6 version cells, so width 11",\n'
+              '        1,\n'
+              '    )\n'
+              '    render_test = render_test.replace("_console(width=20)", "_console(width=11)", 1)\n',
+              1,
+          )
+
           path.write_text(text, encoding="utf-8")
           PY
 
