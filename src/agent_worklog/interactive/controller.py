@@ -19,6 +19,7 @@ from agent_worklog.interactive.input import Key, KeyPress
 from agent_worklog.interactive.models import ReportDraft, Screen
 from agent_worklog.interactive.render import (
     build_filtered_rows,
+    build_session_preview_lines,
     build_visible_rows,
     main_menu_options,
     recoverable_error_detail_capacity,
@@ -29,6 +30,7 @@ from agent_worklog.interactive.render import (
     render_report_result,
     render_report_setup,
     render_session_browser,
+    render_session_preview,
     render_session_review,
     report_generate_row,
     report_preview_capacity,
@@ -36,6 +38,7 @@ from agent_worklog.interactive.render import (
     report_setup_rows,
 )
 from agent_worklog.interactive.selection import SelectionState
+from agent_worklog.models.session import AgentSession
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.renderers.markdown import DetailLevel
 from agent_worklog.services.scan import ScanResult
@@ -95,6 +98,9 @@ class _State:
     selection: SelectionState | None = None
     result: InteractiveReportResult | None = None
     expanded_repositories: set[str] | None = None
+    preview_session: AgentSession | None = None
+    preview_offset: int = 0
+    preview_return_screen: Screen | None = None
     error: _ErrorState | None = None
     review_message: str | None = None
     search_query: str = ""
@@ -454,6 +460,47 @@ def _begin_search(state: _State, cursor_name: str) -> None:
     setattr(state, cursor_name, 0)
 
 
+def _session_by_id(scan: ScanResult, session_id: str) -> AgentSession | None:
+    for item in scan.resolved_sessions:
+        if item.session.session_id == session_id:
+            return item.session
+    return None
+
+
+def _open_session_preview(
+    state: _State,
+    session: AgentSession,
+    *,
+    return_screen: Screen,
+) -> None:
+    state.preview_session = session
+    state.preview_offset = 0
+    state.preview_return_screen = return_screen
+    state.screen = Screen.SESSION_PREVIEW
+
+
+def _preview_from_row(
+    state: _State,
+    scan: ScanResult,
+    rows: list,
+    cursor_name: str,
+    *,
+    return_screen: Screen,
+) -> bool:
+    """Open the session preview when the cursor sits on a session row."""
+    if not rows:
+        return False
+    cursor = min(getattr(state, cursor_name), len(rows) - 1)
+    row = rows[cursor]
+    if row.session_id is None:
+        return False
+    session = _session_by_id(scan, row.session_id)
+    if session is None:
+        return False
+    _open_session_preview(state, session, return_screen=return_screen)
+    return True
+
+
 def _browser_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
     assert state.browser_scan is not None
     if _search_input(state, key, "browser_cursor"):
@@ -472,6 +519,15 @@ def _browser_key(state: _State, key: KeyPress, actions: InteractiveActions) -> N
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = Screen.MAIN
+        return
+    if _exact_char(key, "p"):
+        _preview_from_row(
+            state,
+            state.browser_scan,
+            rows,
+            "browser_cursor",
+            return_screen=Screen.SESSION_BROWSER,
+        )
         return
     if key.key is Key.RIGHT or _char(key, "l"):
         _expand_tree_row(state, rows, "browser_cursor")
@@ -609,6 +665,15 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         return
     if _exact_char(key, "g"):
         _generate(state, actions, force=False)
+        return
+    if _exact_char(key, "p"):
+        _preview_from_row(
+            state,
+            state.selection.scan,
+            rows,
+            "review_cursor",
+            return_screen=Screen.SESSION_REVIEW,
+        )
         return
     if key.key is Key.SPACE and rows:
         row = rows[state.review_cursor]
@@ -795,6 +860,32 @@ def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
         state.preview_offset = max_offset
 
 
+def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None:
+    assert state.preview_session is not None
+    if _char(key, "q"):
+        state.screen = Screen.MAIN
+        return
+    if key.key is Key.ESCAPE or _char(key, "b"):
+        state.screen = state.preview_return_screen or Screen.MAIN
+        return
+    lines = build_session_preview_lines(state.preview_session) or [""]
+    capacity = report_preview_capacity(console.size.height)
+    max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
+    page = max(1, capacity)
+    if key.key is Key.UP or _char(key, "k"):
+        state.preview_offset = max(0, state.preview_offset - 1)
+    elif key.key is Key.DOWN or _char(key, "j"):
+        state.preview_offset = min(max_offset, state.preview_offset + 1)
+    elif key.key is Key.PAGE_UP:
+        state.preview_offset = max(0, state.preview_offset - page)
+    elif key.key is Key.PAGE_DOWN:
+        state.preview_offset = min(max_offset, state.preview_offset + page)
+    elif key.key is Key.HOME or _exact_char(key, "g"):
+        state.preview_offset = 0
+    elif key.key is Key.END or _exact_char(key, "G"):
+        state.preview_offset = max_offset
+
+
 def _help_key(state: _State, key: KeyPress) -> None:
     if _char(key, "q"):
         state.screen = Screen.MAIN
@@ -830,6 +921,13 @@ def _render_screen(state: _State, console: Console) -> None:
             message=state.review_message,
             query=state.search_query,
             searching=state.searching,
+        )
+    elif state.screen is Screen.SESSION_PREVIEW:
+        assert state.preview_session is not None
+        render_session_preview(
+            console,
+            state.preview_session,
+            offset=state.preview_offset,
         )
     elif state.screen is Screen.REPORT_RESULT:
         assert state.draft is not None
@@ -879,6 +977,8 @@ def _idle_interrupt(state: _State) -> None:
         state.screen = Screen.MAIN
     elif state.screen is Screen.REPORT_PREVIEW:
         state.screen = Screen.REPORT_RESULT
+    elif state.screen is Screen.SESSION_PREVIEW:
+        state.screen = state.preview_return_screen or Screen.MAIN
     elif state.screen is Screen.RECOVERABLE_ERROR and state.error is not None:
         state.screen = _error_back_screen(state.error)
     elif state.screen is Screen.HELP:
@@ -907,6 +1007,8 @@ def _dispatch(
         _result_key(state, key)
     elif state.screen is Screen.REPORT_PREVIEW:
         _preview_key(state, key, console)
+    elif state.screen is Screen.SESSION_PREVIEW:
+        _session_preview_key(state, key, console)
     elif state.screen is Screen.RECOVERABLE_ERROR:
         _error_key(state, key, actions, console)
     elif state.screen is Screen.HELP:

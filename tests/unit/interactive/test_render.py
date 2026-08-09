@@ -1088,3 +1088,74 @@ def test_report_setup_shows_bare_dates_for_an_unnamed_period() -> None:
 
     row = _row(stream.getvalue(), "Period")
     assert "·" not in row
+
+
+def _preview_session() -> AgentSession:
+    return AgentSession(
+        harness="opencode",
+        session_id="ses-1",
+        title="Deploy the service",
+        working_directory="/tmp/repo-a",
+        branch="main",
+        activities=[
+            SessionActivity(
+                activity_id="a-1",
+                activity_type=ActivityType.USER_MESSAGE,
+                timestamp=datetime(2026, 8, 4, 9, 30, tzinfo=TZ),
+                content="bump the version\nand ship it",
+            ),
+            SessionActivity(
+                activity_id="a-2",
+                activity_type=ActivityType.ASSISTANT_MESSAGE,
+                timestamp=datetime(2026, 8, 4, 9, 31, tzinfo=TZ),
+                content="on it",
+            ),
+            SessionActivity(
+                activity_id="a-3",
+                activity_type=ActivityType.TOOL_CALL,
+                tool_name="edit",
+                timestamp=datetime(2026, 8, 4, 9, 31, tzinfo=TZ),
+                content='{"file": "pyproject.toml"}',
+            ),
+        ],
+    )
+
+
+def test_build_session_preview_lines_lists_meta_and_activities() -> None:
+    from agent_worklog.interactive.render import build_session_preview_lines
+
+    lines = build_session_preview_lines(_preview_session())
+
+    assert lines[0] == "Deploy the service"
+    assert "/tmp/repo-a" in lines
+    assert "branch: main" in lines
+    assert "2 msgs" in lines
+    assert "[08-04 09:30] You" in lines
+    assert "  bump the version" in lines
+    assert "  and ship it" in lines
+    assert "[08-04 09:31] Tool call: edit" in lines
+    assert '  {"file": "pyproject.toml"}' in lines
+
+def test_build_session_preview_lines_redacts_secret_shaped_content() -> None:
+    from agent_worklog.interactive.render import build_session_preview_lines
+
+    session = _preview_session()
+    session.activities[0].content = "set OPENAI_API_KEY sk-proj-not-a-real-secret-key"
+
+    lines = build_session_preview_lines(session)
+
+    assert "[REDACTED]" in " ".join(lines)
+    assert "sk-proj-not-a-real-secret-key" not in " ".join(lines)
+
+
+def test_render_session_preview_shows_the_session() -> None:
+    from agent_worklog.interactive.render import render_session_preview
+
+    console, stream = _console()
+    render_session_preview(console, _preview_session(), offset=0)
+
+    text = stream.getvalue()
+    assert "Session Preview" in text
+    assert "Deploy the service" in text
+    assert "bump the version" in text
+    assert "b Back" in text

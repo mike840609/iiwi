@@ -11,6 +11,7 @@ from rich.table import Table
 from rich.text import Text
 
 from agent_worklog.config_store import SettingRow
+from agent_worklog.history import HistoryEntry
 from agent_worklog.progress import (
     NullProgressReporter,
     ProgressReporter,
@@ -157,6 +158,29 @@ class ConsoleReporter:
             "Every setting is optional. Leave one out — or set it to an empty "
             "value — to fall back to the default in the last column."
         )
+
+    def history_table(self, entries: Sequence[HistoryEntry]) -> None:
+        """Render the generated-report log, newest first."""
+
+        table = Table(title="Generated Reports")
+        table.add_column("Generated")
+        table.add_column("Period")
+        table.add_column("Harness")
+        table.add_column("Sessions", justify="right")
+        table.add_column("Repos", justify="right")
+        table.add_column("Narrative")
+        table.add_column("Path", overflow="fold")
+        for entry in reversed(entries):
+            table.add_row(
+                f"{entry.generated_at:%Y-%m-%d %H:%M}",
+                f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}",
+                entry.harness,
+                str(entry.session_count),
+                str(entry.repository_count),
+                "yes" if entry.narrative else "no",
+                str(entry.output_path),
+            )
+        self.console.print(table)
 
     def scan_result(self, result: ScanResult) -> None:
         if self.quiet:

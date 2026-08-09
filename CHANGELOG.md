@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- `scan`, `doctor`, and the new `history` command emit machine-readable JSON.
+  When stdout is piped, `scan` and `doctor` switch to JSON automatically — the
+  way `mo status | jq` just works — and `--no-json` forces the human output.
+  Every value is redacted before it is emitted, the same boundary the report
+  and interactive paths use; `--quiet` keeps its documented contract and opts
+  out of the auto-switch.
+- `history` lists every report the tool has written — when it was generated,
+  the period, harness, session and repository counts, whether the narrative
+  review was used, and the output path. The log is append-only, lives in the
+  platform data directory, and records no transcript content; a history write
+  failure never fails the report that triggered it.
+- Session previews: press `p` on a session row in Review Sessions or Browse
+  Sessions to scroll the session's transcript inline. The preview is redacted
+  before it is drawn, so it never shows more than the report itself would.
 - The main menu explains each option with a dim clause in its own column, the
   way mole's menu does: `Generate Report` says what it will produce, `Settings`
   says what it edits. On a terminal too narrow for the clauses, the options fall

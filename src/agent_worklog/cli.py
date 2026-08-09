@@ -27,9 +27,11 @@ from agent_worklog.harnesses.claude_code.source import ClaudeCodeFileSource
 from agent_worklog.harnesses.codex.source import CodexSource
 from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
 from agent_worklog.harnesses.opencode.stats import collect_usage_stats, usage_days
+from agent_worklog.history import HistoryEntry, append_history, history_to_json, read_history
 from agent_worklog.interactive.cli_actions import build_interactive_actions
 from agent_worklog.interactive.controller import run_interactive
 from agent_worklog.interactive.input import TerminalInput
+from agent_worklog.json_output import doctor_result_to_json, scan_result_to_json
 from agent_worklog.logging import ConsoleReporter
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.process import CommandRunner
@@ -340,15 +342,83 @@ def _validate_output_mode(*, quiet: bool, verbose: bool) -> None:
         raise typer.BadParameter("--quiet and --verbose cannot be used together")
 
 
+def _stdout_is_a_terminal() -> bool:
+    """Whether stdout goes to a person rather than a pipe or file."""
+    return sys.stdout.isatty()
+
+
+def _json_mode(json_flag: bool | None, *, quiet: bool) -> bool:
+    """Resolve `--json` against the pipe default, with `--quiet` kept explicit.
+
+    Piped stdout is where scripts live, so JSON is the default there — the way
+    `mo status | jq` just works. `--quiet` keeps its documented contract (the
+    session count, or the output path) and opts out of the auto-switch.
+    """
+
+    if json_flag is not None:
+        return json_flag
+    return not quiet and not _stdout_is_a_terminal()
+
+
+def _validate_json_mode(*, json: bool | None, quiet: bool) -> None:
+    if json is True and quiet:
+        raise typer.BadParameter("--json and --quiet cannot be used together")
+
+
+def _record_history(
+    *,
+    harness: Harness,
+    period: DateRange,
+    output_path: Path,
+    repository_count: int,
+    session_count: int,
+    narrative: bool,
+    detail: DetailLevel,
+    now: datetime,
+    reporter: ConsoleReporter,
+) -> None:
+    """Record one written report; a history failure must not fail the report.
+
+    The log is bookkeeping, not the deliverable: losing an entry must never
+    turn a successfully written report into an error exit.
+    """
+
+    try:
+        append_history(
+            HistoryEntry(
+                generated_at=now,
+                harness=harness.value,
+                since=period.since,
+                until=period.until,
+                output_path=output_path,
+                repository_count=repository_count,
+                session_count=session_count,
+                narrative=narrative,
+                detail=detail.value,
+            )
+        )
+    except OSError as exc:
+        reporter.message(f"Warning: could not record report history: {exc}")
+
+
 @app.command()
 def doctor(
     harness: Harness = _HARNESS_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
+    json: bool | None = typer.Option(
+        None,
+        "--json/--no-json",
+        help=(
+            "Emit machine-readable JSON. When stdout is piped, JSON is the "
+            "default; --no-json forces the human output."
+        ),
+    ),
 ) -> None:
     """Validate the selected harness and Git dependencies."""
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
+    _validate_json_mode(json=json, quiet=quiet)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
@@ -360,8 +430,11 @@ def doctor(
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)
         return
-    for check in result.checks:
-        reporter.doctor_check(check.name, check.ok, check.detail)
+    if _json_mode(json, quiet=quiet):
+        typer.echo(doctor_result_to_json(result, harness.value))
+    else:
+        for check in result.checks:
+            reporter.doctor_check(check.name, check.ok, check.detail)
     if not result.ok:
         raise typer.Exit(code=5)
 
@@ -388,10 +461,19 @@ def scan(
     harness: Harness = _HARNESS_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
+    json: bool | None = typer.Option(
+        None,
+        "--json/--no-json",
+        help=(
+            "Emit machine-readable JSON. When stdout is piped, JSON is the "
+            "default; --no-json forces the human output."
+        ),
+    ),
 ) -> None:
     """Find coding-agent sessions and group them by Git repository."""
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
+    _validate_json_mode(json=json, quiet=quiet)
     _validate_privacy_options(harness=harness, sanitize=sanitize)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
@@ -442,7 +524,10 @@ def scan(
     except HarnessSourceError as exc:
         _handle_expected_error(exc, code=5)
         return
-    reporter.scan_result(result)
+    if _json_mode(json, quiet=quiet):
+        typer.echo(scan_result_to_json(result))
+    else:
+        reporter.scan_result(result)
 
 
 @app.command()
@@ -530,6 +615,19 @@ def report(
         _handle_expected_error(exc, code=7)
         return
 
+    if not dry_run:
+        _record_history(
+            harness=harness,
+            period=selected_period,
+            output_path=result.output_path,
+            repository_count=len(result.report.repositories),
+            session_count=result.scan.loaded_session_count,
+            narrative=bool(result.report.narrative_text),
+            detail=detail,
+            now=now,
+            reporter=reporter,
+        )
+
     if dry_run:
         typer.echo(result.content, nl=False)
     elif quiet:
@@ -539,6 +637,33 @@ def report(
         if verbose:
             for warning in result.report.warnings:
                 reporter.message(f"Warning: {warning}")
+
+
+@app.command()
+def history(
+    json: bool | None = typer.Option(
+        None,
+        "--json/--no-json",
+        help=(
+            "Emit machine-readable JSON. When stdout is piped, JSON is the "
+            "default; --no-json forces the human output."
+        ),
+    ),
+) -> None:
+    """List the reports this tool has written."""
+
+    reporter = ConsoleReporter()
+    entries = read_history()
+    if not entries:
+        if _json_mode(json, quiet=False):
+            typer.echo("[]")
+        else:
+            reporter.message("No reports generated yet.")
+        return
+    if _json_mode(json, quiet=False):
+        typer.echo(history_to_json(entries))
+    else:
+        reporter.history_table(entries)
 
 
 config_app = typer.Typer(
@@ -957,6 +1082,18 @@ def run(
     except ReportOutputError as exc:
         _handle_expected_error(exc, code=7)
         return
+    if not dry_run:
+        _record_history(
+            harness=harness,
+            period=period,
+            output_path=result.output_path,
+            repository_count=len(result.report.repositories),
+            session_count=result.scan.loaded_session_count,
+            narrative=bool(result.report.narrative_text),
+            detail=detail,
+            now=now,
+            reporter=reporter,
+        )
     if dry_run:
         typer.echo(result.content, nl=False)
     else:
@@ -1010,6 +1147,9 @@ def _interactive_menu() -> None:
             if answer in {"2", "3"}:
                 settings = _load_settings()
                 harness = _ask_harness(settings)
+                # The menu is a person-facing surface, so the commands it
+                # dispatches must stay human-readable even when their stdout
+                # would otherwise auto-switch to JSON.
                 if answer == "2":
                     scan(
                         days=None,
@@ -1021,9 +1161,10 @@ def _interactive_menu() -> None:
                         harness=harness,
                         verbose=False,
                         quiet=False,
+                        json=False,
                     )
                 else:
-                    doctor(harness=harness, verbose=False, quiet=False)
+                    doctor(harness=harness, verbose=False, quiet=False, json=False)
                 return
             if answer == "4":
                 config_init()

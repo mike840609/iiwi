@@ -11,6 +11,7 @@ Every command, option, and exit code. For a guided tour instead, see the
 | `doctor` | Checks that the selected harness and `git` are ready to use. |
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
+| `history` | Lists the reports this tool has written. |
 | `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
 | `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
 
@@ -34,12 +35,14 @@ setting that can change those sources.
 
 Review Sessions groups the scanned activity by repository. On a repository row, `Space`
 toggles the whole repository and `Enter` expands or collapses it. Inside an expanded
-repository, `Space` toggles an individual session. The repository marker is derived from
+repository, `Space` toggles an individual session and `p` opens a scrollable preview of
+that session's transcript (redacted before display). The repository marker is derived from
 its children: `●` means all selected, `○` means none selected, and `◐` means partially
 selected. `a` selects all sessions, `n` selects none, `g` generates, and `b` returns to
 the setup summary. A report cannot be generated with zero selected sessions. Long session
 lists use the terminal height as a viewport, keeping the active row visible and showing
-`↑ N more` / `↓ N more` when rows exist outside the current window.
+`↑ N more` / `↓ N more` when rows exist outside the current window. Browse Sessions also
+answers to `p` on a session row.
 
 Interactive reports use the normal default output path. If that path already exists, the
 recovery screen offers **Overwrite once**; it does not silently replace the file. After a
@@ -63,12 +66,48 @@ file and instead offers **Preview report**; the preview can be scrolled with `�
 | `--sanitize / --no-sanitize` | Enables or disables OpenCode export redaction. Raw export is the default. OpenCode only. |
 | `--verbose` | Also shows export, fallback, and narrative warnings. For `scan`, also lists each repository's session titles and working folders. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
+| `--json / --no-json` | Emits machine-readable JSON (redacted) instead of the human output. When stdout is piped, JSON is the default; `--no-json` forces the human output. `doctor` and `history` accept the same flag. |
 
 Three rules apply:
 
 - Give exactly one of `--days`, `--period`, or `--since` (`scan` and `report`).
 - Use `--until` only together with `--since` (`scan` and `report`).
 - Do not use `--verbose` and `--quiet` together (all three commands).
+- Do not use `--json` and `--quiet` together (`scan` and `doctor`).
+
+## Machine-readable output
+
+`scan --json`, `doctor --json`, and `history --json` print a single JSON
+document to stdout; progress stays on stderr. Every value is redacted before
+it is emitted, matching the redaction the interactive and file paths apply.
+
+`scan --json` emits:
+
+```json
+{
+  "period": { "since": "...", "until": "..." },
+  "candidate_session_count": 10,
+  "loaded_session_count": 8,
+  "failed_session_count": 1,
+  "excluded_session_count": 0,
+  "repositories": [
+    {
+      "id": "git:github.com/mike/agent-worklog",
+      "name": "Agent Worklog",
+      "sessions": [
+        { "id": "...", "title": "...", "messages": 42, "directory": "/path" }
+      ]
+    }
+  ],
+  "warnings": []
+}
+```
+
+`doctor --json` emits `{"harness": "...", "ok": true, "checks": [{"name": "...",
+"ok": true, "detail": "..."}]}`, and `history --json` emits an array of
+recorded reports. When stdout is not a terminal, `scan` and `doctor` switch to
+JSON automatically, so `agent-worklog scan --period last-week | jq '.repositories'`
+just works; `--quiet` keeps its human contract and opts out of the auto-switch.
 
 ## Progress output
 
@@ -108,7 +147,7 @@ is not a terminal; `scan` and `report` cover the non-interactive route.
 
 ## doctor
 
-`doctor` accepts `--harness NAME`, `--quiet`, and `--verbose`. `--quiet` hides the
+`doctor` accepts `--harness NAME`, `--quiet`, `--verbose`, and `--json`. `--quiet` hides the
 list of checks and reports only through the exit code; `--verbose` does not change what
 `doctor` prints.
 
@@ -117,6 +156,15 @@ directory exists and is readable, instead of checking for the `opencode` executa
 database. With `--harness codex`, `doctor` checks that the configured `~/.codex`
 directory exists and is readable, and reports which discovery path it will take: the
 state database by name, or `directory scan` when none is present.
+
+## history
+
+`history` lists every report this tool has written, newest first: when it was
+generated, the period, the harness, session and repository counts, whether the
+narrative review was used, and the output path. It accepts `--json` and prints
+`No reports generated yet.` when the log is empty. Reports written with
+`--dry-run` are not recorded, and a history write failure never fails the
+report that triggered it.
 
 ## Exit codes
 

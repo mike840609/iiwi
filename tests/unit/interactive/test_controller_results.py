@@ -165,3 +165,75 @@ def test_print_report_path_opens_a_persistent_path_screen() -> None:
     text = stream.getvalue()
     assert "Report path" in text
     assert text.count("reports/worklog.md") >= 2
+
+
+def test_p_opens_session_preview_from_review_and_back_returns_to_it() -> None:
+    console, stream = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            [
+                char("1"),
+                char("r"),
+                KeyPress(key=Key.RIGHT),
+                KeyPress(key=Key.DOWN),
+                char("p"),
+                char("b"),
+                char("b"),
+                char("q"),
+                char("q"),
+            ]
+        ),
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "Session Preview" in text
+    assert "Session A" in text
+
+
+def test_p_opens_session_preview_from_browse_and_returns() -> None:
+    console, stream = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            [
+                KeyPress(key=Key.DOWN),
+                KeyPress(key=Key.ENTER),
+                KeyPress(key=Key.RIGHT),
+                KeyPress(key=Key.DOWN),
+                char("p"),
+                char("b"),
+                char("q"),
+                char("q"),
+            ]
+        ),
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "Session Preview" in text
+
+
+def test_p_on_a_repository_row_does_not_open_a_preview() -> None:
+    console, stream = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            [
+                char("1"),
+                char("r"),
+                char("p"),
+                char("b"),
+                char("b"),
+                char("q"),
+            ]
+        ),
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "Session Preview" not in text
