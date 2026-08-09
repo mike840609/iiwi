@@ -1186,7 +1186,7 @@ def test_main_menu_omits_the_version_on_a_narrow_terminal() -> None:
 
 def test_main_menu_fits_the_version_at_exactly_eleven_cells() -> None:
     """The title row is 4 title cells + 1 gap + 6 version cells, so width 11
-    is exactly the fit boundary: the version must still appear (no padding)."""
+    is exactly the fit boundary: the version must still appear (1 cell of padding)."""
 
     import iiwi
     from iiwi.interactive.render import render_main_menu

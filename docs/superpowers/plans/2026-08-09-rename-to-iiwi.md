@@ -275,7 +275,7 @@ rg -i 'agent[-_ ]?worklog' docs/configuration.md docs/guides.md docs/privacy.md 
   docs/releasing.md docs/cli-reference.md docs/limitations.md docs/usage-statistics.md
 ```
 
-Both must return nothing. The first excludes `docs/` wholesale; the second names the seven living documents, so the frozen records stay out of scope by construction.
+The first returns only the seven known legacy-adoption references in `paths.py`/`test_paths.py` and excludes `docs/` wholesale; the second must return nothing — it names the seven living documents, so the frozen records stay out of scope by construction.
 
 `--hidden` is not optional. Without it `rg` skips dotted directories, and `.github/workflows/` and `.codex/` — the two places a leftover `--cov=agent_worklog` would hide — are never searched. `-g '!.git/**'` is what keeps `--hidden` from flooding the output with reflog and worktree metadata, which carries the old name permanently and correctly.
 
@@ -621,7 +621,7 @@ rg -i 'agent[-_ ]?worklog' docs/configuration.md docs/guides.md docs/privacy.md 
   docs/releasing.md docs/cli-reference.md docs/limitations.md docs/usage-statistics.md
 ```
 
-Expected: gate passes, both sweeps return nothing.
+Expected: gate passes; the first sweep returns only the seven known legacy-adoption references in paths.py/test_paths.py, the second returns nothing.
 
 - [ ] **Step 5: Verify the built artifact**
 

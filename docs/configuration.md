@@ -129,8 +129,8 @@ One setting covers all three locations Iiwi reads — `state_<n>.sqlite`,
 `sessions/`, and `archived_sessions/` are fixed positions under it.
 
 Selecting the harness is a CLI concern, not a settings one: pass `--harness codex` to
-`doctor`, `scan`, or `report`. No executable or CLI timeout setting applies, because Agent
-Worklog reads the state database or the rollout JSONL files under `home_directory`
+`doctor`, `scan`, or `report`. No executable or CLI timeout setting applies, because
+Iiwi reads the state database or the rollout JSONL files under `home_directory`
 directly and never launches a Codex process.
 
 `ENABLED` behaves exactly as it does for Claude Code: setting it to `false` does not

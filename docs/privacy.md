@@ -83,10 +83,10 @@ suite if an OpenCode export is invoked without that flag.
 ## Claude Code has no sanitize step
 
 Claude Code has no export command at all, so there is nothing equivalent to `opencode
-export --sanitize` for Iiwi to request. With `--harness claude-code`, Agent
-Worklog reads `~/.claude/projects/**/*.jsonl` directly, and those files contain full tool
-output, whole file contents, environment dumps, and hook output exactly as Claude Code
-wrote them to disk.
+export --sanitize` for Iiwi to request. With `--harness claude-code`, Iiwi reads
+`~/.claude/projects/**/*.jsonl` directly, and those files contain full tool output,
+whole file contents, environment dumps, and hook output exactly as Claude Code wrote
+them to disk.
 
 What replaces the missing sanitize step is not a scrub of that file on disk — it is that
 the JSONL mapper deliberately keeps only a narrow slice of each record before anything

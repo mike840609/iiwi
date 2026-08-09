@@ -216,7 +216,7 @@ product name and stays.
 ```bash
 uv run pytest --cov=iiwi --cov-fail-under=80
 uv run ruff check . && uv run pyright
-rg -i 'agent[-_ ]?worklog' src tests    # must return nothing
+rg -i 'agent[-_ ]?worklog' src tests    # only the paths.py/test_paths.py legacy-adoption lines
 ```
 
 `refactor: rename the package and runtime identity to iiwi`
@@ -358,7 +358,8 @@ uv run ruff check .
 uv run pyright
 ```
 
-Final sweep. Both commands must return nothing:
+Final sweep. The first returns only the seven known legacy-adoption references
+in `paths.py`/`test_paths.py`; the second must return nothing:
 
 ```bash
 rg -i --hidden -g '!.git/**' -g '!docs/**' -g '!CHANGELOG.md' -g '!uv.lock' \
