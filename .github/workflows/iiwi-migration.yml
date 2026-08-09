@@ -56,6 +56,13 @@ jobs:
               '*(str(path) for path in sorted(dist.iterdir())))',
           )
 
+          # Insert the new history helper where Ruff expects it alphabetically.
+          text = text.replace(
+              'history = history.replace("    HistoryEntry,\\n", "    HistoryEntry,\\n    history_file_path,\\n", 1)',
+              'history = history.replace("    append_history,\\n", "    append_history,\\n    history_file_path,\\n", 1)',
+              1,
+          )
+
           # Task 2 owns all runtime identity tests, including the interactive
           # repository-exclusion path that reads the config environment.
           text = text.replace(
