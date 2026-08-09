@@ -110,6 +110,18 @@ jobs:
               1,
           )
 
+          # The approved README intentionally bolds the product name before the
+          # pronunciation. Keep the documentation contract exact to that markup.
+          text = text.replace(
+              '    add_brand_guard()\n    expect_red(',
+              '    replace(\n'
+              '        "tests/unit/test_documentation.py",\n'
+              '        (("Iiwi *(ee-EE-wee)*", "**Iiwi** *(ee-EE-wee)*"),),\n'
+              '    )\n'
+              '    add_brand_guard()\n    expect_red(',
+              1,
+          )
+
           path.write_text(text, encoding="utf-8")
           PY
 
