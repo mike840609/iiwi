@@ -66,6 +66,19 @@ jobs:
               1,
           )
           text = text.replace(
+              '    for path in runtime_test_files:\n        replace(path, (("AGENT_WORKLOG", "IIWI"),))\n',
+              '    for path in runtime_test_files:\n'
+              '        replace(path, (("AGENT_WORKLOG", "IIWI"),))\n'
+              '    # Runtime identity is a project-wide test contract, not only a\n'
+              '    # unit-test contract. Integration and service tests construct\n'
+              '    # environment variables too, so migrate every Python test. The\n'
+              '    # one deliberate old-prefix negative test splits AGENT_ + WORKLOG\n'
+              '    # and therefore remains intentionally unchanged.\n'
+              '    for test_path in sorted((ROOT / "tests").rglob("*.py")):\n'
+              '        replace(str(test_path.relative_to(ROOT)), (("AGENT_WORKLOG", "IIWI"),))\n',
+              1,
+          )
+          text = text.replace(
               '    replace("tests/unit/test_config_store.py", (("agent-worklog", "iiwi"),))\n',
               '    replace("tests/unit/test_config_store.py", (("agent-worklog", "iiwi"),))\n'
               '    replace("tests/unit/test_cli.py", (("agent-worklog", "iiwi"),))\n',
@@ -94,6 +107,12 @@ jobs:
           # Preserve the layout contract rather than preserving obsolete widths.
           text = text.replace(
               '    render_test = read("tests/unit/interactive/test_render.py")\n',
+              '    # Product display identity is also asserted outside the\n'
+              '    # interactive unit tests (integration CLI/transcript tests).\n'
+              '    # Migrate every current test expectation before the focused\n'
+              '    # CLI/terminal RED gate.\n'
+              '    for test_path in sorted((ROOT / "tests").rglob("*.py")):\n'
+              '        replace(str(test_path.relative_to(ROOT)), (("Agent Worklog", "Iiwi"),))\n\n'
               '    render_test = read("tests/unit/interactive/test_render.py")\n'
               '    render_test = render_test.replace("_console(width=19)", "_console(width=10)", 1)\n'
               '    render_test = render_test.replace(\n'
