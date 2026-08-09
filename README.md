@@ -102,11 +102,18 @@ Select sessions to include in the report:
   2. ▸ ████░░░░░░░░  24% ● obsidian-wiki   2 / 2    Aug 4 │ 60 msgs
   3. ▸ █░░░░░░░░░░░   5% ● dotfiles   1 / 1         Aug 3 │ 12 msgs
 
-↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ a All │ g Generate │ / Search │ ? Help │ b Back
+↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ e Exclude │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
 
-Press `p` on a session row to scroll its transcript inline — redacted before it
-is drawn, so the preview never shows more than the report itself would.
+Press `p` on a session row to scroll its transcript inline — redacted before
+it is drawn, so the preview never shows more than the report itself would.
+Your selection is remembered per period: a rescan (or a changed setting that
+rescans) restores what you unselected, and sessions that no longer exist are
+dropped automatically. Press `e` on a repository row to exclude it from every
+future scan — the repository is appended to `report.exclude_repositories`, the
+same persistent setting `config set` writes, and the review rescans so the
+repository disappears immediately. Undo with
+`agent-worklog config unset report.exclude_repositories`.
 
 Or drive the commands directly:
 
@@ -115,12 +122,14 @@ agent-worklog doctor                       # is the harness ready?
 agent-worklog scan --period last-week      # preview how sessions group
 agent-worklog report --period last-week    # write the report
 agent-worklog history                      # list the reports already written
+agent-worklog update                       # check PyPI for a newer release
 ```
 
-`scan` and `doctor` emit JSON when stdout is piped, or when asked with `--json` —
-`agent-worklog scan --period last-week | jq '.repositories'` works out of the box,
-and every value is redacted before it is emitted. `--no-json` forces the human
-output, and `history --json` returns the recorded reports as an array.
+`scan`, `doctor`, `history`, and `update` emit JSON when stdout is piped, or
+when asked with `--json` — `agent-worklog scan --period last-week | jq
+'.repositories'` works out of the box, and every value is redacted before it is
+emitted. `--no-json` forces the human output, and `history --json` returns the
+recorded reports as an array.
 
 The report defaults to a narrative weekly review written by your local `opencode run`.
 Add `--no-llm` for the deterministic structured report, which works for every harness
@@ -165,9 +174,10 @@ reading from stdin.
 OpenCode exports are raw by default so reports retain useful work details. Agent Worklog
 redacts common secret patterns locally, then hands a grouped, redacted transcript to
 your locally installed `opencode run`, which writes the narrative — nothing leaves your
-machine and no API key is needed. Use `--no-llm` for the deterministic structured
-report, or `--sanitize` for OpenCode's stronger redaction, which intentionally removes
-most work evidence.
+machine and no API key is needed. The only command that touches the network is
+`update`, which checks PyPI for a newer release when you run it. Use `--no-llm` for the
+deterministic structured report, or `--sanitize` for OpenCode's stronger redaction,
+which intentionally removes most work evidence.
 
 Reports may still contain private goals, filenames, commands, and full working paths.
 Always review a report before sharing it. See

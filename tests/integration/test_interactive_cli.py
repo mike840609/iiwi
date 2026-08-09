@@ -136,6 +136,9 @@ def test_bare_command_runs_generate_select_result_main_quit_flow(
         generate=generate,
         doctor=lambda harness: [],
         edit_settings=lambda: None,
+        restore_selection=lambda harness, period, include_subagents: None,
+        save_selection=lambda harness, period, include_subagents, selected: None,
+        exclude_repository=lambda repository_id, display_name: "excluded",
     )
     scripted = ScriptedInput(
         [

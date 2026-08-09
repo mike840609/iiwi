@@ -130,6 +130,9 @@ def _actions(
         ),
         doctor=lambda harness: [f"{harness}: ok"],
         edit_settings=lambda: None,
+        restore_selection=lambda harness, period, include_subagents: None,
+        save_selection=lambda harness, period, include_subagents, selected: None,
+        exclude_repository=lambda repository_id, display_name: "excluded",
     )
 
 

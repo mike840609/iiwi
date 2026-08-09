@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 
-from agent_worklog import config_store
+from agent_worklog import __version__, config_store
 from agent_worklog.config import AppSettings
 from agent_worklog.errors import (
     ConfigurationError,
@@ -45,6 +45,12 @@ from agent_worklog.services.report import ReportService
 from agent_worklog.services.scan import ScanResult, ScanService
 from agent_worklog.summarizers.opencode_run import OpenCodeRunner
 from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
+from agent_worklog.update import (
+    UpdateCheckError,
+    check_for_update,
+    update_error_to_json,
+    update_to_json,
+)
 
 
 class Harness(StrEnum):
@@ -666,6 +672,48 @@ def history(
         reporter.history_table(entries)
 
 
+@app.command()
+def update(
+    json: bool | None = typer.Option(
+        None,
+        "--json/--no-json",
+        help=(
+            "Emit machine-readable JSON. When stdout is piped, JSON is the "
+            "default; --no-json forces the human output."
+        ),
+    ),
+) -> None:
+    """Check PyPI for a newer release.
+
+    This is the only command that touches the network, and it only does so when
+    run: nothing leaves the machine otherwise. An unreachable index is not an
+    error — offline machines are legitimate — but an available update exits
+    with code 8 so scripts can tell the two apart.
+    """
+
+    reporter = ConsoleReporter()
+    try:
+        info = check_for_update()
+    except UpdateCheckError as exc:
+        if _json_mode(json, quiet=False):
+            typer.echo(update_error_to_json(str(exc)))
+        else:
+            reporter.message(f"Could not check for updates: {exc}")
+        return
+    if _json_mode(json, quiet=False):
+        typer.echo(update_to_json(info))
+        if info.update_available:
+            raise typer.Exit(code=8)
+        return
+    if info.update_available:
+        reporter.message(
+            f"Version {info.latest} is available (you have {info.current}).\n"
+            f"Upgrade with: {info.upgrade_command}"
+        )
+        raise typer.Exit(code=8)
+    reporter.message(f"You are up to date ({info.current}).")
+
+
 config_app = typer.Typer(
     no_args_is_help=True,
     help="Show and edit the settings file.",
@@ -1176,8 +1224,18 @@ def _interactive_menu() -> None:
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        help="Show the version and exit.",
+    ),
+) -> None:
     """Open the menu when no subcommand was named."""
 
+    if version:
+        typer.echo(f"agent-worklog {__version__}")
+        raise typer.Exit()
     if ctx.invoked_subcommand is None:
         _interactive_menu()

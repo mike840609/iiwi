@@ -7,7 +7,12 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from agent_worklog.history import HistoryEntry, append_history, read_history
+from agent_worklog.history import (
+    HistoryEntry,
+    append_history,
+    history_to_json,
+    read_history,
+)
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -82,6 +87,30 @@ def test_read_skips_corrupt_lines(tmp_path) -> None:
 
 def test_missing_history_file_reads_empty(tmp_path) -> None:
     assert read_history(path=tmp_path / "absent.jsonl") == []
+
+
+def test_history_to_json_lists_the_newest_first() -> None:
+    """`history --json` renders newest first, the same order as the table."""
+
+    older = _entry()
+    newer = HistoryEntry(
+        generated_at=datetime(2026, 8, 4, 9, 0, tzinfo=TZ),
+        harness="claude-code",
+        since=older.since,
+        until=older.until,
+        output_path=Path("reports/other.md"),
+        repository_count=1,
+        session_count=2,
+        narrative=False,
+        detail="brief",
+    )
+
+    raw = json.loads(history_to_json([older, newer]))
+
+    assert [entry["generated_at"] for entry in raw] == [
+        newer.generated_at.isoformat(),
+        older.generated_at.isoformat(),
+    ]
 
 
 def test_history_entry_serialises_to_isoformat_datetimes(tmp_path) -> None:

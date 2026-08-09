@@ -10,6 +10,7 @@ from rich.cells import cell_len
 from rich.console import Console
 from rich.text import Text
 
+from agent_worklog import __version__
 from agent_worklog.interactive.density import (
     is_subagent,
     last_activity_at,
@@ -380,11 +381,25 @@ def report_preview_capacity(terminal_height: int) -> int:
 
 
 def render_main_menu(console: Console, *, selected: int) -> None:
-    _print_header(
-        console,
-        "Agent Worklog",
-        subtitle="Turn coding-agent sessions into engineering reports",
-    )
+    title = "Agent Worklog"
+    version = f"v{__version__}"
+    if cell_len(title) + 1 + cell_len(version) <= console.size.width:
+        padding = console.size.width - cell_len(title) - cell_len(version)
+        title_line = Text.assemble((title, "bold"), " " * padding, (version, "dim"))
+        _print_viewport_text(console, title_line)
+        _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
+        if console.size.height >= _MIN_SUBTITLE_HEIGHT:
+            _print_viewport_line(
+                console,
+                "Turn coding-agent sessions into engineering reports",
+                style="dim",
+            )
+    else:
+        _print_header(
+            console,
+            "Agent Worklog",
+            subtitle="Turn coding-agent sessions into engineering reports",
+        )
     console.print()
     label_width = max(cell_len(label) for label in _MAIN_OPTIONS)
     for index, label in enumerate(_MAIN_OPTIONS):
@@ -684,6 +699,7 @@ def render_session_review(
         "n None",
         "g Generate",
         "p Preview",
+        "e Exclude repo",
         "R Rescan",
         "/ Search",
         "? Help",
@@ -1112,6 +1128,7 @@ def render_help(console: Console) -> None:
         "PgUp / PgDn    Scroll error details or report preview by a page",
         "g / G          Jump to top / bottom in report preview",
         "p              Preview a session's transcript",
+        "e              Exclude a repository from future scans (Review only)",
         "R              Rescan sessions",
         "/              Search repositories and session titles",
         "?              Open this help",

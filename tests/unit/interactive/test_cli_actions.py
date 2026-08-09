@@ -105,3 +105,81 @@ def test_choose_period_starts_the_cycle_for_an_unnamed_window(
 
     assert label == "This week"
     assert period == DateRange.current_week(now=now)
+
+
+def test_exclude_repository_appends_to_the_exclusion_setting(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+
+    message = cli_actions._exclude_repository(
+        "git:github.com/mike/dotfiles", "Dotfiles"
+    )
+
+    assert "Dotfiles" in message
+    assert "future scans will skip it" in message
+    settings = cli._load_settings()
+    assert settings.report.excluded_repository_ids() == ("git:github.com/mike/dotfiles",)
+
+
+def test_exclude_repository_keeps_already_configured_exclusions(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    cli_actions._exclude_repository("git:github.com/mike/notes", "Notes")
+
+    cli_actions._exclude_repository("git:github.com/mike/dotfiles", "Dotfiles")
+
+    settings = cli._load_settings()
+    assert settings.report.excluded_repository_ids() == (
+        "git:github.com/mike/notes",
+        "git:github.com/mike/dotfiles",
+    )
+
+
+def test_exclude_repository_refuses_when_the_environment_owns_the_setting(
+    monkeypatch, tmp_path
+) -> None:
+    """An exported override outranks the settings file, so persisting an
+    exclusion there would be a lie the next run ignores: refuse to write and
+    say which variable owns the setting instead."""
+
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv(
+        "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES",
+        "git:github.com/mike/env-driven",
+    )
+
+    message = cli_actions._exclude_repository(
+        "git:github.com/mike/dotfiles", "Dotfiles"
+    )
+
+    assert "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES" in message
+    assert not (tmp_path / "config.env").exists()
+
+
+def test_exclude_repository_is_idempotent(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    cli_actions._exclude_repository("git:github.com/mike/dotfiles", "Dotfiles")
+
+    message = cli_actions._exclude_repository("git:github.com/mike/dotfiles", "Dotfiles")
+
+    assert "already excluded" in message
+    assert cli._load_settings().report.excluded_repository_ids() == (
+        "git:github.com/mike/dotfiles",
+    )
+
+
+def test_save_and_restore_round_trip_through_the_state_file(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("AGENT_WORKLOG_STATE_FILE", str(tmp_path / "state.json"))
+
+    assert cli_actions._restore_selection("opencode", _period(), True) is None
+
+    cli_actions._save_selection(
+        "opencode", _period(), True, {"ses-a", "ses-b"}
+    )
+
+    assert cli_actions._restore_selection("opencode", _period(), True) == {
+        "ses-a",
+        "ses-b",
+    }

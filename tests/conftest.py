@@ -24,6 +24,7 @@ def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
 
     monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
     monkeypatch.setenv("AGENT_WORKLOG_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv("AGENT_WORKLOG_STATE_FILE", str(tmp_path / "state.json"))
 
 
 @dataclass

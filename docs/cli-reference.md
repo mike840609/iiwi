@@ -12,11 +12,13 @@ Every command, option, and exit code. For a guided tour instead, see the
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
 | `history` | Lists the reports this tool has written. |
+| `update` | Checks PyPI for a newer release. |
 | `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
 | `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
 
 Running `agent-worklog` with no arguments opens the key-driven interactive menu.
-`agent-worklog --help` prints the command list instead. Direct subcommands remain unchanged
+`agent-worklog --help` prints the command list instead, and `agent-worklog
+--version` prints the installed version. Direct subcommands remain unchanged
 and are still the supported interface for scripts, CI, and pipelines.
 
 ## Interactive mode
@@ -43,6 +45,16 @@ the setup summary. A report cannot be generated with zero selected sessions. Lon
 lists use the terminal height as a viewport, keeping the active row visible and showing
 `↑ N more` / `↓ N more` when rows exist outside the current window. Browse Sessions also
 answers to `p` on a session row.
+
+The selection is remembered per harness, period, and subagent setting in a local state
+file. A rescan — including one triggered by changing a setting that clears the scan —
+restores the previous selection, with session ids that no longer exist dropped
+automatically; periods with no stored selection start from the noise-free default.
+
+On a repository row, `e` adds the repository to the persistent
+`report.exclude_repositories` setting and rescans, so the repository vanishes from the
+review and from every future scan. The same setting can be edited with
+`config set report.exclude_repositories ...` and reset with `config unset`.
 
 Interactive reports use the normal default output path. If that path already exists, the
 recovery screen offers **Overwrite once**; it does not silently replace the file. After a
@@ -105,8 +117,9 @@ it is emitted, matching the redaction the interactive and file paths apply.
 
 `doctor --json` emits `{"harness": "...", "ok": true, "checks": [{"name": "...",
 "ok": true, "detail": "..."}]}`, and `history --json` emits an array of
-recorded reports. When stdout is not a terminal, `scan` and `doctor` switch to
-JSON automatically, so `agent-worklog scan --period last-week | jq '.repositories'`
+recorded reports. When stdout is not a terminal, `scan`, `doctor`, `history`,
+and `update` switch to JSON automatically, so
+`agent-worklog scan --period last-week | jq '.repositories'`
 just works; `--quiet` keeps its human contract and opts out of the auto-switch.
 
 ## Progress output
@@ -166,6 +179,16 @@ narrative review was used, and the output path. It accepts `--json` and prints
 `--dry-run` are not recorded, and a history write failure never fails the
 report that triggered it.
 
+## update
+
+`update` compares the installed version against the latest release on PyPI and
+accepts `--json`. It is the only command that touches the network, and it only
+does so when run. When an update is available, the command prints the new
+version and the upgrade command and exits with code 8; up to date means exit 0.
+An unreachable index is not an error — offline machines are legitimate — so a
+failed check prints the reason and exits 0, and in JSON mode emits
+`{"error": "..."}`.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -176,6 +199,7 @@ report that triggered it.
 | 4 | No matching activity |
 | 5 | Harness or Git dependency error |
 | 7 | Report file error |
+| 8 | Update available (`update` only) |
 
 If one session cannot be read, Agent Worklog skips it and adds a warning to the report.
 If no sessions can be read, the command stops with an error instead of creating an empty

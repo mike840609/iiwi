@@ -107,10 +107,10 @@ def read_history(*, path: Path | None = None) -> list[HistoryEntry]:
 
 
 def history_to_json(entries: list[HistoryEntry]) -> str:
-    """Render the recorded reports as a JSON array for scripting consumers."""
+    """Render the recorded reports as a JSON array, newest first."""
 
     return json.dumps(
-        [asdict(entry) for entry in entries],
+        [asdict(entry) for entry in reversed(entries)],
         indent=2,
         default=_json_default,
         ensure_ascii=False,

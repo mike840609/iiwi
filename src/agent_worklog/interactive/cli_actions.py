@@ -7,6 +7,7 @@ import ``build_interactive_actions`` without creating an import cycle.
 from __future__ import annotations
 
 import contextlib
+import os
 from datetime import datetime
 
 from agent_worklog.history import HistoryEntry, append_history
@@ -18,6 +19,7 @@ from agent_worklog.interactive.models import ReportDraft
 from agent_worklog.logging import ConsoleReporter
 from agent_worklog.models.time_range import DateRange
 from agent_worklog.process import CommandRunner
+from agent_worklog.security.redactor import redact_text
 from agent_worklog.services.scan import ScanResult
 
 
@@ -138,7 +140,7 @@ def _generate(
                     output_path=result.output_path,
                     repository_count=len(scan.sessions_by_repository),
                     session_count=scan.loaded_session_count,
-                    narrative=draft.narrative,
+                    narrative=bool(result.report.narrative_text),
                     detail=draft.detail.value,
                 )
             )
@@ -172,6 +174,72 @@ def _edit_settings() -> None:
     cli.config_init()
 
 
+def _restore_selection(
+    harness: str,
+    period: DateRange,
+    include_subagents: bool,
+) -> set[str] | None:
+    """Return the last Review selection for this key, or None when there is none."""
+
+    from agent_worklog.state import load_selection, period_key
+
+    return load_selection(
+        harness=harness,
+        period_key=period_key(since=period.since, until=period.until),
+        include_subagents=include_subagents,
+    )
+
+
+def _save_selection(
+    harness: str,
+    period: DateRange,
+    include_subagents: bool,
+    selected_session_ids: set[str],
+) -> None:
+    """Record the Review selection so a later scan of the same period restores it."""
+
+    from agent_worklog.state import period_key, save_selection
+
+    save_selection(
+        harness=harness,
+        period_key=period_key(since=period.since, until=period.until),
+        include_subagents=include_subagents,
+        selected_session_ids=selected_session_ids,
+    )
+
+
+def _exclude_repository(repository_id: str, display_name: str) -> str:
+    """Add a repository to the persistent exclusion list, returning a message.
+
+    Appending keeps any exclusions already configured. The value is written
+    through `config set` so the settings file, the environment override, and
+    `config list` stay the single source of truth.
+    """
+
+    from agent_worklog import cli, config_store
+
+    if os.environ.get("AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES") is not None:
+        # The environment outranks the settings file, so an exclusion written
+        # here would be ignored by every later run that exports the variable.
+        return (
+            "report.exclude_repositories is set in the environment; unset "
+            "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES to persist exclusions."
+        )
+    settings = cli._load_settings()
+    existing = settings.report.excluded_repository_ids()
+    if repository_id in existing:
+        return f"{redact_text(display_name)} is already excluded."
+    entries = [*existing, repository_id]
+    config_store.set_value(
+        "report.exclude_repositories",
+        ",".join(entries),
+    )
+    return (
+        f"Excluded {redact_text(display_name)}; future scans will skip it. "
+        "Undo with: agent-worklog config unset report.exclude_repositories"
+    )
+
+
 def build_interactive_actions() -> InteractiveActions:
     """Build the controller callbacks from the CLI's existing service seams."""
 
@@ -183,4 +251,7 @@ def build_interactive_actions() -> InteractiveActions:
         generate=_generate,
         doctor=_doctor,
         edit_settings=_edit_settings,
+        restore_selection=_restore_selection,
+        save_selection=_save_selection,
+        exclude_repository=_exclude_repository,
     )
