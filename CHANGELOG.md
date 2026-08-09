@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.9.0 - 2026-08-10
 
 - Renamed the project from Agent Worklog to Iiwi. The command is now `iiwi`,
   the distribution is `iiwi` on PyPI, environment variables use the `IIWI_`
