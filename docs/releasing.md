@@ -35,7 +35,7 @@ uv tool run twine check dist/*
 
 ## Publish a version
 
-1. Update `[project].version` in `pyproject.toml`.
+1. Update `[project].version` in `pyproject.toml` **and `__version__` in `src/iiwi/__init__.py`**. Both hold the version; `tests/unit/test_version.py` fails when they disagree.
 2. Regenerate and commit `uv.lock` with `uv lock`.
 3. Merge the version change into `main`.
 4. Create an annotated tag that exactly matches the package version.
