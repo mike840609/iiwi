@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_worklog.config_store import (
+from iiwi.config_store import (
     CONFIG_FILE_VARIABLE,
     config_file_path,
     describe_settings,
@@ -15,7 +15,7 @@ from agent_worklog.config_store import (
     unset_value,
     validate_value,
 )
-from agent_worklog.errors import ConfigurationError
+from iiwi.errors import ConfigurationError
 
 # chmod-based permission denial does not bite on Windows, and root ignores
 # file-permission bits entirely, so both would make these tests spuriously

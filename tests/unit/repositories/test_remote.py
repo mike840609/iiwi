@@ -1,6 +1,6 @@
 import pytest
 
-from agent_worklog.repositories.remote import normalize_git_remote, repository_display_name
+from iiwi.repositories.remote import normalize_git_remote, repository_display_name
 
 
 @pytest.mark.parametrize(

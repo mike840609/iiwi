@@ -11,12 +11,12 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-import agent_worklog.cli as cli
-from agent_worklog import config_store
-from agent_worklog.errors import ConfigurationError, ReportOutputError
-from agent_worklog.models.report import RepositorySummary, WorklogReport
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.progress import NullProgressReporter, ProgressStage
+import iiwi.cli as cli
+from iiwi import config_store
+from iiwi.errors import ConfigurationError, ReportOutputError
+from iiwi.models.report import RepositorySummary, WorklogReport
+from iiwi.models.time_range import DateRange
+from iiwi.progress import NullProgressReporter, ProgressStage
 
 runner = CliRunner()
 TZ = ZoneInfo("Asia/Taipei")

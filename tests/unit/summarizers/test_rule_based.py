@@ -1,11 +1,11 @@
-from agent_worklog.models.evidence import (
+from iiwi.models.evidence import (
     EvidenceConfidence,
     EvidenceItem,
     EvidenceStatus,
     RepositoryEvidence,
     SessionEvidence,
 )
-from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
+from iiwi.summarizers.rule_based import RuleBasedSummarizer
 
 
 def item(text: str, status: EvidenceStatus, confidence: EvidenceConfidence) -> EvidenceItem:

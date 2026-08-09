@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_worklog.interactive.input import (
+from iiwi.interactive.input import (
     Key,
     KeyPress,
     TerminalInput,

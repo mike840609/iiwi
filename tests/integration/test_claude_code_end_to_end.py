@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from typer.testing import CliRunner
 
-import agent_worklog.cli as cli
+import iiwi.cli as cli
 
 TZ = ZoneInfo("Asia/Taipei")
 

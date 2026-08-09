@@ -1,12 +1,12 @@
 import pytest
 
-from agent_worklog.models.repository import (
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
-from agent_worklog.sessions.hierarchy import (
+from iiwi.models.session import AgentSession
+from iiwi.sessions.hierarchy import (
     SessionRelationshipIndex,
     count_child_sessions_by_repository,
     group_resolved_sessions,

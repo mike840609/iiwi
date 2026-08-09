@@ -3,16 +3,16 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.errors import HarnessSourceError
-from agent_worklog.models.repository import (
+from iiwi.errors import HarnessSourceError
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.renderers.usage import render_activity_usage
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.time_range import DateRange
+from iiwi.renderers.usage import render_activity_usage
+from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 PERIOD = DateRange(

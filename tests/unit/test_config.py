@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_worklog.config import AppSettings
+from iiwi.config import AppSettings
 
 
 def test_settings_use_opencode_cli_and_taipei_defaults() -> None:
@@ -74,7 +74,7 @@ def test_opencode_run_timeout_and_model_are_configurable(
 def test_claude_code_projects_directory_defaults_under_home() -> None:
     from pathlib import Path
 
-    from agent_worklog.config import AppSettings
+    from iiwi.config import AppSettings
 
     settings = AppSettings()
 
@@ -88,7 +88,7 @@ def test_claude_code_projects_directory_is_configurable(
 ) -> None:
     from pathlib import Path
 
-    from agent_worklog.config import AppSettings
+    from iiwi.config import AppSettings
 
     monkeypatch.setenv(
         "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
@@ -127,7 +127,7 @@ def test_every_harness_enum_member_has_settings_field_with_enabled() -> None:
     Harness enum member is added without a corresponding HarnessSettings field,
     this test catches it before a user sees an uncaught traceback.
     """
-    from agent_worklog.cli import Harness
+    from iiwi.cli import Harness
 
     settings = AppSettings()
 

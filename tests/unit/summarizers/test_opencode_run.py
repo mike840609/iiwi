@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_worklog.process import CommandResult
-from agent_worklog.summarizers.opencode_run import (
+from iiwi.process import CommandResult
+from iiwi.summarizers.opencode_run import (
     OpenCodeRunError,
     OpenCodeRunner,
     build_summary_prompt,

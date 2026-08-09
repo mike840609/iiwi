@@ -4,8 +4,8 @@ import sys
 
 import pytest
 
-from agent_worklog import process
-from agent_worklog.process import CommandRunner
+from iiwi import process
+from iiwi.process import CommandRunner
 
 _TRUNCATED_ECHO = (
     # A child that mimics opencode's stdout behaviour: when its stdout is a pipe

@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog import cli
-from agent_worklog.interactive import cli_actions
-from agent_worklog.models.time_range import DateRange
+from iiwi import cli
+from iiwi.interactive import cli_actions
+from iiwi.models.time_range import DateRange
 
 TZ = ZoneInfo("Asia/Taipei")
 

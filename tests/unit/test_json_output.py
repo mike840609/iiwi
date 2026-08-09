@@ -6,20 +6,20 @@ import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.json_output import doctor_result_to_json, scan_result_to_json
-from agent_worklog.models.repository import (
+from iiwi.json_output import doctor_result_to_json, scan_result_to_json
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import (
+from iiwi.models.session import (
     ActivityType,
     AgentSession,
     SessionActivity,
 )
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.services.doctor import DoctorCheck, DoctorResult
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.time_range import DateRange
+from iiwi.services.doctor import DoctorCheck, DoctorResult
+from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 PERIOD = DateRange(

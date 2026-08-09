@@ -3,8 +3,8 @@ from typing import Any
 
 import pytest
 
-from agent_worklog.harnesses.codex.mapper import CodexRolloutMapper
-from agent_worklog.models.session import ActivityType, SessionDescriptor
+from iiwi.harnesses.codex.mapper import CodexRolloutMapper
+from iiwi.models.session import ActivityType, SessionDescriptor
 
 DESCRIPTOR = SessionDescriptor(
     harness="codex",

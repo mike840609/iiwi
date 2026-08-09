@@ -8,23 +8,23 @@ from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
-from agent_worklog.interactive.controller import (
+from iiwi.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
     run_interactive,
 )
-from agent_worklog.interactive.input import Key, KeyPress
-from agent_worklog.interactive.models import ReportDraft
-from agent_worklog.interactive.render import render_report_setup, render_session_review
-from agent_worklog.interactive.selection import SelectionState
-from agent_worklog.models.repository import (
+from iiwi.interactive.input import Key, KeyPress
+from iiwi.interactive.models import ReportDraft
+from iiwi.interactive.render import render_report_setup, render_session_review
+from iiwi.interactive.selection import SelectionState
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.time_range import DateRange
+from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 

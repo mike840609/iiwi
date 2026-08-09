@@ -5,16 +5,16 @@ from zoneinfo import ZoneInfo
 import pytest
 from rich.console import Console
 
-from agent_worklog.logging import ConsoleReporter, RichProgressReporter
-from agent_worklog.models.repository import (
+from iiwi.logging import ConsoleReporter, RichProgressReporter
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.progress import NullProgressReporter, ProgressStage
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import AgentSession
+from iiwi.models.time_range import DateRange
+from iiwi.progress import NullProgressReporter, ProgressStage
+from iiwi.services.scan import ScanResult
 
 
 def forced_console(stream: StringIO, *, width: int = 100) -> Console:
@@ -458,7 +458,7 @@ def test_verbose_scan_does_not_interpret_a_title_as_rich_markup() -> None:
 def test_settings_table_shows_values_sources_and_defaults() -> None:
     from pathlib import Path
 
-    from agent_worklog.config_store import SettingRow
+    from iiwi.config_store import SettingRow
 
     output_stream = StringIO()
     reporter = ConsoleReporter(console=forced_console(output_stream, width=120))
@@ -520,7 +520,7 @@ def test_settings_table_fully_renders_a_long_key_at_80_columns() -> None:
     """
     from pathlib import Path
 
-    from agent_worklog.config_store import SettingRow
+    from iiwi.config_store import SettingRow
 
     output_stream = StringIO()
     reporter = ConsoleReporter(console=forced_console(output_stream, width=80))

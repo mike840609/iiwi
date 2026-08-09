@@ -1,17 +1,17 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.errors import SessionParseError
-from agent_worklog.models.repository import RepositoryIdentity, RepositoryIdentityType
-from agent_worklog.models.session import (
+from iiwi.errors import SessionParseError
+from iiwi.models.repository import RepositoryIdentity, RepositoryIdentityType
+from iiwi.models.session import (
     ActivityType,
     AgentSession,
     SessionActivity,
     SessionDescriptor,
 )
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.progress import ProgressStage
-from agent_worklog.services.scan import ScanService
+from iiwi.models.time_range import DateRange
+from iiwi.progress import ProgressStage
+from iiwi.services.scan import ScanService
 from tests.progress import RecordingProgressReporter
 
 TZ = ZoneInfo("Asia/Taipei")

@@ -1,4 +1,4 @@
-from agent_worklog.progress import NullProgressReporter, ProgressStage
+from iiwi.progress import NullProgressReporter, ProgressStage
 
 
 def test_progress_stages_are_stable_and_complete() -> None:

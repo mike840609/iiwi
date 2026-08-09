@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.process import CommandResult
+from iiwi.process import CommandResult
 from tests.codex_state_db import seconds, write_database
 
 

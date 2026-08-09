@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_worklog.harnesses.claude_code.mapper import ClaudeCodeJsonlMapper
-from agent_worklog.models.session import ActivityType, SessionDescriptor, UsageSemantics
+from iiwi.harnesses.claude_code.mapper import ClaudeCodeJsonlMapper
+from iiwi.models.session import ActivityType, SessionDescriptor, UsageSemantics
 
 # Derived from this file, not from the working directory, so the test passes when
 # pytest is invoked from a subdirectory.

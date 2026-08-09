@@ -6,8 +6,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.harnesses.codex.rollout_catalog import discover_rollouts
-from agent_worklog.models.time_range import DateRange
+from iiwi.harnesses.codex.rollout_catalog import discover_rollouts
+from iiwi.models.time_range import DateRange
 
 TZ = ZoneInfo("Asia/Taipei")
 PERIOD = DateRange(

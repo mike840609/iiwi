@@ -146,10 +146,14 @@ def task2_runtime_identity() -> None:
         "tests/unit/test_state.py",
         "tests/unit/test_update.py",
         "tests/unit/test_cli.py",
+        "tests/unit/interactive/test_cli_actions.py",
     )
     for path in runtime_test_files:
         replace(path, (("AGENT_WORKLOG", "IIWI"),))
+    for test_path in sorted((ROOT / "tests").rglob("*.py")):
+        replace(str(test_path.relative_to(ROOT)), (("AGENT_WORKLOG", "IIWI"),))
     replace("tests/unit/test_config_store.py", (("agent-worklog", "iiwi"),))
+    replace("tests/unit/test_cli.py", (("agent-worklog", "iiwi"),))
     replace(
         "tests/unit/test_update.py",
         (("pipx upgrade agent-worklog", "pipx upgrade iiwi"),),
@@ -170,7 +174,7 @@ def task2_runtime_identity() -> None:
 
     history = read("tests/unit/test_history.py")
     if "history_file_path," not in history:
-        history = history.replace("    HistoryEntry,\n", "    HistoryEntry,\n    history_file_path,\n", 1)
+        history = history.replace("    append_history,\n", "    append_history,\n    history_file_path,\n", 1)
         write("tests/unit/test_history.py", history)
     append_once(
         "tests/unit/test_history.py",
@@ -223,6 +227,8 @@ def task2_runtime_identity() -> None:
         "tests/unit/test_history.py",
         "tests/unit/test_state.py",
         "tests/unit/test_update.py",
+        "tests/unit/test_cli.py",
+        "tests/unit/interactive/test_cli_actions.py",
         "-q",
     )
 
@@ -237,6 +243,7 @@ def task2_runtime_identity() -> None:
         "tests/unit/test_state.py",
         "tests/unit/test_update.py",
         "tests/unit/test_cli.py",
+        "tests/unit/interactive/test_cli_actions.py",
         "-q",
     )
     commit("refactor: move runtime identity to iiwi")
@@ -247,7 +254,31 @@ def task3_cli_identity() -> None:
     for path in sorted((ROOT / "tests/unit/interactive").rglob("*.py")):
         replace(str(path.relative_to(ROOT)), (("Agent Worklog", "Iiwi"),))
 
+    for test_path in sorted((ROOT / "tests").rglob("*.py")):
+        replace(str(test_path.relative_to(ROOT)), (("Agent Worklog", "Iiwi"),))
+
+    replace(
+        "tests/unit/repositories/test_remote.py",
+        (('== "Iiwi"', '== "Agent Worklog"'),),
+    )
+    replace(
+        "tests/integration/test_end_to_end.py",
+        (('content.count("### Iiwi")', 'content.count("### Agent Worklog")'),),
+    )
+
     render_test = read("tests/unit/interactive/test_render.py")
+    render_test = render_test.replace("_console(width=19)", "_console(width=10)", 1)
+    render_test = render_test.replace(
+        "test_main_menu_fits_the_version_at_exactly_twenty_cells",
+        "test_main_menu_fits_the_version_at_exactly_eleven_cells",
+        1,
+    )
+    render_test = render_test.replace(
+        "13 title cells + 1 gap + 6 version cells, so width 20",
+        "4 title cells + 1 gap + 6 version cells, so width 11",
+        1,
+    )
+    render_test = render_test.replace("_console(width=20)", "_console(width=11)", 1)
     needle = '    assert "Iiwi" in text\n'
     if "Probe coding-agent sessions" not in render_test and needle in render_test:
         render_test = render_test.replace(
@@ -325,8 +356,6 @@ def add_brand_guard() -> None:
     Path("docs/releasing.md"),
     Path("docs/assets/architecture.mmd"),
     Path("docs/assets/architecture.svg"),
-    Path(".github/workflows/ci.yml"),
-    Path(".github/workflows/release.yml"),
 )
 
 
@@ -432,6 +461,10 @@ def task4_docs_release() -> None:
     assert "Agent Session Intelligence for engineering work" in readme
     assert "Probe coding-agent sessions. Surface the work that matters." in readme''',
     )
+    replace(
+        "tests/unit/test_documentation.py",
+        (("Iiwi *(ee-EE-wee)*", "**Iiwi** *(ee-EE-wee)*"),),
+    )
     add_brand_guard()
     expect_red(
         "uv",
@@ -456,8 +489,6 @@ def task4_docs_release() -> None:
         "docs/releasing.md",
         "docs/assets/architecture.mmd",
         "docs/assets/architecture.svg",
-        ".github/workflows/ci.yml",
-        ".github/workflows/release.yml",
     )
     replacements = (
         ("mike840609/agent-worklog", "mike840609/iiwi"),
@@ -498,7 +529,7 @@ def verify_all() -> None:
     if dist.exists():
         shutil.rmtree(dist)
     run("uv", "build")
-    run("uv", "tool", "run", "twine", "check", "dist/*")
+    run("uv", "tool", "run", "twine", "check", *(str(path) for path in sorted(dist.iterdir()) if path.name.endswith((".whl", ".tar.gz"))))
     artifacts = sorted(path.name for path in dist.iterdir())
     print("artifacts:", artifacts, flush=True)
     if "iiwi-0.9.0.tar.gz" not in artifacts:

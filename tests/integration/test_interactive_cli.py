@@ -8,18 +8,18 @@ from zoneinfo import ZoneInfo
 import pytest
 from typer.testing import CliRunner
 
-from agent_worklog import cli
-from agent_worklog.interactive.controller import InteractiveActions, InteractiveReportResult
-from agent_worklog.interactive.input import Key, KeyPress
-from agent_worklog.interactive.models import ReportDraft
-from agent_worklog.models.repository import (
+from iiwi import cli
+from iiwi.interactive.controller import InteractiveActions, InteractiveReportResult
+from iiwi.interactive.input import Key, KeyPress
+from iiwi.interactive.models import ReportDraft
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.time_range import DateRange
+from iiwi.services.scan import ScanResult
 
 runner = CliRunner()
 TZ = ZoneInfo("Asia/Taipei")

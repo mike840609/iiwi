@@ -1,9 +1,9 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.models.report import WorklogReport
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.renderers.markdown import render_narrative
+from iiwi.models.report import WorklogReport
+from iiwi.models.time_range import DateRange
+from iiwi.renderers.markdown import render_narrative
 
 TZ = ZoneInfo("Asia/Taipei")
 

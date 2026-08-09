@@ -1,9 +1,9 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.models.report import RepositorySummary, SessionRef, WorklogReport
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
+from iiwi.models.report import RepositorySummary, SessionRef, WorklogReport
+from iiwi.models.time_range import DateRange
+from iiwi.renderers.markdown import DetailLevel, MarkdownRenderer
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -23,7 +23,7 @@ def sample_report() -> WorklogReport:
                 summary="Implemented the MVP.",
                 completed=["Tests passed"],
                 in_progress=["Add cache"],
-                key_files=["src/agent_worklog/cli.py"],
+                key_files=["src/iiwi/cli.py"],
                 directories=["/repos/agent-worklog", "/worktrees/agent-feature"],
                 sessions=[
                     SessionRef(session_id="ses_abc", title="Fix the exporter"),
@@ -58,7 +58,7 @@ Sessions: 2 · Child sessions: 1
 - Add cache
 
 #### Key Files
-- `src/agent_worklog/cli.py`
+- `src/iiwi/cli.py`
 
 #### Directories
 - `/repos/agent-worklog`

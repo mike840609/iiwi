@@ -5,12 +5,12 @@ from dataclasses import dataclass, field
 import pytest
 import typer
 
-import agent_worklog.cli as cli
-from agent_worklog.config import AppSettings
-from agent_worklog.harnesses.opencode.mapper import OpenCodeExportMapper
-from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
-from agent_worklog.models.session import SessionDescriptor
-from agent_worklog.process import CommandResult
+import iiwi.cli as cli
+from iiwi.config import AppSettings
+from iiwi.harnesses.opencode.mapper import OpenCodeExportMapper
+from iiwi.harnesses.opencode.source import OpenCodeCliSource
+from iiwi.models.session import SessionDescriptor
+from iiwi.process import CommandResult
 
 
 @dataclass

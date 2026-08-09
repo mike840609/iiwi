@@ -1,18 +1,18 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.models.repository import (
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import (
+from iiwi.models.session import (
     ActivityType,
     AgentSession,
     SessionActivity,
 )
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.summarizers.transcript import build_grouped_transcript
+from iiwi.models.time_range import DateRange
+from iiwi.summarizers.transcript import build_grouped_transcript
 
 TZ = ZoneInfo("Asia/Taipei")
 

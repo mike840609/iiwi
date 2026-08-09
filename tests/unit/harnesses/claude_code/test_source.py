@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.errors import SessionParseError
-from agent_worklog.harnesses.claude_code.source import ClaudeCodeFileSource
-from agent_worklog.models.time_range import DateRange
+from iiwi.errors import SessionParseError
+from iiwi.harnesses.claude_code.source import ClaudeCodeFileSource
+from iiwi.models.time_range import DateRange
 
 TZ = ZoneInfo("Asia/Taipei")
 PERIOD = DateRange(
@@ -136,7 +136,7 @@ def test_load_skips_a_torn_trailing_line(projects: Path) -> None:
 
 
 def test_load_without_source_location_raises(projects: Path) -> None:
-    from agent_worklog.models.session import SessionDescriptor
+    from iiwi.models.session import SessionDescriptor
 
     source = ClaudeCodeFileSource(projects_directory=projects)
 

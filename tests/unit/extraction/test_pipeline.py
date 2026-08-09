@@ -1,13 +1,13 @@
 from datetime import UTC, datetime
 
-from agent_worklog.extraction.pipeline import EVIDENCE_TEXT_MAX_LENGTH, extract_evidence
-from agent_worklog.models.evidence import EvidenceConfidence, EvidenceStatus
-from agent_worklog.models.repository import (
+from iiwi.extraction.pipeline import EVIDENCE_TEXT_MAX_LENGTH, extract_evidence
+from iiwi.models.evidence import EvidenceConfidence, EvidenceStatus
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
 
 
 def resolved(*activities: SessionActivity) -> ResolvedSession:
@@ -159,13 +159,13 @@ def test_file_tool_content_fallback_still_accepts_a_bare_path() -> None:
                 activity_id="tool-1",
                 activity_type=ActivityType.TOOL_CALL,
                 tool_name="write",
-                content="src/agent_worklog/cli.py",
+                content="src/iiwi/cli.py",
             )
         )
     )
 
     assert [item.text for item in evidence.files_changed] == [
-        "src/agent_worklog/cli.py"
+        "src/iiwi/cli.py"
     ]
 
 

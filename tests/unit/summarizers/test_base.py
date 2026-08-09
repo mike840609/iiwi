@@ -1,6 +1,6 @@
-from agent_worklog.models.evidence import RepositoryEvidence, SessionEvidence
-from agent_worklog.models.report import SessionRef
-from agent_worklog.summarizers.base import session_directories, session_refs
+from iiwi.models.evidence import RepositoryEvidence, SessionEvidence
+from iiwi.models.report import SessionRef
+from iiwi.summarizers.base import session_directories, session_refs
 
 
 def _evidence(*sessions: SessionEvidence) -> RepositoryEvidence:

@@ -95,7 +95,7 @@ def test_every_config_key_in_the_docs_is_one_the_cli_accepts() -> None:
 
     import re
 
-    from agent_worklog.config_store import resolve_key
+    from iiwi.config_store import resolve_key
 
     documented: set[str] = set()
     for name in (
@@ -129,7 +129,7 @@ def test_every_variable_in_the_configuration_doc_is_a_real_setting() -> None:
 
     import re
 
-    from agent_worklog.config_store import setting_keys
+    from iiwi.config_store import setting_keys
 
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
     documented = set(re.findall(r"AGENT_WORKLOG_[A-Z0-9_]+", configuration))
