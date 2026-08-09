@@ -1,9 +1,9 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.models.report import RepositorySummary, SessionRef, WorklogReport
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
+from iiwi.models.report import RepositorySummary, SessionRef, WorklogReport
+from iiwi.models.time_range import DateRange
+from iiwi.renderers.markdown import DetailLevel, MarkdownRenderer
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -17,14 +17,14 @@ def sample_report() -> WorklogReport:
         ),
         repositories=[
             RepositorySummary(
-                repository_id="git:github.com/mike/agent-worklog",
-                display_name="Agent Worklog",
-                normalized_remote="github.com/mike/agent-worklog",
+                repository_id="git:github.com/mike/iiwi",
+                display_name="Iiwi",
+                normalized_remote="github.com/mike/iiwi",
                 summary="Implemented the MVP.",
                 completed=["Tests passed"],
                 in_progress=["Add cache"],
-                key_files=["src/agent_worklog/cli.py"],
-                directories=["/repos/agent-worklog", "/worktrees/agent-feature"],
+                key_files=["src/iiwi/cli.py"],
+                directories=["/repos/iiwi", "/worktrees/agent-feature"],
                 sessions=[
                     SessionRef(session_id="ses_abc", title="Fix the exporter"),
                     SessionRef(session_id="ses_def"),
@@ -45,8 +45,8 @@ EXPECTED_FULL_OUTPUT = """# Engineering Worklog
 **Generated:** 2026-07-29 20:00
 
 ## Repositories
-### Agent Worklog
-Repository: `github.com/mike/agent-worklog`
+### Iiwi
+Repository: `github.com/mike/iiwi`
 
 Implemented the MVP.
 
@@ -58,10 +58,10 @@ Sessions: 2 · Child sessions: 1
 - Add cache
 
 #### Key Files
-- `src/agent_worklog/cli.py`
+- `src/iiwi/cli.py`
 
 #### Directories
-- `/repos/agent-worklog`
+- `/repos/iiwi`
 - `/worktrees/agent-feature`
 
 #### Sessions
@@ -95,8 +95,8 @@ def test_markdown_contains_period_repository_and_warnings() -> None:
     assert "# Engineering Worklog" in output
     assert "Asia/Taipei" in output
     assert "## Repositories" in output
-    assert "### Agent Worklog" in output
-    assert "github.com/mike/agent-worklog" in output
+    assert "### Iiwi" in output
+    assert "github.com/mike/iiwi" in output
     assert "## Warnings" in output
 
 
@@ -159,7 +159,7 @@ def test_brief_keeps_the_narrative_sections_and_drops_the_appendices() -> None:
     output = MarkdownRenderer().render(sample_report(), detail=DetailLevel.BRIEF)
 
     assert "# Engineering Worklog" in output
-    assert "### Agent Worklog" in output
+    assert "### Iiwi" in output
     assert "Implemented the MVP." in output
     assert "Sessions: 2" in output
     assert "#### Completed" in output

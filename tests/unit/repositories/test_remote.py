@@ -1,6 +1,6 @@
 import pytest
 
-from agent_worklog.repositories.remote import normalize_git_remote, repository_display_name
+from iiwi.repositories.remote import normalize_git_remote, repository_display_name
 
 
 @pytest.mark.parametrize(
@@ -21,4 +21,4 @@ def test_remote_credentials_are_removed() -> None:
 
 
 def test_repository_display_name_humanizes_final_component() -> None:
-    assert repository_display_name("github.com/mike/agent-worklog") == "Agent Worklog"
+    assert repository_display_name("github.com/mike/iiwi") == "Iiwi"

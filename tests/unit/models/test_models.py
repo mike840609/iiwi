@@ -1,9 +1,9 @@
 from datetime import UTC, datetime
 
-from agent_worklog.models.evidence import EvidenceConfidence, EvidenceItem
-from agent_worklog.models.report import WorklogReport
-from agent_worklog.models.session import TokenUsage, UsageSemantics
-from agent_worklog.models.time_range import DateRange
+from iiwi.models.evidence import EvidenceConfidence, EvidenceItem
+from iiwi.models.report import WorklogReport
+from iiwi.models.session import TokenUsage, UsageSemantics
+from iiwi.models.time_range import DateRange
 
 
 def test_evidence_requires_provenance() -> None:

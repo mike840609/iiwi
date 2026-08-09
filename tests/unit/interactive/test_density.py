@@ -3,21 +3,21 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.interactive.density import (
+from iiwi.interactive.density import (
     is_subagent,
     last_activity_at,
     message_volume,
     repository_meta,
     session_meta,
 )
-from agent_worklog.models.repository import (
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.time_range import DateRange
+from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 

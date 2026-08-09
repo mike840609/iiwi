@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_worklog.errors import ReportOutputError
-from agent_worklog.security.secure_files import atomic_secure_write, secure_temporary_directory
+from iiwi.errors import ReportOutputError
+from iiwi.security.secure_files import atomic_secure_write, secure_temporary_directory
 
 
 def test_atomic_write_rejects_existing_file_without_force(tmp_path: Path) -> None:

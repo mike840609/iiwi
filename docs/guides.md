@@ -9,19 +9,19 @@ The `last-week` period means the previous full calendar week in the configured t
 zone. It starts on Monday at 00:00 and ends just before the next Monday at 00:00.
 
 ```bash
-agent-worklog report --period last-week
+iiwi report --period last-week
 ```
 
 Use `--days` to report activity from a number of recent days:
 
 ```bash
-agent-worklog report --days 7
+iiwi report --days 7
 ```
 
 Use ISO timestamps to set exact start and end times:
 
 ```bash
-agent-worklog report \
+iiwi report \
   --since 2026-07-20T00:00:00+08:00 \
   --until 2026-07-27T00:00:00+08:00
 ```
@@ -36,14 +36,14 @@ ran in, so a subagent that worked in another checkout appears under that reposit
 report only root sessions:
 
 ```bash
-agent-worklog report --period last-week --root-only
+iiwi report --period last-week --root-only
 ```
 
 Both `scan` and `report` accept `--root-only`.
 
 ## Repository grouping
 
-Agent Worklog checks each session separately to decide which repository it belongs to.
+Iiwi checks each session separately to decide which repository it belongs to.
 It uses the following information in order:
 
 1. The Git `origin` remote.
@@ -60,22 +60,22 @@ repository, it stays linked to that repository.
 ## Narrative report
 
 `report` defaults to a narrative weekly review written by the locally installed
-`opencode run`. Agent Worklog builds a grouped, redacted raw transcript from the
+`opencode run`. Iiwi builds a grouped, redacted raw transcript from the
 session content and hands it to `opencode run` with a summarization prompt; the
 prose comes back and is wrapped under the standard report header. No network
 request, API key, or other service is involved — the same `opencode` binary you
 already use writes the report.
 
 ```bash
-agent-worklog report --period last-week
+iiwi report --period last-week
 ```
 
-If `opencode run` is missing, times out, or produces no output, Agent Worklog
+If `opencode run` is missing, times out, or produces no output, Iiwi
 falls back to the deterministic structured report and records a warning. Use
 `--no-llm` to always take the structured path:
 
 ```bash
-agent-worklog report --period last-week --no-llm
+iiwi report --period last-week --no-llm
 ```
 
 The narrative carries the same per-session redaction the structured report does,
@@ -87,22 +87,22 @@ paths where they appear in the transcript.
 Set the output file with `--output`:
 
 ```bash
-agent-worklog report \
+iiwi report \
   --period last-week \
   --no-llm \
   --output weekly.md
 ```
 
-Agent Worklog does not replace an existing file unless you use `--force`:
+Iiwi does not replace an existing file unless you use `--force`:
 
 ```bash
-agent-worklog report --period last-week --output weekly.md --force
+iiwi report --period last-week --output weekly.md --force
 ```
 
 Use `--dry-run` to preview the Markdown without writing a file:
 
 ```bash
-agent-worklog report --period last-week --no-llm --dry-run
+iiwi report --period last-week --no-llm --dry-run
 ```
 
 Use `--verbose` to show export and narrative fallback warnings. Use `--quiet` to show only the
@@ -110,7 +110,7 @@ output path after a successful report.
 
 ## OpenCode privacy modes
 
-`agent-worklog report --days 7` runs the local `opencode run` narrative over a
+`iiwi report --days 7` runs the local `opencode run` narrative over a
 raw OpenCode export transcript. Add `--sanitize` to ask OpenCode to redact the
 export; the narrative still runs, but the transcript loses most work details.
 Add `--no-llm` to produce the deterministic structured report instead.

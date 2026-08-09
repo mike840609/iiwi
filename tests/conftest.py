@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.process import CommandResult
+from iiwi.process import CommandResult
 from tests.codex_state_db import seconds, write_database
 
 
@@ -14,7 +14,7 @@ from tests.codex_state_db import seconds, write_database
 def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Isolate the settings file to avoid reading a developer's or CI's real config.
 
-    _load_settings() resolves to a machine-global path when AGENT_WORKLOG_CONFIG_FILE
+    _load_settings() resolves to a machine-global path when IIWI_CONFIG_FILE
     is unset. This fixture ensures every test gets a guaranteed-nonexistent path
     in tmp_path, preventing nondeterministic failures when config set creates a
     real file.
@@ -22,9 +22,9 @@ def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     Per-test monkeypatch.setenv calls take precedence and will override this default.
     """
 
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
-    monkeypatch.setenv("AGENT_WORKLOG_HISTORY_FILE", str(tmp_path / "history.jsonl"))
-    monkeypatch.setenv("AGENT_WORKLOG_STATE_FILE", str(tmp_path / "state.json"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv("IIWI_STATE_FILE", str(tmp_path / "state.json"))
 
 
 @dataclass
@@ -155,8 +155,8 @@ class AcceptanceCommandRunner:
             "api-b": "export-api-b.json",
         }
         self.remotes = {
-            "/worktrees/agent-main": "git@github.com:mike/agent-worklog.git",
-            "/worktrees/agent-feature": "https://github.com/mike/agent-worklog.git",
+            "/worktrees/agent-main": "git@github.com:mike/iiwi.git",
+            "/worktrees/agent-feature": "https://github.com/mike/iiwi.git",
             "/worktrees/assets": "git@github.com:mike/assets-tracker.git",
             "/worktrees/assets-secret": "https://github.com/mike/assets-tracker.git",
             "/worktrees/team-a-api": "git@github.com:team-a/api.git",
@@ -251,7 +251,7 @@ def claude_code_projects(tmp_path: Path) -> Path:
     """A projects directory with one root session and one subagent session."""
 
     root = tmp_path / "claude-projects"
-    session_dir = root / "-repo-agent-worklog"
+    session_dir = root / "-repo-iiwi"
     session_dir.mkdir(parents=True)
 
     def record(payload: dict) -> str:
@@ -379,7 +379,7 @@ def claude_code_projects(tmp_path: Path) -> Path:
 def git_only_runner() -> GitOnlyCommandRunner:
     return GitOnlyCommandRunner(
         remotes={
-            "/worktrees/agent-main": "git@github.com:mike/agent-worklog.git",
+            "/worktrees/agent-main": "git@github.com:mike/iiwi.git",
             "/worktrees/assets": "git@github.com:mike/assets-tracker.git",
         }
     )

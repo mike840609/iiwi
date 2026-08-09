@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_worklog.config import AppSettings
+from iiwi.config import AppSettings
 
 
 def test_settings_use_opencode_cli_and_taipei_defaults() -> None:
@@ -31,7 +31,7 @@ def test_report_exclude_repositories_is_configurable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES",
+        "IIWI_REPORT__EXCLUDE_REPOSITORIES",
         "dotfiles,  notes-vault",
     )
 
@@ -57,11 +57,11 @@ def test_opencode_run_timeout_and_model_are_configurable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS",
+        "IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS",
         "120.0",
     )
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL",
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL",
         "gpt-5.3",
     )
 
@@ -74,7 +74,7 @@ def test_opencode_run_timeout_and_model_are_configurable(
 def test_claude_code_projects_directory_defaults_under_home() -> None:
     from pathlib import Path
 
-    from agent_worklog.config import AppSettings
+    from iiwi.config import AppSettings
 
     settings = AppSettings()
 
@@ -88,10 +88,10 @@ def test_claude_code_projects_directory_is_configurable(
 ) -> None:
     from pathlib import Path
 
-    from agent_worklog.config import AppSettings
+    from iiwi.config import AppSettings
 
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
+        "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
         "/tmp/claude-projects",
     )
 
@@ -109,7 +109,7 @@ def test_codex_defaults_to_the_user_codex_home() -> None:
 
 def test_codex_home_directory_is_configurable(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "codex")
+        "IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "codex")
     )
 
     settings = AppSettings()
@@ -127,7 +127,7 @@ def test_every_harness_enum_member_has_settings_field_with_enabled() -> None:
     Harness enum member is added without a corresponding HarnessSettings field,
     this test catches it before a user sees an uncaught traceback.
     """
-    from agent_worklog.cli import Harness
+    from iiwi.cli import Harness
 
     settings = AppSettings()
 

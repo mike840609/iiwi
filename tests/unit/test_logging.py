@@ -5,16 +5,16 @@ from zoneinfo import ZoneInfo
 import pytest
 from rich.console import Console
 
-from agent_worklog.logging import ConsoleReporter, RichProgressReporter
-from agent_worklog.models.repository import (
+from iiwi.logging import ConsoleReporter, RichProgressReporter
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.progress import NullProgressReporter, ProgressStage
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import AgentSession
+from iiwi.models.time_range import DateRange
+from iiwi.progress import NullProgressReporter, ProgressStage
+from iiwi.services.scan import ScanResult
 
 
 def forced_console(stream: StringIO, *, width: int = 100) -> Console:
@@ -134,10 +134,10 @@ SCAN_TZ = ZoneInfo("Asia/Taipei")
 
 def scan_result_with(sessions: list[AgentSession]) -> ScanResult:
     identity = RepositoryIdentity(
-        repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        repository_id="git:github.com/mike/iiwi",
+        display_name="Iiwi",
         identity_type=RepositoryIdentityType.GIT_REMOTE,
-        normalized_remote="github.com/mike/agent-worklog",
+        normalized_remote="github.com/mike/iiwi",
         resolution_method="test",
     )
     resolved = [
@@ -152,7 +152,7 @@ def scan_result_with(sessions: list[AgentSession]) -> ScanResult:
         loaded_session_count=len(sessions),
         failed_session_count=0,
         resolved_sessions=resolved,
-        sessions_by_repository={"git:github.com/mike/agent-worklog": resolved},
+        sessions_by_repository={"git:github.com/mike/iiwi": resolved},
         warnings=["One session could not be exported."],
     )
 
@@ -171,7 +171,7 @@ def test_verbose_scan_lists_session_titles_and_directories() -> None:
                     harness="opencode",
                     session_id="ses_abc",
                     title="Fix the exporter",
-                    working_directory="/repos/agent-worklog",
+                    working_directory="/repos/iiwi",
                 )
             ]
         )
@@ -179,7 +179,7 @@ def test_verbose_scan_lists_session_titles_and_directories() -> None:
 
     output = output_stream.getvalue()
     assert "Fix the exporter" in output
-    assert "/repos/agent-worklog" in output
+    assert "/repos/iiwi" in output
     assert "One session could not be exported." in output
 
 
@@ -210,14 +210,14 @@ def test_non_verbose_scan_does_not_list_sessions() -> None:
                     harness="opencode",
                     session_id="ses_abc",
                     title="Fix the exporter",
-                    working_directory="/repos/agent-worklog",
+                    working_directory="/repos/iiwi",
                 )
             ]
         )
     )
 
     output = output_stream.getvalue()
-    assert "Agent Worklog" in output
+    assert "Iiwi" in output
     assert "Fix the exporter" not in output
 
 
@@ -247,15 +247,15 @@ def test_quiet_scan_still_prints_only_the_count() -> None:
 def scan_result_with_display_name(display_name: str) -> ScanResult:
     """A repository whose display name itself carries the content under test.
 
-    `scan_result_with` always uses the fixed name "Agent Worklog"; these two
+    `scan_result_with` always uses the fixed name "Iiwi"; these two
     call sites are about the name itself, so they need one they control.
     """
 
     identity = RepositoryIdentity(
-        repository_id="git:github.com/mike/agent-worklog",
+        repository_id="git:github.com/mike/iiwi",
         display_name=display_name,
         identity_type=RepositoryIdentityType.GIT_REMOTE,
-        normalized_remote="github.com/mike/agent-worklog",
+        normalized_remote="github.com/mike/iiwi",
         resolution_method="test",
     )
     session = AgentSession(harness="opencode", session_id="ses_abc")
@@ -269,7 +269,7 @@ def scan_result_with_display_name(display_name: str) -> ScanResult:
         loaded_session_count=1,
         failed_session_count=0,
         resolved_sessions=resolved,
-        sessions_by_repository={"git:github.com/mike/agent-worklog": resolved},
+        sessions_by_repository={"git:github.com/mike/iiwi": resolved},
     )
 
 
@@ -420,7 +420,7 @@ def test_verbose_scan_ellipsizes_a_long_session_line_rather_than_wrapping() -> N
     )
 
     lines = output_stream.getvalue().splitlines()
-    heading = lines.index("Agent Worklog")
+    heading = lines.index("Iiwi")
     listing = [line for line in lines[heading + 1 :] if line.strip()]
 
     # One session must render as exactly one line: a second entry here is a
@@ -458,7 +458,7 @@ def test_verbose_scan_does_not_interpret_a_title_as_rich_markup() -> None:
 def test_settings_table_shows_values_sources_and_defaults() -> None:
     from pathlib import Path
 
-    from agent_worklog.config_store import SettingRow
+    from iiwi.config_store import SettingRow
 
     output_stream = StringIO()
     reporter = ConsoleReporter(console=forced_console(output_stream, width=120))
@@ -483,11 +483,11 @@ def test_settings_table_shows_values_sources_and_defaults() -> None:
                 default="30.0",
             ),
         ],
-        path=Path("/home/dev/.config/agent-worklog/config.env"),
+        path=Path("/home/dev/.config/iiwi/config.env"),
     )
     output = output_stream.getvalue()
 
-    assert "/home/dev/.config/agent-worklog/config.env" in output
+    assert "/home/dev/.config/iiwi/config.env" in output
     # The point of the footer: nothing here is required.
     assert "Every setting is optional" in output
 
@@ -520,7 +520,7 @@ def test_settings_table_fully_renders_a_long_key_at_80_columns() -> None:
     """
     from pathlib import Path
 
-    from agent_worklog.config_store import SettingRow
+    from iiwi.config_store import SettingRow
 
     output_stream = StringIO()
     reporter = ConsoleReporter(console=forced_console(output_stream, width=80))
@@ -534,7 +534,7 @@ def test_settings_table_fully_renders_a_long_key_at_80_columns() -> None:
                 default="30.0",
             ),
         ],
-        path=Path("/home/dev/.config/agent-worklog/config.env"),
+        path=Path("/home/dev/.config/iiwi/config.env"),
     )
     output = output_stream.getvalue()
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_worklog.config_store import (
+from iiwi.config_store import (
     CONFIG_FILE_VARIABLE,
     config_file_path,
     describe_settings,
@@ -15,7 +15,7 @@ from agent_worklog.config_store import (
     unset_value,
     validate_value,
 )
-from agent_worklog.errors import ConfigurationError
+from iiwi.errors import ConfigurationError
 
 # chmod-based permission denial does not bite on Windows, and root ignores
 # file-permission bits entirely, so both would make these tests spuriously
@@ -33,11 +33,11 @@ def test_setting_keys_cover_the_leaves_of_the_settings_tree() -> None:
     keys = {setting.key: setting for setting in setting_keys()}
 
     assert keys["harnesses.opencode.cli.model"].variable == (
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL"
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL"
     )
     assert keys["harnesses.opencode.cli.model"].default == ""
     assert keys["harnesses.opencode.cli.executable"].variable == (
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE"
+        "IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE"
     )
     # A container is a path to settings, not a setting.
     assert "harnesses" not in keys
@@ -48,7 +48,7 @@ def test_setting_keys_include_the_report_exclude_repositories_leaf() -> None:
     keys = {setting.key: setting for setting in setting_keys()}
 
     assert keys["report.exclude_repositories"].variable == (
-        "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES"
+        "IIWI_REPORT__EXCLUDE_REPOSITORIES"
     )
     assert keys["report.exclude_repositories"].default == ""
 
@@ -66,7 +66,7 @@ def test_setting_key_defaults_are_rendered_the_way_a_user_types_them() -> None:
 def test_config_file_path_follows_an_explicit_override(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "custom.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "custom.env"))
 
     assert config_file_path() == tmp_path / "custom.env"
 
@@ -74,12 +74,12 @@ def test_config_file_path_follows_an_explicit_override(
 def test_config_file_path_defaults_into_the_user_config_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("AGENT_WORKLOG_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("IIWI_CONFIG_FILE", raising=False)
 
     path = config_file_path()
 
     assert path.name == "config.env"
-    assert "agent-worklog" in str(path)
+    assert "iiwi" in str(path)
 
 
 def test_resolve_key_suggests_the_closest_key_for_a_typo() -> None:
@@ -119,7 +119,7 @@ def test_set_value_writes_the_environment_variable_form(settings_file: Path) -> 
     set_value("harnesses.opencode.cli.model", "gpt-5")
 
     assert stored_values(settings_file) == {
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5"
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5"
     }
 
 
@@ -134,7 +134,7 @@ def test_set_value_replaces_an_earlier_entry_for_the_same_key(settings_file: Pat
     set_value("harnesses.opencode.cli.model", "gpt-5-mini")
 
     assert stored_values(settings_file) == {
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5-mini"
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5-mini"
     }
 
 
@@ -142,7 +142,7 @@ def test_set_value_keeps_a_value_containing_spaces_intact(settings_file: Path) -
     set_value("report.output_directory", "/tmp/my reports")
 
     assert stored_values(settings_file) == {
-        "AGENT_WORKLOG_REPORT__OUTPUT_DIRECTORY": "/tmp/my reports"
+        "IIWI_REPORT__OUTPUT_DIRECTORY": "/tmp/my reports"
     }
 
 
@@ -178,8 +178,8 @@ def test_describe_settings_reports_where_each_value_comes_from(
     settings_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     set_value("harnesses.opencode.cli.model", "gpt-5")
-    monkeypatch.setenv("AGENT_WORKLOG_REPORT__TIMEZONE", "UTC")
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    monkeypatch.setenv("IIWI_REPORT__TIMEZONE", "UTC")
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
 
     rows = {row.key: row for row in describe_settings()}
 
@@ -202,7 +202,7 @@ def test_describe_settings_lets_the_environment_win_over_the_file(
     settings_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     set_value("harnesses.opencode.cli.model", "from-file")
-    monkeypatch.setenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", "from-environment")
+    monkeypatch.setenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", "from-environment")
 
     rows = {row.key: row for row in describe_settings()}
 
@@ -280,5 +280,5 @@ def test_set_value_creates_a_missing_config_directory(
     set_value("harnesses.opencode.cli.model", "gpt-5")
 
     assert stored_values(path) == {
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5"
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5"
     }

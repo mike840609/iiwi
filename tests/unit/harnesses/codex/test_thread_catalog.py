@@ -5,11 +5,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.harnesses.codex.thread_catalog import (
+from iiwi.harnesses.codex.thread_catalog import (
     discover_threads,
     find_state_database,
 )
-from agent_worklog.models.time_range import DateRange
+from iiwi.models.time_range import DateRange
 from tests.codex_state_db import seconds, write_database
 
 TZ = ZoneInfo("Asia/Taipei")

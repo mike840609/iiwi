@@ -9,8 +9,8 @@ from zoneinfo import ZoneInfo
 from rich.cells import cell_len
 from rich.console import Console
 
-from agent_worklog.interactive.models import ReportDraft
-from agent_worklog.interactive.render import (
+from iiwi.interactive.models import ReportDraft
+from iiwi.interactive.render import (
     build_visible_rows,
     render_main_menu,
     render_recoverable_error,
@@ -19,15 +19,15 @@ from agent_worklog.interactive.render import (
     render_session_browser,
     render_session_review,
 )
-from agent_worklog.interactive.selection import SelectionState
-from agent_worklog.models.repository import (
+from iiwi.interactive.selection import SelectionState
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.time_range import DateRange
+from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -121,7 +121,7 @@ def test_main_menu_renders_navigation_and_footer() -> None:
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "Agent Worklog" in text
+    assert "Iiwi" in text
     assert "▶ Generate Report" in text
     assert "Browse Sessions" in text
     assert "↑↓ jk" in text
@@ -1122,7 +1122,7 @@ def _preview_session() -> AgentSession:
 
 
 def test_build_session_preview_lines_lists_meta_and_activities() -> None:
-    from agent_worklog.interactive.render import build_session_preview_lines
+    from iiwi.interactive.render import build_session_preview_lines
 
     lines = build_session_preview_lines(_preview_session())
 
@@ -1137,7 +1137,7 @@ def test_build_session_preview_lines_lists_meta_and_activities() -> None:
     assert '  {"file": "pyproject.toml"}' in lines
 
 def test_build_session_preview_lines_redacts_secret_shaped_content() -> None:
-    from agent_worklog.interactive.render import build_session_preview_lines
+    from iiwi.interactive.render import build_session_preview_lines
 
     session = _preview_session()
     session.activities[0].content = "set OPENAI_API_KEY sk-proj-not-a-real-secret-key"
@@ -1149,7 +1149,7 @@ def test_build_session_preview_lines_redacts_secret_shaped_content() -> None:
 
 
 def test_render_session_preview_shows_the_session() -> None:
-    from agent_worklog.interactive.render import render_session_preview
+    from iiwi.interactive.render import render_session_preview
 
     console, stream = _console()
     render_session_preview(console, _preview_session(), offset=0)
@@ -1162,37 +1162,37 @@ def test_render_session_preview_shows_the_session() -> None:
 
 
 def test_main_menu_title_row_shows_the_version_right_aligned() -> None:
-    import agent_worklog
-    from agent_worklog.interactive.render import render_main_menu
+    import iiwi
+    from iiwi.interactive.render import render_main_menu
 
     console, stream = _console(width=100)
     render_main_menu(console, selected=0)
 
-    title_line = _row(stream.getvalue(), "Agent Worklog")
-    assert f"v{agent_worklog.__version__}" in title_line
+    title_line = _row(stream.getvalue(), "Iiwi")
+    assert f"v{iiwi.__version__}" in title_line
 
 
 def test_main_menu_omits_the_version_on_a_narrow_terminal() -> None:
-    import agent_worklog
-    from agent_worklog.interactive.render import render_main_menu
+    import iiwi
+    from iiwi.interactive.render import render_main_menu
 
-    console, stream = _console(width=19)
+    console, stream = _console(width=10)
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "Agent Worklog" in text
-    assert f"v{agent_worklog.__version__}" not in text
+    assert "Iiwi" in text
+    assert f"v{iiwi.__version__}" not in text
 
 
-def test_main_menu_fits_the_version_at_exactly_twenty_cells() -> None:
-    """The title row is 13 title cells + 1 gap + 6 version cells, so width 20
-    is exactly the fit boundary: the version must still appear (1-cell padding)."""
+def test_main_menu_fits_the_version_at_exactly_eleven_cells() -> None:
+    """The title row is 4 title cells + 1 gap + 6 version cells, so width 11
+    is exactly the fit boundary: the version must still appear (no padding)."""
 
-    import agent_worklog
-    from agent_worklog.interactive.render import render_main_menu
+    import iiwi
+    from iiwi.interactive.render import render_main_menu
 
-    console, stream = _console(width=20)
+    console, stream = _console(width=11)
     render_main_menu(console, selected=0)
 
-    title_line = _row(stream.getvalue(), "Agent Worklog")
-    assert f"v{agent_worklog.__version__}" in title_line
+    title_line = _row(stream.getvalue(), "Iiwi")
+    assert f"v{iiwi.__version__}" in title_line

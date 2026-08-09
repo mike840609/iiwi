@@ -1,6 +1,6 @@
-from agent_worklog.config import AppSettings
-from agent_worklog.process import CommandResult
-from agent_worklog.services.doctor import run_doctor
+from iiwi.config import AppSettings
+from iiwi.process import CommandResult
+from iiwi.services.doctor import run_doctor
 
 
 def test_doctor_checks_opencode_version_db_path_and_git(fake_runner) -> None:
@@ -42,8 +42,8 @@ def test_doctor_reports_a_timed_out_check_instead_of_crashing(fake_runner) -> No
 
 
 def test_doctor_skips_opencode_checks_for_claude_code(tmp_path) -> None:
-    from agent_worklog.config import AppSettings
-    from agent_worklog.services.doctor import run_doctor
+    from iiwi.config import AppSettings
+    from iiwi.services.doctor import run_doctor
 
     class RecordingRunner:
         def __init__(self) -> None:
@@ -65,8 +65,8 @@ def test_doctor_skips_opencode_checks_for_claude_code(tmp_path) -> None:
 
 
 def test_doctor_fails_when_the_projects_directory_is_missing(tmp_path) -> None:
-    from agent_worklog.config import AppSettings
-    from agent_worklog.services.doctor import run_doctor
+    from iiwi.config import AppSettings
+    from iiwi.services.doctor import run_doctor
 
     class GitOnlyRunner:
         def run(self, args: list[str]) -> CommandResult:
@@ -84,7 +84,7 @@ def test_codex_doctor_reports_the_home_directory_and_discovery_path(
     tmp_path, monkeypatch, fake_runner
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path)
+        "IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path)
     )
     (tmp_path / "state_5.sqlite").write_text("", encoding="utf-8")
     settings = AppSettings()
@@ -101,7 +101,7 @@ def test_codex_doctor_fails_on_a_missing_home_directory(
     tmp_path, monkeypatch, fake_runner
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "absent")
+        "IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "absent")
     )
     settings = AppSettings()
 

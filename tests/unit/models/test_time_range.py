@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.models.time_range import DateRange
+from iiwi.models.time_range import DateRange
 
 TZ = ZoneInfo("Asia/Taipei")
 

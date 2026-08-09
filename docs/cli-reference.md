@@ -16,8 +16,8 @@ Every command, option, and exit code. For a guided tour instead, see the
 | `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
 | `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
 
-Running `agent-worklog` with no arguments opens the key-driven interactive menu.
-`agent-worklog --help` prints the command list instead, and `agent-worklog
+Running `iiwi` with no arguments opens the key-driven interactive menu.
+`iiwi --help` prints the command list instead, and `iiwi
 --version` prints the installed version. Direct subcommands remain unchanged
 and are still the supported interface for scripts, CI, and pipelines.
 
@@ -104,8 +104,8 @@ it is emitted, matching the redaction the interactive and file paths apply.
   "excluded_session_count": 0,
   "repositories": [
     {
-      "id": "git:github.com/mike/agent-worklog",
-      "name": "Agent Worklog",
+      "id": "git:github.com/mike/iiwi",
+      "name": "Iiwi",
       "sessions": [
         { "id": "...", "title": "...", "messages": 42, "directory": "/path" }
       ]
@@ -119,7 +119,7 @@ it is emitted, matching the redaction the interactive and file paths apply.
 "ok": true, "detail": "..."}]}`, and `history --json` emits an array of
 recorded reports. When stdout is not a terminal, `scan`, `doctor`, `history`,
 and `update` switch to JSON automatically, so
-`agent-worklog scan --period last-week | jq '.repositories'`
+`iiwi scan --period last-week | jq '.repositories'`
 just works; `--quiet` keeps its human contract and opts out of the auto-switch.
 
 ## Progress output
@@ -201,6 +201,6 @@ failed check prints the reason and exits 0, and in JSON mode emits
 | 7 | Report file error |
 | 8 | Update available (`update` only) |
 
-If one session cannot be read, Agent Worklog skips it and adds a warning to the report.
+If one session cannot be read, Iiwi skips it and adds a warning to the report.
 If no sessions can be read, the command stops with an error instead of creating an empty
 report.

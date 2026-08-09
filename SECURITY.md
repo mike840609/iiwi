@@ -1,6 +1,6 @@
 # Security
 
-Agent Worklog turns coding-agent session transcripts into engineering reports,
+Iiwi turns coding-agent session transcripts into engineering reports,
 so its threat model is about transcript data — what is read, what is written,
 and what leaves the machine. The guiding principle is:
 
@@ -13,7 +13,7 @@ and what leaves the machine. The guiding principle is:
 
 Please do not open a public issue for a vulnerability. Report it privately to
 the maintainers via GitHub's private vulnerability reporting at
-<https://github.com/mike840609/agent-worklog/security/advisories>, or by
+<https://github.com/mike840609/iiwi/security/advisories>, or by
 contacting the maintainers directly. We aim to acknowledge reports within 3
 business days.
 
@@ -29,7 +29,7 @@ business days.
 - **Narrative**: the prose review is produced by your locally installed
   `opencode run` from the redacted, grouped transcript. No cloud call.
 - **Writes**: the report file is written atomically with owner-only
-  permissions. The report history log (`~/.local/share/agent-worklog/` or the
+  permissions. The report history log (`~/.local/share/iiwi/` or the
   platform data dir) is append-only and holds only metadata — no transcript
   content.
 

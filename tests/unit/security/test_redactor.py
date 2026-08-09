@@ -1,4 +1,4 @@
-from agent_worklog.security.redactor import redact_text, redact_value
+from iiwi.security.redactor import redact_text, redact_value
 
 
 def test_recursive_metadata_redaction() -> None:

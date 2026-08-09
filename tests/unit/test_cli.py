@@ -2,7 +2,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from agent_worklog.cli import app
+from iiwi.cli import app
 
 runner = CliRunner()
 
@@ -19,7 +19,7 @@ def test_help_lists_core_commands() -> None:
 def test_scan_rejects_an_unknown_harness() -> None:
     from typer.testing import CliRunner
 
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--harness", "unknown"])
 
@@ -30,10 +30,10 @@ def test_build_scan_service_selects_the_claude_code_source(tmp_path) -> None:
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    import agent_worklog.cli as cli
-    from agent_worklog.config import AppSettings
-    from agent_worklog.harnesses.claude_code.source import ClaudeCodeFileSource
-    from agent_worklog.models.time_range import DateRange
+    import iiwi.cli as cli
+    from iiwi.config import AppSettings
+    from iiwi.harnesses.claude_code.source import ClaudeCodeFileSource
+    from iiwi.models.time_range import DateRange
 
     tz = ZoneInfo("Asia/Taipei")
     settings = AppSettings()
@@ -62,19 +62,19 @@ def test_build_scan_service_drops_sessions_from_a_configured_excluded_repository
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    import agent_worklog.cli as cli
-    from agent_worklog.config import AppSettings
-    from agent_worklog.models.repository import (
+    import iiwi.cli as cli
+    from iiwi.config import AppSettings
+    from iiwi.models.repository import (
         RepositoryIdentity,
         RepositoryIdentityType,
     )
-    from agent_worklog.models.session import (
+    from iiwi.models.session import (
         ActivityType,
         AgentSession,
         SessionActivity,
         SessionDescriptor,
     )
-    from agent_worklog.models.time_range import DateRange
+    from iiwi.models.time_range import DateRange
 
     tz = ZoneInfo("Asia/Taipei")
     period = DateRange(
@@ -160,10 +160,10 @@ def test_build_report_service_carries_the_detail_level(tmp_path) -> None:
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    import agent_worklog.cli as cli
-    from agent_worklog.config import AppSettings
-    from agent_worklog.models.time_range import DateRange
-    from agent_worklog.renderers.markdown import DetailLevel
+    import iiwi.cli as cli
+    from iiwi.config import AppSettings
+    from iiwi.models.time_range import DateRange
+    from iiwi.renderers.markdown import DetailLevel
 
     tz = ZoneInfo("Asia/Taipei")
     settings = AppSettings()
@@ -187,25 +187,25 @@ def test_build_report_service_carries_the_detail_level(tmp_path) -> None:
 def test_a_disabled_harness_is_refused_with_a_configuration_error(tmp_path) -> None:
     """An off switch a privacy tool advertises has to actually turn something off."""
 
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     result = CliRunner().invoke(
         cli.app,
         ["scan", "--days", "7", "--harness", "claude-code"],
-        env={"AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED": "false"},
+        env={"IIWI_HARNESSES__CLAUDE_CODE__ENABLED": "false"},
     )
 
     assert result.exit_code == 3
-    assert "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED" in result.stdout
+    assert "IIWI_HARNESSES__CLAUDE_CODE__ENABLED" in result.stdout
 
 
 def test_doctor_refuses_a_disabled_harness() -> None:
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     result = CliRunner().invoke(
         cli.app,
         ["doctor", "--harness", "opencode"],
-        env={"AGENT_WORKLOG_HARNESSES__OPENCODE__ENABLED": "false"},
+        env={"IIWI_HARNESSES__OPENCODE__ENABLED": "false"},
     )
 
     assert result.exit_code == 3
@@ -213,14 +213,14 @@ def test_doctor_refuses_a_disabled_harness() -> None:
 
 
 def test_report_still_runs_when_the_harness_is_enabled(tmp_path) -> None:
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     result = CliRunner().invoke(
         cli.app,
         ["scan", "--days", "7", "--harness", "claude-code"],
         env={
-            "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__ENABLED": "true",
-            "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(tmp_path),
+            "IIWI_HARNESSES__CLAUDE_CODE__ENABLED": "true",
+            "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(tmp_path),
         },
     )
 
@@ -232,7 +232,7 @@ def test_no_sessions_message_only_claims_exclusion_when_it_is_the_whole_story() 
     exclusion explanation is claimed only when exclusion removed every session
     and something else did not eat the rest.
     """
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     neutral = (
         (cli.Harness.OPENCODE, "no opencode activity found in the requested period"),
@@ -258,12 +258,12 @@ def test_no_sessions_message_only_claims_exclusion_when_it_is_the_whole_story() 
 
 
 def test_load_settings_reads_the_settings_file(monkeypatch, tmp_path) -> None:
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     path = tmp_path / "config.env"
-    path.write_text("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='from-file'\n", encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    path.write_text("IIWI_HARNESSES__OPENCODE__CLI__MODEL='from-file'\n", encoding="utf-8")
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
 
     assert cli._load_settings().harnesses.opencode.cli.model == "from-file"
 
@@ -271,12 +271,12 @@ def test_load_settings_reads_the_settings_file(monkeypatch, tmp_path) -> None:
 def test_the_environment_beats_the_settings_file(monkeypatch, tmp_path) -> None:
     """The file is a default store, not an override: an exported variable wins."""
 
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     path = tmp_path / "config.env"
-    path.write_text("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='from-file'\n", encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.setenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", "from-environment")
+    path.write_text("IIWI_HARNESSES__OPENCODE__CLI__MODEL='from-file'\n", encoding="utf-8")
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.setenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", "from-environment")
 
     assert cli._load_settings().harnesses.opencode.cli.model == "from-environment"
 
@@ -286,15 +286,15 @@ def test_load_settings_points_at_the_file_when_it_holds_a_bad_value(
 ) -> None:
     import pytest
 
-    import agent_worklog.cli as cli
-    from agent_worklog.errors import ConfigurationError
+    import iiwi.cli as cli
+    from iiwi.errors import ConfigurationError
 
     path = tmp_path / "config.env"
     path.write_text(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS='abc'\n",
+        "IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS='abc'\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
 
     with pytest.raises(ConfigurationError) as error:
         cli._load_settings()
@@ -313,16 +313,16 @@ def test_load_settings_ignores_a_foreign_variable_in_the_settings_file(
     into a hard `extra_forbidden` failure.
     """
 
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     path = tmp_path / "config.env"
     path.write_text(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='gpt-5'\n"
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL='gpt-5'\n"
         "OPENAI_API_KEY='sk-proj-not-a-real-secret-key'\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
 
     settings = cli._load_settings()
 
@@ -342,16 +342,16 @@ def test_load_settings_does_not_echo_a_secret_looking_value_in_its_error(
 
     import pytest
 
-    import agent_worklog.cli as cli
-    from agent_worklog.errors import ConfigurationError
+    import iiwi.cli as cli
+    from iiwi.errors import ConfigurationError
 
     path = tmp_path / "config.env"
     path.write_text(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS="
+        "IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS="
         "'sk-proj-not-a-real-secret-key'\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
 
     with pytest.raises(ConfigurationError) as error:
         cli._load_settings()
@@ -364,7 +364,7 @@ def _stub_scan_service(monkeypatch, scan):
     """Point `scan`'s service seam at a canned result, keeping the command's
     option plumbing and output handling under test."""
 
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     class StubScanService:
         def scan(self):
@@ -382,19 +382,19 @@ def _stub_scan(monkeypatch):
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    import agent_worklog.cli as cli
-    from agent_worklog.models.repository import (
+    import iiwi.cli as cli
+    from iiwi.models.repository import (
         RepositoryIdentity,
         RepositoryIdentityType,
         ResolvedSession,
     )
-    from agent_worklog.models.session import (
+    from iiwi.models.session import (
         ActivityType,
         AgentSession,
         SessionActivity,
     )
-    from agent_worklog.models.time_range import DateRange
-    from agent_worklog.services.scan import ScanResult
+    from iiwi.models.time_range import DateRange
+    from iiwi.services.scan import ScanResult
 
     tz = ZoneInfo("Asia/Taipei")
     session = AgentSession(
@@ -477,8 +477,8 @@ def test_scan_no_json_forces_the_human_table_when_piped(monkeypatch) -> None:
 def test_doctor_json_flag_emits_machine_readable_output(monkeypatch) -> None:
     import json
 
-    import agent_worklog.cli as cli
-    from agent_worklog.services.doctor import DoctorCheck, DoctorResult
+    import iiwi.cli as cli
+    from iiwi.services.doctor import DoctorCheck, DoctorResult
 
     monkeypatch.setattr(
         cli,
@@ -511,10 +511,10 @@ def _seed_history(monkeypatch, tmp_path) -> Path:
     from pathlib import Path
     from zoneinfo import ZoneInfo
 
-    import agent_worklog.history as history
+    import iiwi.history as history
 
     path = tmp_path / "history.jsonl"
-    monkeypatch.setenv("AGENT_WORKLOG_HISTORY_FILE", str(path))
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(path))
     history.append_history(
         history.HistoryEntry(
             generated_at=datetime(2026, 8, 3, 9, 0, tzinfo=ZoneInfo("Asia/Taipei")),
@@ -535,7 +535,7 @@ def _seed_history(monkeypatch, tmp_path) -> Path:
 def test_history_json_flag_emits_entries(monkeypatch, tmp_path) -> None:
     import json
 
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     _seed_history(monkeypatch, tmp_path)
 
@@ -554,7 +554,7 @@ def test_history_json_flag_emits_entries(monkeypatch, tmp_path) -> None:
 def test_history_emits_json_automatically_when_piped(monkeypatch, tmp_path) -> None:
     import json
 
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     _seed_history(monkeypatch, tmp_path)
 
@@ -565,9 +565,9 @@ def test_history_emits_json_automatically_when_piped(monkeypatch, tmp_path) -> N
 
 
 def test_history_empty_file_prints_a_message(monkeypatch, tmp_path) -> None:
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
-    monkeypatch.setenv("AGENT_WORKLOG_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
 
     result = CliRunner().invoke(cli.app, ["history", "--no-json"])
 
@@ -580,12 +580,12 @@ def test_report_records_a_history_entry_after_writing(monkeypatch, tmp_path) -> 
     from types import SimpleNamespace
     from zoneinfo import ZoneInfo
 
-    import agent_worklog.cli as cli
-    import agent_worklog.history as history
-    from agent_worklog.models.report import RepositorySummary, WorklogReport
+    import iiwi.cli as cli
+    import iiwi.history as history
+    from iiwi.models.report import RepositorySummary, WorklogReport
 
     history_path = tmp_path / "history.jsonl"
-    monkeypatch.setenv("AGENT_WORKLOG_HISTORY_FILE", str(history_path))
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(history_path))
 
     class StubReportService:
         def __init__(self, output_path, period) -> None:
@@ -646,7 +646,7 @@ def test_report_records_a_history_entry_after_writing(monkeypatch, tmp_path) -> 
 
 def _stub_update(monkeypatch, info):
     """Point the `update` command's check seam at a canned result."""
-    import agent_worklog.cli as cli
+    import iiwi.cli as cli
 
     monkeypatch.setattr(
         cli,
@@ -659,7 +659,7 @@ def _stub_update(monkeypatch, info):
 def test_update_json_flag_emits_machine_readable_output(monkeypatch) -> None:
     import json
 
-    from agent_worklog.update import UpdateInfo
+    from iiwi.update import UpdateInfo
 
     cli = _stub_update(
         monkeypatch,
@@ -667,7 +667,7 @@ def test_update_json_flag_emits_machine_readable_output(monkeypatch) -> None:
             current="0.8.0",
             latest="0.9.0",
             update_available=True,
-            upgrade_command="pipx upgrade agent-worklog",
+            upgrade_command="pipx upgrade iiwi",
         ),
     )
 
@@ -678,13 +678,13 @@ def test_update_json_flag_emits_machine_readable_output(monkeypatch) -> None:
     assert payload["current"] == "0.8.0"
     assert payload["latest"] == "0.9.0"
     assert payload["update_available"] is True
-    assert payload["upgrade_command"] == "pipx upgrade agent-worklog"
+    assert payload["upgrade_command"] == "pipx upgrade iiwi"
 
 
 def test_update_emits_json_automatically_when_piped(monkeypatch) -> None:
     import json
 
-    from agent_worklog.update import UpdateInfo
+    from iiwi.update import UpdateInfo
 
     cli = _stub_update(
         monkeypatch,
@@ -692,7 +692,7 @@ def test_update_emits_json_automatically_when_piped(monkeypatch) -> None:
             current="0.9.0",
             latest="0.9.0",
             update_available=False,
-            upgrade_command="pipx upgrade agent-worklog",
+            upgrade_command="pipx upgrade iiwi",
         ),
     )
 
@@ -703,7 +703,7 @@ def test_update_emits_json_automatically_when_piped(monkeypatch) -> None:
 
 
 def test_update_reports_upgrade_command_when_behind(monkeypatch) -> None:
-    from agent_worklog.update import UpdateInfo
+    from iiwi.update import UpdateInfo
 
     cli = _stub_update(
         monkeypatch,
@@ -711,7 +711,7 @@ def test_update_reports_upgrade_command_when_behind(monkeypatch) -> None:
             current="0.8.0",
             latest="0.9.0",
             update_available=True,
-            upgrade_command="pipx upgrade agent-worklog",
+            upgrade_command="pipx upgrade iiwi",
         ),
     )
 
@@ -719,11 +719,11 @@ def test_update_reports_upgrade_command_when_behind(monkeypatch) -> None:
 
     assert result.exit_code == 8
     assert "0.9.0" in result.stdout
-    assert "pipx upgrade agent-worklog" in result.stdout
+    assert "pipx upgrade iiwi" in result.stdout
 
 
 def test_update_says_up_to_date(monkeypatch) -> None:
-    from agent_worklog.update import UpdateInfo
+    from iiwi.update import UpdateInfo
 
     cli = _stub_update(
         monkeypatch,
@@ -731,7 +731,7 @@ def test_update_says_up_to_date(monkeypatch) -> None:
             current="0.9.0",
             latest="0.9.0",
             update_available=False,
-            upgrade_command="pipx upgrade agent-worklog",
+            upgrade_command="pipx upgrade iiwi",
         ),
     )
 
@@ -742,8 +742,8 @@ def test_update_says_up_to_date(monkeypatch) -> None:
 
 
 def test_update_network_failure_is_not_an_error(monkeypatch) -> None:
-    import agent_worklog.cli as cli
-    from agent_worklog.update import UpdateCheckError
+    import iiwi.cli as cli
+    from iiwi.update import UpdateCheckError
 
     def fail(**kwargs):
         raise UpdateCheckError("could not reach the version index: connection refused")
@@ -757,9 +757,9 @@ def test_update_network_failure_is_not_an_error(monkeypatch) -> None:
 
 
 def test_version_flag_prints_the_installed_version() -> None:
-    import agent_worklog
+    import iiwi
 
-    result = CliRunner().invoke(agent_worklog.cli.app, ["--version"])
+    result = CliRunner().invoke(iiwi.cli.app, ["--version"])
 
     assert result.exit_code == 0
-    assert f"agent-worklog {agent_worklog.__version__}" in result.stdout
+    assert f"iiwi {iiwi.__version__}" in result.stdout

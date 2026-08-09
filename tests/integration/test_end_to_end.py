@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from typer.testing import CliRunner
 
-import agent_worklog.cli as cli
+import iiwi.cli as cli
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -40,12 +40,12 @@ def test_end_to_end_weekly_worklog(
 
     assert result.exit_code == 0, result.stdout
     content = output.read_text(encoding="utf-8")
-    assert "github.com/mike/agent-worklog" in content
+    assert "github.com/mike/iiwi" in content
     assert "github.com/mike/assets-tracker" in content
     assert "github.com/team-a/api" in content
     assert "github.com/team-b/api" in content
     assert "super-secret-token" not in content
-    assert content.count("### Agent Worklog") == 1
+    assert content.count("### Iiwi") == 1
     assert "#### Sessions" in content
     assert "root-agent" in content
     assert "#### Directories" in content

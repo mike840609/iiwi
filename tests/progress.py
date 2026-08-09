@@ -1,4 +1,4 @@
-from agent_worklog.progress import ProgressStage
+from iiwi.progress import ProgressStage
 
 
 class RecordingProgressReporter:

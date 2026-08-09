@@ -1,9 +1,9 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.sessions.filtering import filter_session_to_period
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.time_range import DateRange
+from iiwi.sessions.filtering import filter_session_to_period
 
 TZ = ZoneInfo("Asia/Taipei")
 

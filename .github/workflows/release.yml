@@ -33,7 +33,7 @@ jobs:
 
       - name: Verify package
         run: |
-          uv run pytest --cov=agent_worklog --cov-fail-under=80
+          uv run pytest --cov=iiwi --cov-fail-under=80
           uv run ruff check .
           uv run pyright
           uv build

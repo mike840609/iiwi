@@ -1,6 +1,6 @@
-# Releasing Agent Worklog
+# Releasing Iiwi
 
-Agent Worklog publishes wheels and source distributions to PyPI through GitHub Actions and PyPI Trusted Publishing. No long-lived PyPI API token is stored in GitHub.
+Iiwi publishes wheels and source distributions to PyPI through GitHub Actions and PyPI Trusted Publishing. No long-lived PyPI API token is stored in GitHub.
 
 The repository's default and release branch is `main`.
 
@@ -10,9 +10,9 @@ Create a Pending Trusted Publisher on PyPI with these exact values:
 
 | Field | Value |
 |---|---|
-| PyPI project name | `agent-worklog` |
+| PyPI project name | `iiwi` |
 | GitHub owner | `mike840609` |
-| Repository | `agent-worklog` |
+| Repository | `iiwi` |
 | Workflow filename | `release.yml` |
 | Environment | `pypi` |
 
@@ -26,7 +26,7 @@ The build job runs:
 
 ```bash
 uv sync --locked --extra dev
-uv run pytest --cov=agent_worklog --cov-fail-under=80
+uv run pytest --cov=iiwi --cov-fail-under=80
 uv run ruff check .
 uv run pyright
 uv build
@@ -60,12 +60,12 @@ If the `publish` job succeeds but the later `release` job fails, diagnose the fa
 
 ```bash
 version=0.1.0
-gh run view RUN_ID --repo mike840609/agent-worklog --json jobs \
+gh run view RUN_ID --repo mike840609/iiwi --json jobs \
   --jq '.jobs[] | [.name, .conclusion] | @tsv'
-curl -fsS "https://pypi.org/pypi/agent-worklog/${version}/json" |
+curl -fsS "https://pypi.org/pypi/iiwi/${version}/json" |
   uv run python -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])'
-gh run rerun RUN_ID --repo mike840609/agent-worklog --failed
-gh run watch RUN_ID --repo mike840609/agent-worklog --exit-status
+gh run rerun RUN_ID --repo mike840609/iiwi --failed
+gh run watch RUN_ID --repo mike840609/iiwi --exit-status
 ```
 
 Proceed only when `publish` is recorded as successful, `release` as failed, and the PyPI query prints the requested version. `--failed` then reruns only the separate `release` job. That job downloads the original `distributions` artifact and creates the missing GitHub Release. It creates the release as a draft, replaces both assets, and publishes only after both uploads succeed. On retry, it reuses any existing draft; if the preceding attempt published successfully before the runner reported failure, it verifies that both assets exist.
@@ -75,13 +75,13 @@ If the job conclusions do not have that exact shape, or PyPI does not contain th
 ## Install after publication
 
 ```bash
-pip install agent-worklog
+pip install iiwi
 ```
 
 For the CLI, isolated installation is preferred:
 
 ```bash
-pipx install agent-worklog
+pipx install iiwi
 # or
-uv tool install agent-worklog
+uv tool install iiwi
 ```

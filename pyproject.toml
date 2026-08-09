@@ -1,7 +1,7 @@
 [project]
-name = "agent-worklog"
+name = "iiwi"
 version = "0.8.0"
-description = "Turn coding-agent sessions into repository-based engineering reports"
+description = "Agent Session Intelligence for engineering work"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Mike" }]
@@ -31,7 +31,7 @@ dev = [
 ]
 
 [project.scripts]
-agent-worklog = "agent_worklog.cli:app"
+iiwi = "iiwi.cli:app"
 
 [build-system]
 requires = ["hatchling>=1.27"]

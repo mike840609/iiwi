@@ -3,16 +3,16 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.errors import HarnessSourceError
-from agent_worklog.models.repository import (
+from iiwi.errors import HarnessSourceError
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.renderers.usage import render_activity_usage
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.time_range import DateRange
+from iiwi.renderers.usage import render_activity_usage
+from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 PERIOD = DateRange(
@@ -40,8 +40,8 @@ def _scan(*activities: SessionActivity) -> ScanResult:
     resolved = ResolvedSession(
         session=session,
         repository=RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
