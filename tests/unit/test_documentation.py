@@ -48,7 +48,7 @@ def test_privacy_doc_explains_the_claude_code_sanitize_gap() -> None:
 def test_configuration_doc_lists_the_claude_code_settings() -> None:
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
 
-    assert "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY" in configuration
+    assert "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY" in configuration
 
 
 def test_cli_reference_documents_interactive_progress() -> None:
@@ -118,7 +118,7 @@ def test_configuration_doc_explains_the_file_and_its_precedence() -> None:
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
 
     assert "config.env" in configuration
-    assert "AGENT_WORKLOG_CONFIG_FILE" in configuration
+    assert "IIWI_CONFIG_FILE" in configuration
     assert "agent-worklog config path" in configuration
     # The order is the whole contract of the file.
     assert "environment variable, then the settings file, then the default" in configuration
@@ -132,9 +132,9 @@ def test_every_variable_in_the_configuration_doc_is_a_real_setting() -> None:
     from iiwi.config_store import setting_keys
 
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
-    documented = set(re.findall(r"AGENT_WORKLOG_[A-Z0-9_]+", configuration))
+    documented = set(re.findall(r"IIWI_[A-Z0-9_]+", configuration))
     known = {setting.variable for setting in setting_keys()}
-    known.add("AGENT_WORKLOG_CONFIG_FILE")
+    known.add("IIWI_CONFIG_FILE")
 
     assert documented <= known, f"documented but not settable: {documented - known}"
 
@@ -159,14 +159,14 @@ def test_readmes_document_the_local_opencode_narrative() -> None:
 def test_configuration_documents_opencode_sanitize_setting() -> None:
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
 
-    assert "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE" in configuration
+    assert "IIWI_HARNESSES__OPENCODE__CLI__SANITIZE" in configuration
 
 
 def test_configuration_documents_opencode_run_settings() -> None:
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
 
-    assert "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS" in configuration
-    assert "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL" in configuration
+    assert "IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS" in configuration
+    assert "IIWI_HARNESSES__OPENCODE__CLI__MODEL" in configuration
 
 
 def test_privacy_doc_warns_about_raw_export_and_dry_run() -> None:

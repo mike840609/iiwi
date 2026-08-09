@@ -20,7 +20,7 @@ from platformdirs import user_data_dir
 
 from iiwi.security.secure_files import atomic_secure_write
 
-STATE_FILE_VARIABLE = "AGENT_WORKLOG_STATE_FILE"
+STATE_FILE_VARIABLE = "IIWI_STATE_FILE"
 
 
 def state_file_path() -> Path:
@@ -29,7 +29,7 @@ def state_file_path() -> Path:
     override = os.environ.get(STATE_FILE_VARIABLE)
     if override:
         return Path(override).expanduser()
-    return Path(user_data_dir("agent-worklog")) / "state.json"
+    return Path(user_data_dir("iiwi")) / "state.json"
 
 
 def period_key(*, since: datetime, until: datetime) -> str:

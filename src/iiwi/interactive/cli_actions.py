@@ -218,12 +218,12 @@ def _exclude_repository(repository_id: str, display_name: str) -> str:
 
     from iiwi import cli, config_store
 
-    if os.environ.get("AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES") is not None:
+    if os.environ.get("IIWI_REPORT__EXCLUDE_REPOSITORIES") is not None:
         # The environment outranks the settings file, so an exclusion written
         # here would be ignored by every later run that exports the variable.
         return (
             "report.exclude_repositories is set in the environment; unset "
-            "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES to persist exclusions."
+            "IIWI_REPORT__EXCLUDE_REPOSITORIES to persist exclusions."
         )
     settings = cli._load_settings()
     existing = settings.report.excluded_repository_ids()
@@ -236,7 +236,7 @@ def _exclude_repository(repository_id: str, display_name: str) -> str:
     )
     return (
         f"Excluded {redact_text(display_name)}; future scans will skip it. "
-        "Undo with: agent-worklog config unset report.exclude_repositories"
+        "Undo with: iiwi config unset report.exclude_repositories"
     )
 
 

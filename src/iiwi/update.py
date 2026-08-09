@@ -17,9 +17,9 @@ from dataclasses import dataclass
 from iiwi import __version__ as _current_version
 from iiwi.errors import IiwiError
 
-LATEST_URL = "https://pypi.org/pypi/agent-worklog/json"
+LATEST_URL = "https://pypi.org/pypi/iiwi/json"
 _NETWORK_TIMEOUT_SECONDS = 10.0
-UPGRADE_COMMAND = "pipx upgrade agent-worklog"
+UPGRADE_COMMAND = "pipx upgrade iiwi"
 
 
 class UpdateCheckError(IiwiError):
@@ -68,7 +68,7 @@ def _fetch_raw(*, url: str, timeout: float) -> str:
 
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": f"agent-worklog/{current_version()} (version check)"},
+        headers={"User-Agent": f"iiwi/{current_version()} (version check)"},
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8")

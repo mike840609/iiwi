@@ -27,7 +27,7 @@ def test_behind_installation_reports_update_and_upgrade_command() -> None:
     info = check_for_update(fetcher=_fetcher(_LATEST_JSON), current="0.8.0")
 
     assert info.update_available is True
-    assert info.upgrade_command == "pipx upgrade agent-worklog"
+    assert info.upgrade_command == "pipx upgrade iiwi"
 
 
 def test_newer_than_latest_means_up_to_date() -> None:
@@ -74,3 +74,13 @@ def test_current_version_defaults_to_the_installed_version() -> None:
     info = check_for_update(fetcher=_fetcher({"info": {"version": "0.9.0"}}))
 
     assert info.current == iiwi.__version__
+
+def test_update_uses_the_iiwi_index() -> None:
+    seen: list[str] = []
+
+    check_for_update(
+        fetcher=lambda url: seen.append(url) or json.dumps(_LATEST_JSON),
+        current="0.9.0",
+    )
+
+    assert seen == ["https://pypi.org/pypi/iiwi/json"]

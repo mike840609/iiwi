@@ -494,12 +494,12 @@ def test_dry_run_keeps_progress_out_of_stdout(
 
 
 def test_disabled_codex_harness_is_refused(monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_HARNESSES__CODEX__ENABLED", "false")
+    monkeypatch.setenv("IIWI_HARNESSES__CODEX__ENABLED", "false")
 
     result = CliRunner().invoke(cli.app, ["doctor", "--harness", "codex"])
 
     assert result.exit_code == 3
-    assert "AGENT_WORKLOG_HARNESSES__CODEX__ENABLED" in result.stdout
+    assert "IIWI_HARNESSES__CODEX__ENABLED" in result.stdout
 def test_report_passes_the_detail_level_to_the_report_service(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -595,7 +595,7 @@ def test_report_rejects_an_unknown_detail_level(tmp_path: Path) -> None:
 
 
 def test_config_path_prints_the_settings_file(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
 
     result = CliRunner().invoke(cli.app, ["config", "path"])
 
@@ -606,18 +606,18 @@ def test_config_path_prints_the_settings_file(monkeypatch, tmp_path) -> None:
 def test_config_list_shows_the_value_in_force_and_its_source(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
     path.write_text(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='stored-model'\n",
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL='stored-model'\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
     monkeypatch.delenv(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL", raising=False
     )
     # A second setting, set through the environment rather than the file, so the
     # source column is pinned independently: "environment" collides with nothing
     # else in the output, unlike "file" which also appears in the footer's
     # "Settings file: ..." line.
-    monkeypatch.setenv("AGENT_WORKLOG_REPORT__TIMEZONE", "UTC")
+    monkeypatch.setenv("IIWI_REPORT__TIMEZONE", "UTC")
     # Rich wraps to 80 columns when stdout is not a terminal, which would split
     # the longer settings across lines and break these substring assertions.
     monkeypatch.setenv("COLUMNS", "200")
@@ -649,8 +649,8 @@ def test_help_lists_the_config_command() -> None:
 
 def test_config_set_writes_the_value_and_the_next_load_reads_it(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
 
     result = CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", "gpt-5"])
 
@@ -664,8 +664,8 @@ def test_config_set_accepts_a_comma_separated_exclusion_list(
     """The exclusion setting is a string so `config set` can store it verbatim."""
 
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES", raising=False)
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_REPORT__EXCLUDE_REPOSITORIES", raising=False)
 
     result = CliRunner().invoke(
         cli.app,
@@ -677,7 +677,7 @@ def test_config_set_accepts_a_comma_separated_exclusion_list(
 
 
 def test_config_set_rejects_an_unknown_key(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
 
     result = CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.mdoel", "gpt-5"])
 
@@ -689,7 +689,7 @@ def test_config_set_rejects_a_value_the_settings_model_would_reject(
     monkeypatch, tmp_path
 ) -> None:
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
 
     result = CliRunner().invoke(
         cli.app, ["config", "set", "harnesses.opencode.cli.run_timeout_seconds", "abc"]
@@ -702,8 +702,8 @@ def test_config_set_rejects_a_value_the_settings_model_would_reject(
 
 def test_config_set_with_an_empty_value_restores_the_default(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
     CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", "gpt-5"])
 
     result = CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", ""])
@@ -715,8 +715,8 @@ def test_config_set_with_an_empty_value_restores_the_default(monkeypatch, tmp_pa
 
 def test_config_unset_restores_the_default(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
     CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", "gpt-5"])
 
     result = CliRunner().invoke(cli.app, ["config", "unset", "harnesses.opencode.cli.model"])
@@ -728,7 +728,7 @@ def test_config_unset_restores_the_default(monkeypatch, tmp_path) -> None:
 def test_config_unset_of_an_unset_key_says_the_default_is_already_in_use(
     monkeypatch, tmp_path
 ) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
     monkeypatch.setenv("COLUMNS", "200")
 
     result = CliRunner().invoke(cli.app, ["config", "unset", "harnesses.opencode.cli.model"])
@@ -742,14 +742,14 @@ def test_config_set_warns_when_the_environment_overrides_the_write(
 ) -> None:
     """Without this note the write is a silent no-op for the whole shell."""
 
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
-    monkeypatch.setenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", "from-environment")
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", "from-environment")
     monkeypatch.setenv("COLUMNS", "200")
 
     result = CliRunner().invoke(cli.app, ["config", "set", "harnesses.opencode.cli.model", "gpt-5"])
 
     assert result.exit_code == 0
-    assert "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL" in result.stdout
+    assert "IIWI_HARNESSES__OPENCODE__CLI__MODEL" in result.stdout
     assert "takes precedence" in result.stdout
 
 
@@ -770,7 +770,7 @@ def test_config_set_exits_3_instead_of_a_traceback_on_an_unwritable_directory(
 
     directory = tmp_path / "unwritable"
     directory.mkdir()
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(directory / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(directory / "config.env"))
     directory.chmod(0o500)
     try:
         result = CliRunner().invoke(
@@ -789,9 +789,9 @@ def test_config_list_exits_3_instead_of_a_traceback_on_an_unreadable_file(
 ) -> None:
     path = tmp_path / "config.env"
     path.write_text(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL='gpt-5'\n", encoding="utf-8"
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL='gpt-5'\n", encoding="utf-8"
     )
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
     path.chmod(0o000)
     try:
         result = CliRunner().invoke(cli.app, ["config", "list"])
@@ -815,8 +815,8 @@ def _as_a_terminal(monkeypatch) -> None:
 
 def test_config_set_prompts_when_the_value_is_omitted(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE", raising=False)
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE", raising=False)
     _as_a_terminal(monkeypatch)
 
     result = CliRunner().invoke(
@@ -834,8 +834,8 @@ def test_config_set_prompt_leaves_the_setting_alone_on_an_empty_answer(
     monkeypatch, tmp_path
 ) -> None:
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__EXECUTABLE", raising=False)
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE", raising=False)
     _as_a_terminal(monkeypatch)
 
     result = CliRunner().invoke(
@@ -851,7 +851,7 @@ def test_config_set_prompt_rejects_a_bad_value_and_asks_again(monkeypatch, tmp_p
     """A typo must not abort the prompt — the point of prompting is to fix it."""
 
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
     _as_a_terminal(monkeypatch)
 
     result = CliRunner().invoke(
@@ -866,7 +866,7 @@ def test_config_set_prompt_rejects_a_bad_value_and_asks_again(monkeypatch, tmp_p
 
 
 def test_config_set_rejects_an_unknown_key_before_prompting(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
     _as_a_terminal(monkeypatch)
 
     result = CliRunner().invoke(
@@ -880,7 +880,7 @@ def test_config_set_rejects_an_unknown_key_before_prompting(monkeypatch, tmp_pat
 def test_config_set_without_a_value_needs_a_terminal(monkeypatch, tmp_path) -> None:
     """In a pipe or in CI there is nobody to answer, so fail instead of reading stdin."""
 
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
     monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
 
     result = CliRunner().invoke(
@@ -892,8 +892,8 @@ def test_config_set_without_a_value_needs_a_terminal(monkeypatch, tmp_path) -> N
 
 
 def test_config_set_with_a_value_still_works_without_a_terminal(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
     monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
 
     result = CliRunner().invoke(
@@ -908,9 +908,9 @@ def test_config_init_walks_every_setting_and_writes_only_the_answers(
     monkeypatch, tmp_path
 ) -> None:
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
-    monkeypatch.delenv("AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
-    monkeypatch.delenv("AGENT_WORKLOG_REPORT__TIMEZONE", raising=False)
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_HARNESSES__OPENCODE__CLI__MODEL", raising=False)
+    monkeypatch.delenv("IIWI_REPORT__TIMEZONE", raising=False)
     _as_a_terminal(monkeypatch)
     settings = config_store.setting_keys()
     answers = {
@@ -926,15 +926,15 @@ def test_config_init_walks_every_setting_and_writes_only_the_answers(
     for setting in settings:
         assert setting.key in result.stdout
     assert config_store.stored_values(path) == {
-        "AGENT_WORKLOG_REPORT__TIMEZONE": "Europe/Berlin",
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL": "deepseek-r1",
+        "IIWI_REPORT__TIMEZONE": "Europe/Berlin",
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL": "deepseek-r1",
     }
     assert "Wrote 2 settings" in result.stdout
 
 
 def test_config_init_writes_nothing_when_every_answer_is_empty(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(path))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
     _as_a_terminal(monkeypatch)
     keystrokes = "\n" * len(config_store.setting_keys())
 
@@ -946,7 +946,7 @@ def test_config_init_writes_nothing_when_every_answer_is_empty(monkeypatch, tmp_
 
 
 def test_config_init_needs_a_terminal(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
     monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
 
     result = CliRunner().invoke(cli.app, ["config", "init"], input="\n" * 20)

@@ -15,8 +15,8 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from iiwi.config import AppSettings
 from iiwi.errors import ConfigurationError
 
-ENV_PREFIX = "AGENT_WORKLOG_"
-CONFIG_FILE_VARIABLE = "AGENT_WORKLOG_CONFIG_FILE"
+ENV_PREFIX = "IIWI_"
+CONFIG_FILE_VARIABLE = "IIWI_CONFIG_FILE"
 
 
 def config_file_path() -> Path:
@@ -29,7 +29,7 @@ def config_file_path() -> Path:
     override = os.environ.get(CONFIG_FILE_VARIABLE)
     if override:
         return Path(override).expanduser()
-    return Path(user_config_dir("agent-worklog")) / "config.env"
+    return Path(user_config_dir("iiwi")) / "config.env"
 
 
 def _as_text(value: object) -> str:
@@ -130,7 +130,7 @@ def _prepare_file(path: Path) -> None:
     """Create the file the first time only, owner-only, before dotenv writes to it.
 
     The mode is set only on a file this call creates: a pre-existing file —
-    for instance one `AGENT_WORKLOG_CONFIG_FILE` points at that some other
+    for instance one `IIWI_CONFIG_FILE` points at that some other
     tool or teammate already owns — must keep whatever mode it already has,
     not silently become 0600 on the first `config set`. `O_EXCL` makes
     "create if absent" atomic instead of a check-then-act race.

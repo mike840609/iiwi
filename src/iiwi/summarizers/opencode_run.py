@@ -180,4 +180,4 @@ class OpenCodeRunner:
     def _mkdtemp(self) -> str:
         import tempfile
 
-        return tempfile.mkdtemp(prefix="agent-worklog-report-")
+        return tempfile.mkdtemp(prefix="iiwi-report-")

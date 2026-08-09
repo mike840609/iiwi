@@ -84,7 +84,7 @@ def test_codex_doctor_reports_the_home_directory_and_discovery_path(
     tmp_path, monkeypatch, fake_runner
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path)
+        "IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path)
     )
     (tmp_path / "state_5.sqlite").write_text("", encoding="utf-8")
     settings = AppSettings()
@@ -101,7 +101,7 @@ def test_codex_doctor_fails_on_a_missing_home_directory(
     tmp_path, monkeypatch, fake_runner
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "absent")
+        "IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "absent")
     )
     settings = AppSettings()
 

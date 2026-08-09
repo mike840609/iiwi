@@ -14,7 +14,7 @@ from tests.codex_state_db import seconds, write_database
 def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Isolate the settings file to avoid reading a developer's or CI's real config.
 
-    _load_settings() resolves to a machine-global path when AGENT_WORKLOG_CONFIG_FILE
+    _load_settings() resolves to a machine-global path when IIWI_CONFIG_FILE
     is unset. This fixture ensures every test gets a guaranteed-nonexistent path
     in tmp_path, preventing nondeterministic failures when config set creates a
     real file.
@@ -22,9 +22,9 @@ def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     Per-test monkeypatch.setenv calls take precedence and will override this default.
     """
 
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
-    monkeypatch.setenv("AGENT_WORKLOG_HISTORY_FILE", str(tmp_path / "history.jsonl"))
-    monkeypatch.setenv("AGENT_WORKLOG_STATE_FILE", str(tmp_path / "state.json"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv("IIWI_STATE_FILE", str(tmp_path / "state.json"))
 
 
 @dataclass

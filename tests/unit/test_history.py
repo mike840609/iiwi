@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from iiwi.history import (
     HistoryEntry,
     append_history,
+    history_file_path,
     history_to_json,
     read_history,
 )
@@ -122,3 +123,11 @@ def test_history_entry_serialises_to_isoformat_datetimes(tmp_path) -> None:
     assert raw["generated_at"] == "2026-08-03T09:00:00+08:00"
     assert raw["since"] == "2026-07-27T00:00:00+08:00"
     assert raw["output_path"] == "reports/worklog-2026-07-27_2026-08-03.md"
+
+def test_history_default_path_uses_iiwi_app_name(monkeypatch) -> None:
+    monkeypatch.delenv("IIWI_HISTORY_FILE", raising=False)
+
+    path = history_file_path()
+
+    assert path.name == "history.jsonl"
+    assert "iiwi" in str(path)

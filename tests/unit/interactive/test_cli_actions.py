@@ -108,7 +108,7 @@ def test_choose_period_starts_the_cycle_for_an_unnamed_window(
 
 
 def test_exclude_repository_appends_to_the_exclusion_setting(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
 
     message = cli_actions._exclude_repository(
         "git:github.com/mike/dotfiles", "Dotfiles"
@@ -123,7 +123,7 @@ def test_exclude_repository_appends_to_the_exclusion_setting(monkeypatch, tmp_pa
 def test_exclude_repository_keeps_already_configured_exclusions(
     monkeypatch, tmp_path
 ) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
     cli_actions._exclude_repository("git:github.com/mike/notes", "Notes")
 
     cli_actions._exclude_repository("git:github.com/mike/dotfiles", "Dotfiles")
@@ -142,9 +142,9 @@ def test_exclude_repository_refuses_when_the_environment_owns_the_setting(
     exclusion there would be a lie the next run ignores: refuse to write and
     say which variable owns the setting instead."""
 
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
     monkeypatch.setenv(
-        "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES",
+        "IIWI_REPORT__EXCLUDE_REPOSITORIES",
         "git:github.com/mike/env-driven",
     )
 
@@ -152,12 +152,12 @@ def test_exclude_repository_refuses_when_the_environment_owns_the_setting(
         "git:github.com/mike/dotfiles", "Dotfiles"
     )
 
-    assert "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES" in message
+    assert "IIWI_REPORT__EXCLUDE_REPOSITORIES" in message
     assert not (tmp_path / "config.env").exists()
 
 
 def test_exclude_repository_is_idempotent(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_CONFIG_FILE", str(tmp_path / "config.env"))
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
     cli_actions._exclude_repository("git:github.com/mike/dotfiles", "Dotfiles")
 
     message = cli_actions._exclude_repository("git:github.com/mike/dotfiles", "Dotfiles")
@@ -171,7 +171,7 @@ def test_exclude_repository_is_idempotent(monkeypatch, tmp_path) -> None:
 def test_save_and_restore_round_trip_through_the_state_file(
     monkeypatch, tmp_path
 ) -> None:
-    monkeypatch.setenv("AGENT_WORKLOG_STATE_FILE", str(tmp_path / "state.json"))
+    monkeypatch.setenv("IIWI_STATE_FILE", str(tmp_path / "state.json"))
 
     assert cli_actions._restore_selection("opencode", _period(), True) is None
 

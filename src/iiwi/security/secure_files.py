@@ -16,7 +16,7 @@ from iiwi.errors import ReportOutputError
 def secure_temporary_directory() -> Iterator[Path]:
     """Create a mode-0700 temporary directory and remove it on exit."""
 
-    directory = Path(tempfile.mkdtemp(prefix="agent-worklog-"))
+    directory = Path(tempfile.mkdtemp(prefix="iiwi-"))
     try:
         if os.name == "posix":
             directory.chmod(0o700)

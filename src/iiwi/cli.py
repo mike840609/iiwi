@@ -168,7 +168,7 @@ def _require_enabled_harness(settings: AppSettings, harness: Harness) -> None:
     """
 
     if not getattr(settings.harnesses, harness.name.lower()).enabled:
-        variable = f"AGENT_WORKLOG_HARNESSES__{harness.name}__ENABLED"
+        variable = f"IIWI_HARNESSES__{harness.name}__ENABLED"
         raise ConfigurationError(
             f"harness {harness.value} is disabled by configuration; "
             f"set {variable}=true to use it"
@@ -1165,7 +1165,7 @@ def _interactive_menu() -> None:
 
     try:
         _require_a_terminal(
-            "agent-worklog needs a terminal to show the menu; "
+            "iiwi needs a terminal to show the menu; "
             "run a subcommand directly instead"
         )
         if _supports_key_navigation():
@@ -1235,7 +1235,7 @@ def main(
     """Open the menu when no subcommand was named."""
 
     if version:
-        typer.echo(f"agent-worklog {__version__}")
+        typer.echo(f"iiwi {__version__}")
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         _interactive_menu()

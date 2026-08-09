@@ -24,7 +24,7 @@ def _invoke(
     )
     monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: git_only_runner)
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
+        "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
         str(claude_code_projects),
     )
     args = ["report", "--harness", "claude-code", "--period", "last-week"]
@@ -99,7 +99,7 @@ def test_scan_reports_the_claude_code_sessions(
     )
     monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: git_only_runner)
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
+        "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
         str(claude_code_projects),
     )
 

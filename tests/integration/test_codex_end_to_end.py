@@ -25,7 +25,7 @@ def _invoke(
     )
     monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: git_only_runner)
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(codex_home)
+        "IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(codex_home)
     )
     args = [subcommand, "--harness", "codex", "--period", "last-week"]
     if subcommand == "report":

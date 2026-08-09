@@ -9,6 +9,7 @@ from iiwi.state import (
     load_selection,
     period_key,
     save_selection,
+    state_file_path,
 )
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -135,3 +136,11 @@ def test_saved_state_file_is_owner_only(tmp_path) -> None:
     )
 
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+def test_state_default_path_uses_iiwi_app_name(monkeypatch) -> None:
+    monkeypatch.delenv("IIWI_STATE_FILE", raising=False)
+
+    path = state_file_path()
+
+    assert path.name == "state.json"
+    assert "iiwi" in str(path)

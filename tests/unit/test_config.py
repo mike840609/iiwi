@@ -31,7 +31,7 @@ def test_report_exclude_repositories_is_configurable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES",
+        "IIWI_REPORT__EXCLUDE_REPOSITORIES",
         "dotfiles,  notes-vault",
     )
 
@@ -57,11 +57,11 @@ def test_opencode_run_timeout_and_model_are_configurable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS",
+        "IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS",
         "120.0",
     )
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__MODEL",
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL",
         "gpt-5.3",
     )
 
@@ -91,7 +91,7 @@ def test_claude_code_projects_directory_is_configurable(
     from iiwi.config import AppSettings
 
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
+        "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
         "/tmp/claude-projects",
     )
 
@@ -109,7 +109,7 @@ def test_codex_defaults_to_the_user_codex_home() -> None:
 
 def test_codex_home_directory_is_configurable(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "codex")
+        "IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "codex")
     )
 
     settings = AppSettings()
@@ -142,3 +142,12 @@ def test_every_harness_enum_member_has_settings_field_with_enabled() -> None:
         assert hasattr(field_value, "enabled"), (
             f"HarnessSettings.{field_name} missing `enabled` attribute"
         )
+
+def test_old_environment_prefix_is_not_consumed(monkeypatch: pytest.MonkeyPatch) -> None:
+    old_name = "AGENT_" + "WORKLOG_REPORT__TIMEZONE"
+    monkeypatch.setenv(old_name, "UTC")
+    monkeypatch.delenv("IIWI_REPORT__TIMEZONE", raising=False)
+
+    settings = AppSettings()
+
+    assert settings.report.timezone == "Asia/Taipei"

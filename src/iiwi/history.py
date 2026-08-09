@@ -14,7 +14,7 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-HISTORY_FILE_VARIABLE = "AGENT_WORKLOG_HISTORY_FILE"
+HISTORY_FILE_VARIABLE = "IIWI_HISTORY_FILE"
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ def history_file_path() -> Path:
     override = os.environ.get(HISTORY_FILE_VARIABLE)
     if override:
         return Path(override).expanduser()
-    return Path(user_data_dir("agent-worklog")) / "history.jsonl"
+    return Path(user_data_dir("iiwi")) / "history.jsonl"
 
 
 def _open_for_append(path: Path):

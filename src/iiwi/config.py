@@ -82,7 +82,7 @@ class AppSettings(BaseSettings):
     """Top-level Agent Worklog settings."""
 
     model_config = SettingsConfigDict(
-        env_prefix="AGENT_WORKLOG_",
+        env_prefix="IIWI_",
         env_nested_delimiter="__",
         # The settings file is swept wholesale into the model by
         # `DotEnvSettingsSource` (unlike the environment source, which only reads
