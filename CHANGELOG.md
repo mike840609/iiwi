@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- The Review Sessions selection is remembered per period, harness, and
+  subagent setting: a rescan — or a setting change that clears the scan —
+  restores what you unselected, and stale session ids are dropped
+  automatically. The selection lives in a local state file, metadata only.
+- Press `e` on a repository row in Review Sessions to exclude it from every
+  future scan: the repository is appended to the persistent
+  `report.exclude_repositories` setting (the same one `config set` writes) and
+  the review rescans so the repository disappears immediately.
 - `scan`, `doctor`, and the new `history` command emit machine-readable JSON.
   When stdout is piped, `scan` and `doctor` switch to JSON automatically — the
   way `mo status | jq` just works — and `--no-json` forces the human output.

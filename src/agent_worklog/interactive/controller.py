@@ -73,6 +73,9 @@ class InteractiveActions:
     generate: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
     doctor: Callable[[str], list[str]]
     edit_settings: Callable[[], None]
+    restore_selection: Callable[[str, DateRange, bool], set[str] | None]
+    save_selection: Callable[[str, DateRange, bool, set[str]], None]
+    exclude_repository: Callable[[str, str], str]
 
 
 @dataclass
@@ -283,6 +286,12 @@ def _review(state: _State, actions: InteractiveActions) -> None:
             state.screen = Screen.RECOVERABLE_ERROR
             return
         draft.set_scan(scan)
+        restored = actions.restore_selection(
+            draft.harness, draft.period, draft.include_subagents
+        )
+        if restored is not None:
+            available = {item.session.session_id for item in scan.resolved_sessions}
+            draft.selected_session_ids = restored & available
     cached_scan = draft.scan
     assert cached_scan is not None
     state.selection = SelectionState.from_scan(
@@ -549,10 +558,20 @@ def _browser_key(state: _State, key: KeyPress, actions: InteractiveActions) -> N
     state.browser_cursor = min(state.browser_cursor, max(0, visible_count - 1))
 
 
-def _sync_selection(state: _State) -> None:
+def _sync_selection(state: _State, actions: InteractiveActions) -> None:
     assert state.draft is not None
     assert state.selection is not None
-    state.draft.selected_session_ids = set(state.selection.selected_session_ids)
+    draft = state.draft
+    selection = state.selection
+    if set(draft.selected_session_ids) == selection.selected_session_ids:
+        return
+    draft.selected_session_ids = set(selection.selected_session_ids)
+    actions.save_selection(
+        draft.harness,
+        draft.period,
+        draft.include_subagents,
+        draft.selected_session_ids,
+    )
 
 
 def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> None:
@@ -562,7 +581,7 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
         state.review_message = "Select at least one session before generating."
         state.screen = Screen.SESSION_REVIEW
         return
-    _sync_selection(state)
+    _sync_selection(state, actions)
     filtered_scan = state.selection.filtered_scan()
     try:
         result = actions.generate(state.draft, filtered_scan, force)
@@ -623,7 +642,7 @@ def _rescan_review(state: _State, actions: InteractiveActions) -> None:
         item.session.session_id for item in state.selection.scan.resolved_sessions
     }
     state.selection.selected_session_ids = selected & available
-    _sync_selection(state)
+    _sync_selection(state, actions)
 
 
 def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
@@ -640,11 +659,11 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
     rows = _tree_rows(state.selection.scan, state)
     state.review_cursor = _move(state.review_cursor, key, len(rows))
     if _char(key, "q"):
-        _sync_selection(state)
+        _sync_selection(state, actions)
         state.screen = Screen.MAIN
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
-        _sync_selection(state)
+        _sync_selection(state, actions)
         state.screen = Screen.REPORT_SETUP
         return
     if key.key is Key.RIGHT or _char(key, "l"):
@@ -655,12 +674,12 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         return
     if _char(key, "a"):
         state.selection.select_all()
-        _sync_selection(state)
+        _sync_selection(state, actions)
         state.review_message = None
         return
     if _char(key, "n"):
         state.selection.select_none()
-        _sync_selection(state)
+        _sync_selection(state, actions)
         state.review_message = None
         return
     if _exact_char(key, "g"):
@@ -675,6 +694,27 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
             return_screen=Screen.SESSION_REVIEW,
         )
         return
+    if _exact_char(key, "e") and rows:
+        row = rows[state.review_cursor]
+        if row.kind == "repository":
+            try:
+                message = actions.exclude_repository(
+                    row.repository_id,
+                    state.selection.scan.sessions_by_repository[row.repository_id][0]
+                    .repository.display_name,
+                )
+            except AgentWorklogError as exc:
+                state.error = _ErrorState(
+                    kind="report-source",
+                    title="Could not exclude repository",
+                    detail=str(exc),
+                )
+                state.screen = Screen.RECOVERABLE_ERROR
+                return
+            _rescan_review(state, actions)
+            if state.screen is Screen.SESSION_REVIEW:
+                state.review_message = message
+        return
     if key.key is Key.SPACE and rows:
         row = rows[state.review_cursor]
         if row.kind == "repository":
@@ -682,7 +722,7 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         else:
             assert row.session_id is not None
             state.selection.toggle_session(row.session_id)
-        _sync_selection(state)
+        _sync_selection(state, actions)
         state.review_message = None
         return
     if key.key is Key.ENTER and rows:
@@ -962,7 +1002,7 @@ def _render_screen(state: _State, console: Console) -> None:
         render_help(console)
 
 
-def _idle_interrupt(state: _State) -> None:
+def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
     """Treat Ctrl-C while waiting for a key like the screen's normal Back action."""
 
     if state.screen is Screen.MAIN:
@@ -971,7 +1011,7 @@ def _idle_interrupt(state: _State) -> None:
         state.screen = Screen.MAIN
     elif state.screen is Screen.SESSION_REVIEW:
         if state.selection is not None and state.draft is not None:
-            _sync_selection(state)
+            _sync_selection(state, actions)
         state.screen = Screen.REPORT_SETUP
     elif state.screen is Screen.REPORT_RESULT:
         state.screen = Screen.MAIN
@@ -1045,7 +1085,7 @@ def run_interactive(
         try:
             key = _read_key(input_source)
         except KeyboardInterrupt:
-            _idle_interrupt(state)
+            _idle_interrupt(state, actions)
             continue
         origin = state.screen
         try:
