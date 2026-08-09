@@ -51,6 +51,9 @@ def _version_tuple(value: str) -> tuple[int, ...]:
 
     match = re.fullmatch(r"(\d+(?:\.\d+)*)(?:[-.]([ab]|rc)(\d+))?", value.strip())
     if match is None:
+        # Digit extraction is approximate for unusual PEP 440 forms — it would
+        # order `0.9.0.post1` and `0.9.0rc1` wrongly — but it is only reached
+        # for versions outside the forms this project publishes.
         return tuple(int(part) for part in re.findall(r"\d+", value)) or (0,)
     numbers = tuple(int(part) for part in match.group(1).split("."))
     suffix = match.group(2)

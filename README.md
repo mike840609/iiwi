@@ -125,10 +125,11 @@ agent-worklog history                      # list the reports already written
 agent-worklog update                       # check PyPI for a newer release
 ```
 
-`scan` and `doctor` emit JSON when stdout is piped, or when asked with `--json` —
-`agent-worklog scan --period last-week | jq '.repositories'` works out of the box,
-and every value is redacted before it is emitted. `--no-json` forces the human
-output, and `history --json` returns the recorded reports as an array.
+`scan`, `doctor`, `history`, and `update` emit JSON when stdout is piped, or
+when asked with `--json` — `agent-worklog scan --period last-week | jq
+'.repositories'` works out of the box, and every value is redacted before it is
+emitted. `--no-json` forces the human output, and `history --json` returns the
+recorded reports as an array.
 
 The report defaults to a narrative weekly review written by your local `opencode run`.
 Add `--no-llm` for the deterministic structured report, which works for every harness

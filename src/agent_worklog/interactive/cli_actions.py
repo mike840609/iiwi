@@ -7,6 +7,7 @@ import ``build_interactive_actions`` without creating an import cycle.
 from __future__ import annotations
 
 import contextlib
+import os
 from datetime import datetime
 
 from agent_worklog.history import HistoryEntry, append_history
@@ -139,7 +140,7 @@ def _generate(
                     output_path=result.output_path,
                     repository_count=len(scan.sessions_by_repository),
                     session_count=scan.loaded_session_count,
-                    narrative=draft.narrative,
+                    narrative=bool(result.report.narrative_text),
                     detail=draft.detail.value,
                 )
             )
@@ -217,6 +218,13 @@ def _exclude_repository(repository_id: str, display_name: str) -> str:
 
     from agent_worklog import cli, config_store
 
+    if os.environ.get("AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES") is not None:
+        # The environment outranks the settings file, so an exclusion written
+        # here would be ignored by every later run that exports the variable.
+        return (
+            "report.exclude_repositories is set in the environment; unset "
+            "AGENT_WORKLOG_REPORT__EXCLUDE_REPOSITORIES to persist exclusions."
+        )
     settings = cli._load_settings()
     existing = settings.report.excluded_repository_ids()
     if repository_id in existing:
