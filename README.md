@@ -1,11 +1,7 @@
 # Iiwi
 
-Iiwi · /ˈiː.wiː/ "ee-wee" — Agent Session Intelligence for engineering work
-
-Probe coding-agent sessions. Surface the work that matters.
-
-The ʻiʻiwi is a scarlet Hawaiian honeycreeper whose long curved bill reaches
-nectar others cannot. This project uses the anglicised pronunciation.
+**Iiwi** · /ˈiː.wiː/ "ee-wee" — turns your coding-agent sessions into a weekly
+engineering report, without anything leaving your machine.
 
 [![CI](https://github.com/mike840609/iiwi/actions/workflows/ci.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/ci.yml)
 [![Release](https://github.com/mike840609/iiwi/actions/workflows/release.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/release.yml)
@@ -17,43 +13,36 @@ nectar others cannot. This project uses the anglicised pronunciation.
 
 English | [繁體中文](https://github.com/mike840609/iiwi/blob/main/README.zh-TW.md)
 
-Iiwi turns coding-agent sessions into weekly reports for managers, saving
-engineers time.
-
 ![Agent sessions are grouped into weekly engineering reports](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-overview.png)
 
-## Why
+The weekly status update is work you already did once. Iiwi reads the sessions
+your coding agent already recorded, groups them by repository, and writes the
+report. Works with OpenCode, Claude Code, and Codex.
 
-- **Nothing leaves your machine.** The narrative review is written by your locally
-  installed `opencode run` — no network request, no API key.
-- **Finds your sessions wherever they are.** All projects, no matter which folder you
-  run from.
-- **Groups by repository.** Git worktrees of the same repository collapse into one
-  entry, with child and subagent sessions kept alongside it.
-- **Redacts before it writes.** Session content is checked for common secret patterns
-  locally, before any report or narrative call.
-
-Supports OpenCode, Claude Code, and Codex.
-
-## Requirements
-
-- Python 3.11 or newer.
-- Git available as `git`.
-- One coding-agent harness: OpenCode (default), Claude Code, or Codex. OpenCode needs
-  an `opencode` executable; Claude Code and Codex need no CLI, only a readable
-  transcript store (`~/.claude/projects` or `~/.codex`).
-
-## Install
-
-```bash
-pipx install iiwi
-```
-
-Or `pip install iiwi` in a regular Python environment.
+- **Nothing leaves your machine.** Your local `opencode run` writes the narrative — no network, no API key.
+- **Finds your sessions anywhere.** Every project, whichever folder you run from.
+- **Groups by repository.** Worktrees collapse into one entry; child and subagent sessions stay with it.
+- **Redacts first.** Common secret patterns are stripped locally before anything is written.
 
 ## Quick start
 
-Run it with no arguments for the terminal-native menu:
+Needs Python 3.11+ and `git`. Plus one harness: OpenCode (the default, needs an
+`opencode` executable) or Claude Code / Codex (no CLI, just a readable transcript
+store at `~/.claude/projects` or `~/.codex`).
+
+```bash
+pipx install iiwi                 # or: pip install iiwi
+
+iiwi doctor                       # is the harness ready?
+iiwi report --period last-week    # write the report
+```
+
+The report lands under `reports/`.
+Pass `--dry-run` to print the report to the terminal instead of writing a file.
+
+## The interactive menu
+
+Run `iiwi` with no arguments if you would rather not remember flags:
 
 ```text
 $ iiwi
@@ -69,33 +58,11 @@ Turn coding-agent sessions into engineering reports
 ↑↓ jk │ Enter Select │ 1-4 │ ? Help │ q Quit
 ```
 
-Choosing Generate a report opens the settings first, so you can change only what matters
-before scanning — the cursor sits on the value it changes. **Generate report** sits below
-them, or press `g`; a line under the list says what the setting you are on actually does.
-`r` opens **Review sessions**, which groups the scan by repository; press `Space` on a
-repository to toggle the whole group, or expand it and toggle individual sessions.
-
-```text
-Generate Report
-══════════════════════════════════════════════════════
-
-  Harness      OpenCode
-  Period       Aug 03 – Aug 10
-▶ Detail       Full
-  Subagents    Included
-  Narrative    Enabled
-  Sanitize     Off
-  Dry run      Off
-
-  Generate report
-
-Full keeps every section. Brief drops files, sessions and usage.
-
-↑↓ jk │ ←→ hl Change │ Enter Select │ r Review │ g Generate │ ? Help │ b Back
-```
-
-Review Sessions weighs each repository by how much of the period it actually accounts for,
-so the biggest contributors are visible without opening anything:
+Choosing **Generate a report** shows every setting at once instead of asking one
+question at a time — `↑↓` moves, `←→` changes a value, and a line under the list
+explains the setting you are on. Press `g` to generate, or `r` to open
+**Review sessions** first, which weighs each repository by how much of the period
+it actually accounts for:
 
 ```text
 Review Sessions   6 / 6 selected │ 252 / 252 msgs
@@ -112,56 +79,59 @@ Select sessions to include in the report:
 ↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ e Exclude │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
 
-Press `p` on a session row to scroll its transcript inline — redacted before
-it is drawn, so the preview never shows more than the report itself would.
-Your selection is remembered per period: a rescan (or a changed setting that
-rescans) restores what you unselected, and sessions that no longer exist are
-dropped automatically. Press `e` on a repository row to exclude it from every
-future scan — the repository is appended to `report.exclude_repositories`, the
-same persistent setting `config set` writes, and the review rescans so the
-repository disappears immediately. Undo with
-`iiwi config unset report.exclude_repositories`.
+`Space` toggles a repository or a single session, `p` previews a transcript
+(redacted), and `e` excludes a repository from every future scan. Your selection
+is remembered per period.
 
-Or drive the commands directly:
+## Commands
 
 ```bash
 iiwi doctor                       # is the harness ready?
 iiwi scan --period last-week      # preview how sessions group
 iiwi report --period last-week    # write the report
-iiwi history                      # list the reports already written
+iiwi history                      # reports already written
 iiwi update                       # check PyPI for a newer release
+iiwi run                          # the same questions, one at a time
 ```
 
-`scan`, `doctor`, `history`, and `update` emit JSON when stdout is piped, or
-when asked with `--json` — `iiwi scan --period last-week | jq
-'.repositories'` works out of the box, and every value is redacted before it is
-emitted. `--no-json` forces the human output, and `history --json` returns the
-recorded reports as an array.
+| Flag | What it does |
+|---|---|
+| `--harness claude-code` / `--harness codex` | Read another harness's sessions — the narrative still comes from your local `opencode run` |
+| `--no-llm` | Deterministic structured report; works whether or not OpenCode is installed |
+| `--sanitize` | OpenCode's stronger redaction, which intentionally removes most work evidence |
+| `--dry-run` | Print the report instead of writing a file |
+| `--json` | Redacted machine-readable output for `scan`, `doctor`, `history`, and `update` (the default when stdout is piped) |
 
-The report defaults to a narrative weekly review written by your local `opencode run`.
-Add `--no-llm` for the deterministic structured report, which works for every harness
-whether or not OpenCode is installed:
+`iiwi --help` lists everything, and `run` is the linear wizard if you prefer being
+asked. In scripts, name a subcommand directly — with no terminal to prompt at, the
+menu exits with status 3 rather than reading stdin.
+
+## Configuration
+
+Settings come from an environment variable first, then the settings file, then the
+default:
 
 ```bash
-iiwi report --period last-week --no-llm
+iiwi config init                                          # walk through all
+iiwi config set harnesses.opencode.cli.model deepseek-r1  # write one
+iiwi config list                                          # show all, with sources
+iiwi config unset report.timezone                         # back to the default
 ```
 
-Output lands under `reports/`. For another harness, add `--harness claude-code` or
-`--harness codex` — the narrative default behaves the same for all of them, reading
-that harness's sessions and still calling your local `opencode run`.
+Every setting and its environment-variable name is in the
+[configuration guide](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md).
 
-Prefer to be asked instead of remembering flags? The `run` command keeps the linear
-wizard and previews the scan before writing:
+## Privacy
 
-```bash
-iiwi run
-```
+Everything happens on your machine: sessions are read from disk, common secret
+patterns are redacted, and the redacted transcript is handed to your locally
+installed `opencode run`. No API key, and `update` is the only command that touches
+the network.
 
-Pass `--dry-run` to print the report to the terminal instead of writing a file.
-
-Use `iiwi --help` for the command list. In scripts, name a subcommand
-directly — with no terminal to prompt at, the menu exits with status 3 rather than
-reading from stdin.
+Reports may still contain private goals, filenames, commands, and full working
+paths — always review one before sharing it. See
+[Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md)
+for the full data flow and current limits.
 
 ## Documentation
 
@@ -176,37 +146,6 @@ reading from stdin.
 | [Support and limits](https://github.com/mike840609/iiwi/blob/main/docs/limitations.md) | The per-harness caveat list |
 | [Releasing](https://github.com/mike840609/iiwi/blob/main/docs/releasing.md) | How a release is cut |
 
-## Privacy
-
-OpenCode exports are raw by default so reports retain useful work details. Iiwi
-redacts common secret patterns locally, then hands a grouped, redacted transcript to
-your locally installed `opencode run`, which writes the narrative — nothing leaves your
-machine and no API key is needed. The only command that touches the network is
-`update`, which checks PyPI for a newer release when you run it. Use `--no-llm` for the
-deterministic structured report, or `--sanitize` for OpenCode's stronger redaction,
-which intentionally removes most work evidence.
-
-Reports may still contain private goals, filenames, commands, and full working paths.
-Always review a report before sharing it. See
-[Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md)
-for the full data-flow details and current limits.
-
-## Configuration
-
-Settings come from an environment variable first, then the settings file, then the
-default. `config init` walks through every setting; `config set` writes one:
-
-```bash
-iiwi config init                                          # walk through all
-iiwi config set harnesses.opencode.cli.model deepseek-r1  # write one
-iiwi config list                                          # show all, with sources
-iiwi config unset report.timezone                         # back to the default
-```
-
-See the
-[configuration guide](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md)
-for the complete list of settings and their environment-variable names.
-
 ## Architecture
 
 <!-- Rendered image, not a mermaid block: the GitHub mobile app and PyPI show
@@ -215,9 +154,15 @@ for the complete list of settings and their environment-variable names.
 
 ![Architecture: CLI reads one of three session sources, scans and resolves repositories, then extracts, redacts, summarizes, and writes the report](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/architecture.svg)
 
-Iiwi runs one of three sources per harness, loads only the sessions that overlap
-the requested period, groups them by repository, redacts and summarizes the evidence, and
-writes the Markdown report atomically with owner-only permissions.
+Iiwi loads only the sessions that overlap the requested period, groups them by
+repository, redacts and summarizes the evidence, then writes the Markdown report
+atomically with owner-only permissions.
+
+## The name
+
+The ʻiʻiwi is a scarlet Hawaiian honeycreeper whose long curved bill reaches nectar
+others cannot — which is what this tool does with the sessions your agent left
+behind. Pronounced the anglicised way, "ee-wee".
 
 ## Development
 
