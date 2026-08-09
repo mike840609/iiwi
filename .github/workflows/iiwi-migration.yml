@@ -39,7 +39,7 @@ jobs:
         if: steps.guard.outputs.done != 'true'
         run: uv sync --locked --extra dev
 
-      - name: Patch temporary runner glob handling
+      - name: Patch temporary runner for CI-only execution
         if: steps.guard.outputs.done != 'true'
         run: |
           python - <<'PY'
@@ -51,6 +51,18 @@ jobs:
               'run("uv", "tool", "run", "twine", "check", "dist/*")',
               'run("uv", "tool", "run", "twine", "check", '
               '*(str(path) for path in sorted(dist.iterdir())))',
+          )
+          text = text.replace(
+              '    replace("tests/unit/test_config_store.py", (("agent-worklog", "iiwi"),))\n',
+              '    replace("tests/unit/test_config_store.py", (("agent-worklog", "iiwi"),))\n'
+              '    replace("tests/unit/test_cli.py", (("agent-worklog", "iiwi"),))\n',
+              1,
+          )
+          text = text.replace(
+              '        "tests/unit/test_update.py",\n        "-q",\n    )\n\n    replace_python_tree',
+              '        "tests/unit/test_update.py",\n        "tests/unit/test_cli.py",\n'
+              '        "-q",\n    )\n\n    replace_python_tree',
+              1,
           )
           path.write_text(text, encoding="utf-8")
           PY
