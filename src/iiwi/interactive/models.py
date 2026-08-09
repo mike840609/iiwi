@@ -1,4 +1,4 @@
-"""Short-lived state for the interactive Agent Worklog flow."""
+"""Short-lived state for the interactive Iiwi flow."""
 
 from __future__ import annotations
 

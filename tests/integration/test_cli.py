@@ -36,7 +36,7 @@ class StubReportService:
             repositories=[
                 RepositorySummary(
                     repository_id="git:github.com/mike/agent-worklog",
-                    display_name="Agent Worklog",
+                    display_name="Iiwi",
                 )
             ],
         )
@@ -212,7 +212,7 @@ def test_days_window_uses_a_single_clock_read(
                     repositories=[
                         RepositorySummary(
                             repository_id="git:github.com/mike/agent-worklog",
-                            display_name="Agent Worklog",
+                            display_name="Iiwi",
                         )
                     ],
                 ),
@@ -1015,7 +1015,7 @@ def test_run_scans_once_then_generates(
         loaded_session_count=2,
         sessions_by_repository={
             "git:github.com/mike/agent-worklog": [
-                SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                SimpleNamespace(repository=SimpleNamespace(display_name="Iiwi"))
             ]
         },
         warnings=[],
@@ -1040,7 +1040,7 @@ def test_run_scans_once_then_generates(
                 repositories=[
                     RepositorySummary(
                         repository_id="git:github.com/mike/agent-worklog",
-                        display_name="Agent Worklog",
+                        display_name="Iiwi",
                     )
                 ],
             )
@@ -1107,7 +1107,7 @@ def test_run_aborts_when_the_preview_is_declined(
                 loaded_session_count=1,
                 sessions_by_repository={
                     "git:github.com/mike/agent-worklog": [
-                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Iiwi"))
                     ]
                 },
                 warnings=[],
@@ -1185,7 +1185,7 @@ def test_run_generation_says_sessions_were_excluded_when_configuration_drops_the
                 loaded_session_count=1,
                 sessions_by_repository={
                     "git:github.com/mike/agent-worklog": [
-                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Iiwi"))
                     ]
                 },
                 warnings=[],
@@ -1253,7 +1253,7 @@ def test_run_accepts_a_non_opencode_harness(
                 loaded_session_count=1,
                 sessions_by_repository={
                     "git:github.com/mike/agent-worklog": [
-                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Iiwi"))
                     ]
                 },
                 warnings=[],
@@ -1275,7 +1275,7 @@ def test_run_accepts_a_non_opencode_harness(
                     repositories=[
                         RepositorySummary(
                             repository_id="git:github.com/mike/agent-worklog",
-                            display_name="Agent Worklog",
+                            display_name="Iiwi",
                         )
                     ],
                 ),
@@ -1332,7 +1332,7 @@ def test_run_dry_run_prints_without_writing(
         loaded_session_count=2,
         sessions_by_repository={
             "git:github.com/mike/agent-worklog": [
-                SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                SimpleNamespace(repository=SimpleNamespace(display_name="Iiwi"))
             ]
         },
         warnings=[],
@@ -1358,7 +1358,7 @@ def test_run_dry_run_prints_without_writing(
                 repositories=[
                     RepositorySummary(
                         repository_id="git:github.com/mike/agent-worklog",
-                        display_name="Agent Worklog",
+                        display_name="Iiwi",
                     )
                 ],
             )
@@ -1428,7 +1428,7 @@ def test_a_dry_run_does_not_ask_where_to_write(
                 loaded_session_count=2,
                 sessions_by_repository={
                     "git:github.com/mike/agent-worklog": [
-                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Iiwi"))
                     ]
                 },
                 warnings=[],
@@ -1450,7 +1450,7 @@ def test_a_dry_run_does_not_ask_where_to_write(
                     repositories=[
                         RepositorySummary(
                             repository_id="git:github.com/mike/agent-worklog",
-                            display_name="Agent Worklog",
+                            display_name="Iiwi",
                         )
                     ],
                 ),
@@ -1651,7 +1651,7 @@ def test_run_walks_the_real_prompts_on_defaults(
                 loaded_session_count=1,
                 sessions_by_repository={
                     "git:github.com/mike/agent-worklog": [
-                        SimpleNamespace(repository=SimpleNamespace(display_name="Agent Worklog"))
+                        SimpleNamespace(repository=SimpleNamespace(display_name="Iiwi"))
                     ]
                 },
                 warnings=[],
@@ -1673,7 +1673,7 @@ def test_run_walks_the_real_prompts_on_defaults(
                     repositories=[
                         RepositorySummary(
                             repository_id="git:github.com/mike/agent-worklog",
-                            display_name="Agent Worklog",
+                            display_name="Iiwi",
                         )
                     ],
                 ),
@@ -1818,7 +1818,7 @@ def test_the_menu_runs_the_real_scan_command_over_the_last_week(
                                 working_directory="/tmp/agent-worklog",
                                 activities=[],
                             ),
-                            repository=SimpleNamespace(display_name="Agent Worklog"),
+                            repository=SimpleNamespace(display_name="Iiwi"),
                         )
                     ]
                 },
@@ -1854,7 +1854,7 @@ def test_the_menu_runs_the_real_scan_command_over_the_last_week(
         now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ)
     )
     # The scan ran to completion and rendered its table.
-    assert "Agent Worklog Scan" in result.stdout
+    assert "Iiwi Scan" in result.stdout
 
 
 def test_the_menu_passes_every_parameter_of_the_commands_it_dispatches() -> None:

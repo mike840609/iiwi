@@ -1,1 +1,1 @@
-"""Terminal-native interaction for bare Agent Worklog invocations."""
+"""Terminal-native interaction for bare Iiwi invocations."""

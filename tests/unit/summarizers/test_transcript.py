@@ -23,7 +23,7 @@ def _resolved(
     activities: list[SessionActivity],
     *,
     repository_id: str = "git:github.com/mike/agent-worklog",
-    display_name: str = "Agent Worklog",
+    display_name: str = "Iiwi",
     working_directory: str | None = "/worktrees/agent-main",
     branch: str | None = "main",
 ) -> ResolvedSession:
@@ -79,7 +79,7 @@ def test_header_records_period_and_flags() -> None:
         sanitized=True,
     )
 
-    assert out.startswith("# Agent Worklog sessions grouped by repository\n")
+    assert out.startswith("# Iiwi sessions grouped by repository\n")
     assert "- Period: 2026-07-20 to 2026-07-27" in out
     assert "Projects: 1" in out
     assert "Sessions: 1" in out
@@ -113,7 +113,7 @@ def test_groups_by_repository_with_display_name_heading() -> None:
         sanitized=False,
     )
 
-    assert "## Project: Agent Worklog" in out
+    assert "## Project: Iiwi" in out
     assert "- Repository identity: `git:github.com/mike/agent-worklog`" in out
     assert "- Directory: `/worktrees/agent-main`" in out
 

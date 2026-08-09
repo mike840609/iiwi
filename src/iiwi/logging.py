@@ -140,7 +140,7 @@ class ConsoleReporter:
         mangle a legitimate value that happens to look like a secret.
         """
 
-        table = Table(title="Agent Worklog Settings")
+        table = Table(title="Iiwi Settings")
         # `config list`'s whole job is teaching the user the key names they
         # type into `config set`; at the default 80-column terminal, Rich's
         # default ellipsis truncation cuts most keys down to an identical
@@ -186,7 +186,7 @@ class ConsoleReporter:
         if self.quiet:
             self.console.print(str(result.loaded_session_count))
             return
-        table = Table(title="Agent Worklog Scan")
+        table = Table(title="Iiwi Scan")
         table.add_column("Repository")
         table.add_column("Identity")
         table.add_column("Sessions", justify="right")

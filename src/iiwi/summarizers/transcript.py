@@ -49,7 +49,7 @@ def build_grouped_transcript(
     session_count = sum(len(items) for items in sessions_by_repository.values())
 
     lines: list[str] = [
-        "# Agent Worklog sessions grouped by repository",
+        "# Iiwi sessions grouped by repository",
         "",
         f"- Period: {period.since.date().isoformat()} to {period.until.date().isoformat()}",
         f"- Generated: {generated_at.isoformat()}",

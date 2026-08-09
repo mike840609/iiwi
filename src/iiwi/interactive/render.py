@@ -1,4 +1,4 @@
-"""Pure Rich rendering for the interactive Agent Worklog screens."""
+"""Pure Rich rendering for the interactive Iiwi screens."""
 
 from __future__ import annotations
 
@@ -381,7 +381,7 @@ def report_preview_capacity(terminal_height: int) -> int:
 
 
 def render_main_menu(console: Console, *, selected: int) -> None:
-    title = "Agent Worklog"
+    title = "Iiwi"
     version = f"v{__version__}"
     if cell_len(title) + 1 + cell_len(version) <= console.size.width:
         padding = console.size.width - cell_len(title) - cell_len(version)
@@ -391,14 +391,14 @@ def render_main_menu(console: Console, *, selected: int) -> None:
         if console.size.height >= _MIN_SUBTITLE_HEIGHT:
             _print_viewport_line(
                 console,
-                "Turn coding-agent sessions into engineering reports",
+                "Probe coding-agent sessions. Surface the work that matters.",
                 style="dim",
             )
     else:
         _print_header(
             console,
-            "Agent Worklog",
-            subtitle="Turn coding-agent sessions into engineering reports",
+            "Iiwi",
+            subtitle="Probe coding-agent sessions. Surface the work that matters.",
         )
     console.print()
     label_width = max(cell_len(label) for label in _MAIN_OPTIONS)

@@ -121,7 +121,8 @@ def test_main_menu_renders_navigation_and_footer() -> None:
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "Agent Worklog" in text
+    assert "Iiwi" in text
+    assert "Probe coding-agent sessions" in text
     assert "▶ Generate Report" in text
     assert "Browse Sessions" in text
     assert "↑↓ jk" in text
@@ -1168,7 +1169,7 @@ def test_main_menu_title_row_shows_the_version_right_aligned() -> None:
     console, stream = _console(width=100)
     render_main_menu(console, selected=0)
 
-    title_line = _row(stream.getvalue(), "Agent Worklog")
+    title_line = _row(stream.getvalue(), "Iiwi")
     assert f"v{iiwi.__version__}" in title_line
 
 
@@ -1176,23 +1177,23 @@ def test_main_menu_omits_the_version_on_a_narrow_terminal() -> None:
     import iiwi
     from iiwi.interactive.render import render_main_menu
 
-    console, stream = _console(width=19)
+    console, stream = _console(width=10)
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "Agent Worklog" in text
+    assert "Iiwi" in text
     assert f"v{iiwi.__version__}" not in text
 
 
-def test_main_menu_fits_the_version_at_exactly_twenty_cells() -> None:
-    """The title row is 13 title cells + 1 gap + 6 version cells, so width 20
+def test_main_menu_fits_the_version_at_exactly_eleven_cells() -> None:
+    """The title row is 4 title cells + 1 gap + 6 version cells, so width 11
     is exactly the fit boundary: the version must still appear (1-cell padding)."""
 
     import iiwi
     from iiwi.interactive.render import render_main_menu
 
-    console, stream = _console(width=20)
+    console, stream = _console(width=11)
     render_main_menu(console, selected=0)
 
-    title_line = _row(stream.getvalue(), "Agent Worklog")
+    title_line = _row(stream.getvalue(), "Iiwi")
     assert f"v{iiwi.__version__}" in title_line

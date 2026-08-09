@@ -18,7 +18,7 @@ def sample_report() -> WorklogReport:
         repositories=[
             RepositorySummary(
                 repository_id="git:github.com/mike/agent-worklog",
-                display_name="Agent Worklog",
+                display_name="Iiwi",
                 normalized_remote="github.com/mike/agent-worklog",
                 summary="Implemented the MVP.",
                 completed=["Tests passed"],
@@ -45,7 +45,7 @@ EXPECTED_FULL_OUTPUT = """# Engineering Worklog
 **Generated:** 2026-07-29 20:00
 
 ## Repositories
-### Agent Worklog
+### Iiwi
 Repository: `github.com/mike/agent-worklog`
 
 Implemented the MVP.
@@ -95,7 +95,7 @@ def test_markdown_contains_period_repository_and_warnings() -> None:
     assert "# Engineering Worklog" in output
     assert "Asia/Taipei" in output
     assert "## Repositories" in output
-    assert "### Agent Worklog" in output
+    assert "### Iiwi" in output
     assert "github.com/mike/agent-worklog" in output
     assert "## Warnings" in output
 
@@ -159,7 +159,7 @@ def test_brief_keeps_the_narrative_sections_and_drops_the_appendices() -> None:
     output = MarkdownRenderer().render(sample_report(), detail=DetailLevel.BRIEF)
 
     assert "# Engineering Worklog" in output
-    assert "### Agent Worklog" in output
+    assert "### Iiwi" in output
     assert "Implemented the MVP." in output
     assert "Sessions: 2" in output
     assert "#### Completed" in output

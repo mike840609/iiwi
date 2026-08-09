@@ -6,7 +6,7 @@ from iiwi.summarizers.base import session_directories, session_refs
 def _evidence(*sessions: SessionEvidence) -> RepositoryEvidence:
     return RepositoryEvidence(
         repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        display_name="Iiwi",
         sessions=list(sessions),
     )
 

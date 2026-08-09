@@ -191,7 +191,7 @@ class ReportService:
             transcript=transcript,
             prompt=build_summary_prompt(days),
             title=(
-                f"Agent Worklog - {self._period.since.date().isoformat()} "
+                f"Iiwi - {self._period.since.date().isoformat()} "
                 f"to {self._period.until.date().isoformat()}"
             ),
         )

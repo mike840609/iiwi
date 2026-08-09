@@ -1,1 +1,1 @@
-"""Canonical Agent Worklog domain models."""
+"""Canonical Iiwi domain models."""

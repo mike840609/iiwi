@@ -79,7 +79,7 @@ class ReportSettings(BaseModel):
 
 
 class AppSettings(BaseSettings):
-    """Top-level Agent Worklog settings."""
+    """Top-level Iiwi settings."""
 
     model_config = SettingsConfigDict(
         env_prefix="IIWI_",

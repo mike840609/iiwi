@@ -14,6 +14,7 @@ def test_help_lists_core_commands() -> None:
     assert "doctor" in result.stdout
     assert "scan" in result.stdout
     assert "report" in result.stdout
+    assert "Agent Session Intelligence" in result.stdout
 
 
 def test_scan_rejects_an_unknown_harness() -> None:

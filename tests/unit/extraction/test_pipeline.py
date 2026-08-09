@@ -19,7 +19,7 @@ def resolved(*activities: SessionActivity) -> ResolvedSession:
         ),
         repository=RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             normalized_remote="github.com/mike/agent-worklog",
             resolution_method="git_origin_remote",
@@ -179,7 +179,7 @@ def test_extraction_carries_session_title_and_directory() -> None:
         ),
         repository=RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -313,7 +313,7 @@ def test_clean_stderr_records_the_run_without_claiming_success() -> None:
         ),
         repository=RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -383,7 +383,7 @@ def test_stderr_redirecting_command_yields_no_outcome() -> None:
         ),
         repository=RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -415,7 +415,7 @@ def test_stderr_redirecting_command_yields_no_error_either() -> None:
         ),
         repository=RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -447,7 +447,7 @@ def test_nonempty_stderr_is_not_treated_as_failure() -> None:
         ),
         repository=RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -479,7 +479,7 @@ def test_interrupted_command_yields_no_verification_outcome() -> None:
         ),
         repository=RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -511,7 +511,7 @@ def test_missing_stderr_metadata_leaves_opencode_behavior_untouched() -> None:
         ),
         repository=RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),

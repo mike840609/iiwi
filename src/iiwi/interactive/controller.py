@@ -1,4 +1,4 @@
-"""State-machine controller for the terminal-native Agent Worklog experience."""
+"""State-machine controller for the terminal-native Iiwi experience."""
 
 from __future__ import annotations
 

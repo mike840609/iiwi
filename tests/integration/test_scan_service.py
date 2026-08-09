@@ -55,7 +55,7 @@ class StaticResolver:
     def resolve(self, session: AgentSession) -> RepositoryIdentity:
         return RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             normalized_remote="github.com/mike/agent-worklog",
             branch="main",

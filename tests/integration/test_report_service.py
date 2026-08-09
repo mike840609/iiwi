@@ -167,7 +167,7 @@ def test_report_service_writes_markdown_for_loaded_sessions(tmp_path: Path) -> N
     assert result.output_path == output
     assert output.exists()
     assert "# Engineering Worklog" in output.read_text()
-    assert result.report.repositories[0].display_name == "Agent Worklog"
+    assert result.report.repositories[0].display_name == "Iiwi"
 
 
 class WarningSummarizer:
@@ -407,7 +407,7 @@ def test_narrative_mode_feeds_a_grouped_transcript(tmp_path: Path) -> None:
 
     assert len(runner.calls) == 1
     transcript = runner.calls[0]["transcript"]
-    assert "# Agent Worklog sessions grouped by repository" in transcript
+    assert "# Iiwi sessions grouped by repository" in transcript
     assert "## Project:" in transcript
     assert "Subagent sessions included: yes" in transcript
     assert "OpenCode" in runner.calls[0]["prompt"]

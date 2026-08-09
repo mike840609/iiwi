@@ -21,7 +21,7 @@ def item(text: str, status: EvidenceStatus, confidence: EvidenceConfidence) -> E
 def test_rule_summary_separates_completed_and_in_progress() -> None:
     evidence = RepositoryEvidence(
         repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        display_name="Iiwi",
         normalized_remote="github.com/mike/agent-worklog",
         branches=["main"],
         sessions=[
@@ -91,7 +91,7 @@ def test_medium_confidence_completed_evidence_is_marked_inferred() -> None:
 
     evidence = RepositoryEvidence(
         repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        display_name="Iiwi",
         sessions=[
             SessionEvidence(
                 session_id="sess-1",
@@ -131,7 +131,7 @@ def test_unobserved_outcomes_are_listed_in_progress_not_completed() -> None:
 
     evidence = RepositoryEvidence(
         repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        display_name="Iiwi",
         sessions=[
             SessionEvidence(
                 session_id="sess-1",
@@ -160,7 +160,7 @@ def test_low_confidence_outcomes_are_still_excluded() -> None:
 
     evidence = RepositoryEvidence(
         repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        display_name="Iiwi",
         sessions=[
             SessionEvidence(
                 session_id="sess-1",

@@ -41,7 +41,7 @@ def _scan(*activities: SessionActivity) -> ScanResult:
         session=session,
         repository=RepositoryIdentity(
             repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),

@@ -1,6 +1,6 @@
 """Opt-in version check against PyPI.
 
-This is the only Agent Worklog operation that touches the network, and it is
+This is the only Iiwi operation that touches the network, and it is
 never run implicitly: the `update` command is its sole entry point, so the
 "nothing leaves your machine" promise holds unless the user explicitly asks
 for a version check.

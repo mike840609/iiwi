@@ -1,4 +1,4 @@
-"""Command-line interface for Agent Worklog."""
+"""Command-line interface for Iiwi."""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ _DETAIL_OPTION = typer.Option(
 )
 
 app = typer.Typer(
-    help="Turn coding-agent sessions into repository-based engineering reports.",
+    help="Agent Session Intelligence for engineering work.",
 )
 
 

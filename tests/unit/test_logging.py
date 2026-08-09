@@ -135,7 +135,7 @@ SCAN_TZ = ZoneInfo("Asia/Taipei")
 def scan_result_with(sessions: list[AgentSession]) -> ScanResult:
     identity = RepositoryIdentity(
         repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        display_name="Iiwi",
         identity_type=RepositoryIdentityType.GIT_REMOTE,
         normalized_remote="github.com/mike/agent-worklog",
         resolution_method="test",
@@ -217,7 +217,7 @@ def test_non_verbose_scan_does_not_list_sessions() -> None:
     )
 
     output = output_stream.getvalue()
-    assert "Agent Worklog" in output
+    assert "Iiwi" in output
     assert "Fix the exporter" not in output
 
 
@@ -247,7 +247,7 @@ def test_quiet_scan_still_prints_only_the_count() -> None:
 def scan_result_with_display_name(display_name: str) -> ScanResult:
     """A repository whose display name itself carries the content under test.
 
-    `scan_result_with` always uses the fixed name "Agent Worklog"; these two
+    `scan_result_with` always uses the fixed name "Iiwi"; these two
     call sites are about the name itself, so they need one they control.
     """
 
@@ -420,7 +420,7 @@ def test_verbose_scan_ellipsizes_a_long_session_line_rather_than_wrapping() -> N
     )
 
     lines = output_stream.getvalue().splitlines()
-    heading = lines.index("Agent Worklog")
+    heading = lines.index("Iiwi")
     listing = [line for line in lines[heading + 1 :] if line.strip()]
 
     # One session must render as exactly one line: a second entry here is a
