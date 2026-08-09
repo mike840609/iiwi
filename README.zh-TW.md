@@ -136,18 +136,8 @@ iiwi config unset report.timezone                         # 回到預設值
 | [Usage guides](https://github.com/mike840609/iiwi/blob/main/docs/guides.md) | 統計期間、subagent、repository 分組與輸出處理 |
 | [Usage statistics](https://github.com/mike840609/iiwi/blob/main/docs/usage-statistics.md) | 使用量區塊的產生方式與期間但書 |
 | [Support and limits](https://github.com/mike840609/iiwi/blob/main/docs/limitations.md) | 各 harness 的完整但書清單 |
+| [Architecture](https://github.com/mike840609/iiwi/blob/main/docs/architecture.md) | 報告從讀取到寫出的完整流程 |
 | [Releasing](https://github.com/mike840609/iiwi/blob/main/docs/releasing.md) | 發布流程 |
-
-## 架構
-
-<!-- 這裡用 render 好的圖而非 mermaid 區塊：GitHub 手機 App 與 PyPI 會把 mermaid
-     原始碼當純文字顯示。要修改請編輯 docs/assets/architecture.mmd，
-     並依該檔開頭的指令重新產生 SVG。 -->
-
-![架構圖：CLI 讀取三種工作階段來源之一，掃描並解析 repository，再擷取、去敏、摘要並寫出報告](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/architecture.svg)
-
-Iiwi 只載入與指定期間重疊的工作階段，依 repository 分組，對佐證資料做去敏與摘要，
-最後以僅擁有者可讀寫的權限原子性地寫出 Markdown 報告。
 
 ## 名字的由來
 

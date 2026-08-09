@@ -144,19 +144,8 @@ for the full data flow and current limits.
 | [Usage guides](https://github.com/mike840609/iiwi/blob/main/docs/guides.md) | Reporting periods, subagents, repository grouping, output handling |
 | [Usage statistics](https://github.com/mike840609/iiwi/blob/main/docs/usage-statistics.md) | How the usage section is built, and its window caveat |
 | [Support and limits](https://github.com/mike840609/iiwi/blob/main/docs/limitations.md) | The per-harness caveat list |
+| [Architecture](https://github.com/mike840609/iiwi/blob/main/docs/architecture.md) | How a report is produced, end to end |
 | [Releasing](https://github.com/mike840609/iiwi/blob/main/docs/releasing.md) | How a release is cut |
-
-## Architecture
-
-<!-- Rendered image, not a mermaid block: the GitHub mobile app and PyPI show
-     mermaid source as plain text. Edit docs/assets/architecture.mmd and follow
-     the regenerate command at the top of that file. -->
-
-![Architecture: CLI reads one of three session sources, scans and resolves repositories, then extracts, redacts, summarizes, and writes the report](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/architecture.svg)
-
-Iiwi loads only the sessions that overlap the requested period, groups them by
-repository, redacts and summarizes the evidence, then writes the Markdown report
-atomically with owner-only permissions.
 
 ## The name
 
