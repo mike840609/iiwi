@@ -54,14 +54,51 @@ their settings and history with no error and no warning.
 than at what the documents are. Thirteen files directly under `docs/` are dated
 design records of exactly the same kind as the plans.
 
-## Prerequisite
+## PyPI name claim
 
-Upload `iiwi` 0.8.1.dev0 to PyPI as a placeholder before any code changes. PyPI
-has no reservation mechanism — the name belongs to the first upload, and short
-names move fast. Verified free (HTTP 404) on 2026-08-09; re-verify immediately
-before uploading.
+Nothing in this repository needs PyPI credentials. The package move, the import
+rewrite, `uv build`, `uv run iiwi` and the whole test suite touch PyPI not at
+all. `update.py` issues an unauthenticated GET that will return 404 until 0.9.0
+ships; `urlopen` raises `HTTPError`, a subclass of `OSError`, which the existing
+error path already handles.
+
+Claiming the name is a separate question, and PyPI offers no cheap way to do it.
+A pending publisher does not reserve anything — PyPI creates neither project nor
+name until something is actually published, and another upload of the same name
+invalidates the pending publisher outright. So the only claim mechanism is
+uploading a real distribution.
+
+This repository publishes through Trusted Publishing: `release.yml` grants
+`id-token: write` and calls `pypa/gh-action-pypi-publish` with no password. No
+API token exists anywhere in the release path. A placeholder upload therefore
+means minting an account-scoped token — project-scoped is impossible before the
+project exists — purely to hold a name.
+
+**Decision: skip the placeholder.** `iiwi` is an obscure Hawaiian bird name, not
+a word anyone is racing for, and the exposure lasts only from the first commit
+until 0.9.0 publishes. If the branch is going to sit for a month or more before
+release, upload `0.8.1.dev0` with a temporary token and revoke it afterwards.
+Verified free (HTTP 404) on 2026-08-09; re-verify before releasing either way.
 
 npm is also free but not claimed. A Python tool does not need it.
+
+## Required before the first release
+
+Trusted publishing has no project to authenticate against until `iiwi` exists on
+PyPI, so a **pending publisher** must be registered or the publish job in
+`release.yml` fails outright:
+
+| Field | Value |
+|---|---|
+| PyPI project name | `iiwi` |
+| Repository | `mike840609/iiwi` |
+| Workflow | `release.yml` |
+| Environment | `pypi` |
+
+Register it after the GitHub repository is renamed and before tagging 0.9.0. The
+OIDC claim carries whatever the repository is called at the moment the workflow
+runs, and GitHub's redirect of the old URL does not rewrite that claim — a
+pending publisher pointing at `mike840609/agent-worklog` would not match.
 
 ## Commit 1 — Code
 
@@ -363,8 +400,10 @@ retargets the open pull request's base and disturbs the branch.
 3. Confirm the CI, Release and DeepWiki badges render. DeepWiki may need
    re-indexing under the new path.
 4. Update the repository description and topics to the new positioning.
-5. Tag and release 0.9.0, publishing `iiwi` over the placeholder.
-6. Publish a final `agent-worklog` 0.8.1 whose description says only that the
+5. Register the PyPI pending publisher for `iiwi` against the now-renamed
+   repository, per [Required before the first release](#required-before-the-first-release).
+6. Tag and release 0.9.0. This upload is what claims the name on PyPI.
+7. Publish a final `agent-worklog` 0.8.1 whose description says only that the
    project continues as `iiwi`, with the install command. **Do not yank the
    earlier releases** — yanking breaks pinned installs for anyone who already
    has them and gains nothing.
@@ -379,4 +418,5 @@ retargets the open pull request's base and disturbs the branch.
 | Blind substitution rewrites the 28 frozen records | Every substitution names its files explicitly; none globs `docs/` |
 | `sed -i` from a GNU-flavoured runbook fails on macOS | Every command here uses `perl -pi -e` |
 | Migration fires ahead of the environment override and corrupts the test suite | Only the `platformdirs` branch is wrapped; a dedicated test covers the override |
-| `iiwi` claimed on PyPI by someone else mid-rename | Placeholder upload precedes Commit 1 |
+| `iiwi` claimed on PyPI by someone else mid-rename | Accepted. Exposure ends when 0.9.0 publishes; upload a placeholder only if the branch will sit for a month or more |
+| `release.yml` publish job fails because trusted publishing has no project to authenticate against | Pending publisher registered after the repository rename, before tagging |
