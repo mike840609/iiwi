@@ -10,6 +10,7 @@ from rich.cells import cell_len
 from rich.console import Console
 from rich.text import Text
 
+from agent_worklog import __version__
 from agent_worklog.interactive.density import (
     is_subagent,
     last_activity_at,
@@ -383,7 +384,7 @@ def render_main_menu(console: Console, *, selected: int) -> None:
     _print_header(
         console,
         "Agent Worklog",
-        subtitle="Turn coding-agent sessions into engineering reports",
+        subtitle=f"Turn coding-agent sessions into engineering reports · v{__version__}",
     )
     console.print()
     label_width = max(cell_len(label) for label in _MAIN_OPTIONS)

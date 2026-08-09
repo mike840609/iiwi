@@ -1159,3 +1159,13 @@ def test_render_session_preview_shows_the_session() -> None:
     assert "Deploy the service" in text
     assert "bump the version" in text
     assert "b Back" in text
+
+
+def test_main_menu_shows_the_installed_version() -> None:
+    import agent_worklog
+    from agent_worklog.interactive.render import render_main_menu
+
+    console, stream = _console()
+    render_main_menu(console, selected=0)
+
+    assert f"v{agent_worklog.__version__}" in stream.getvalue()
