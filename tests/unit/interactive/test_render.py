@@ -1159,3 +1159,26 @@ def test_render_session_preview_shows_the_session() -> None:
     assert "Deploy the service" in text
     assert "bump the version" in text
     assert "b Back" in text
+
+
+def test_main_menu_title_row_shows_the_version_right_aligned() -> None:
+    import agent_worklog
+    from agent_worklog.interactive.render import render_main_menu
+
+    console, stream = _console(width=100)
+    render_main_menu(console, selected=0)
+
+    title_line = _row(stream.getvalue(), "Agent Worklog")
+    assert f"v{agent_worklog.__version__}" in title_line
+
+
+def test_main_menu_omits_the_version_on_a_narrow_terminal() -> None:
+    import agent_worklog
+    from agent_worklog.interactive.render import render_main_menu
+
+    console, stream = _console(width=19)
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert "Agent Worklog" in text
+    assert f"v{agent_worklog.__version__}" not in text
