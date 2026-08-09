@@ -6,21 +6,21 @@ from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
-from agent_worklog.interactive.render import (
+from iiwi.interactive.render import (
     build_visible_rows,
     render_report_preview,
     render_session_browser,
     render_session_review,
 )
-from agent_worklog.interactive.selection import SelectionState
-from agent_worklog.models.repository import (
+from iiwi.interactive.selection import SelectionState
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import AgentSession
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import AgentSession
+from iiwi.models.time_range import DateRange
+from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 

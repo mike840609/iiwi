@@ -1,18 +1,18 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.models.repository import (
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import (
+from iiwi.models.session import (
     ActivityType,
     AgentSession,
     SessionActivity,
 )
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.summarizers.transcript import build_grouped_transcript
+from iiwi.models.time_range import DateRange
+from iiwi.summarizers.transcript import build_grouped_transcript
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -22,8 +22,8 @@ def _resolved(
     title: str,
     activities: list[SessionActivity],
     *,
-    repository_id: str = "git:github.com/mike/agent-worklog",
-    display_name: str = "Agent Worklog",
+    repository_id: str = "git:github.com/mike/iiwi",
+    display_name: str = "Iiwi",
     working_directory: str | None = "/worktrees/agent-main",
     branch: str | None = "main",
 ) -> ResolvedSession:
@@ -38,7 +38,7 @@ def _resolved(
             repository_id=repository_id,
             display_name=display_name,
             identity_type=RepositoryIdentityType.GIT_REMOTE,
-            normalized_remote="github.com/mike/agent-worklog",
+            normalized_remote="github.com/mike/iiwi",
             branch=branch,
             working_directory=working_directory,
             resolution_method="remote",
@@ -79,7 +79,7 @@ def test_header_records_period_and_flags() -> None:
         sanitized=True,
     )
 
-    assert out.startswith("# Agent Worklog sessions grouped by repository\n")
+    assert out.startswith("# Iiwi sessions grouped by repository\n")
     assert "- Period: 2026-07-20 to 2026-07-27" in out
     assert "Projects: 1" in out
     assert "Sessions: 1" in out
@@ -89,7 +89,7 @@ def test_header_records_period_and_flags() -> None:
 
 def test_groups_by_repository_with_display_name_heading() -> None:
     sessions = {
-        "git:github.com/mike/agent-worklog": [
+        "git:github.com/mike/iiwi": [
             _resolved(
                 "s1",
                 "Add retry",
@@ -113,8 +113,8 @@ def test_groups_by_repository_with_display_name_heading() -> None:
         sanitized=False,
     )
 
-    assert "## Project: Agent Worklog" in out
-    assert "- Repository identity: `git:github.com/mike/agent-worklog`" in out
+    assert "## Project: Iiwi" in out
+    assert "- Repository identity: `git:github.com/mike/iiwi`" in out
     assert "- Directory: `/worktrees/agent-main`" in out
 
 

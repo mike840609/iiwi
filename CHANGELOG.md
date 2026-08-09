@@ -4,7 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
-- `agent-worklog --version` prints the installed version.
+- Renamed the project from Agent Worklog to Iiwi. The command is now `iiwi`,
+  the distribution is `iiwi` on PyPI, environment variables use the `IIWI_`
+  prefix, and settings, history and session-selection state move to the `iiwi`
+  application directories. State left by the previous name is adopted
+  automatically on first run. There is no compatibility alias — `agent-worklog`
+  is not published beyond 0.8.x.
+- `iiwi --version` prints the installed version.
 - `update` checks PyPI for a newer release and prints the upgrade command. It
   is the only command that touches the network and is never run implicitly;
   an available update exits with code 8, an unreachable index is reported but

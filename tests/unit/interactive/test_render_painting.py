@@ -11,7 +11,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from agent_worklog.interactive import controller
+from iiwi.interactive import controller
 
 
 def _terminal_console() -> tuple[Console, StringIO]:

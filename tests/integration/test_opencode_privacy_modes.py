@@ -8,8 +8,8 @@ from zoneinfo import ZoneInfo
 
 from typer.testing import CliRunner
 
-import agent_worklog.cli as cli
-from agent_worklog.process import CommandResult
+import iiwi.cli as cli
+from iiwi.process import CommandResult
 
 TZ = ZoneInfo("Asia/Taipei")
 

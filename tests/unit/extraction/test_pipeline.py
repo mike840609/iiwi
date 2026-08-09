@@ -1,13 +1,13 @@
 from datetime import UTC, datetime
 
-from agent_worklog.extraction.pipeline import EVIDENCE_TEXT_MAX_LENGTH, extract_evidence
-from agent_worklog.models.evidence import EvidenceConfidence, EvidenceStatus
-from agent_worklog.models.repository import (
+from iiwi.extraction.pipeline import EVIDENCE_TEXT_MAX_LENGTH, extract_evidence
+from iiwi.models.evidence import EvidenceConfidence, EvidenceStatus
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
 
 
 def resolved(*activities: SessionActivity) -> ResolvedSession:
@@ -18,10 +18,10 @@ def resolved(*activities: SessionActivity) -> ResolvedSession:
             activities=list(activities),
         ),
         repository=RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
-            normalized_remote="github.com/mike/agent-worklog",
+            normalized_remote="github.com/mike/iiwi",
             resolution_method="git_origin_remote",
         ),
     )
@@ -159,13 +159,13 @@ def test_file_tool_content_fallback_still_accepts_a_bare_path() -> None:
                 activity_id="tool-1",
                 activity_type=ActivityType.TOOL_CALL,
                 tool_name="write",
-                content="src/agent_worklog/cli.py",
+                content="src/iiwi/cli.py",
             )
         )
     )
 
     assert [item.text for item in evidence.files_changed] == [
-        "src/agent_worklog/cli.py"
+        "src/iiwi/cli.py"
     ]
 
 
@@ -175,11 +175,11 @@ def test_extraction_carries_session_title_and_directory() -> None:
             harness="opencode",
             session_id="s1",
             title="Fix the exporter",
-            working_directory="/repos/agent-worklog",
+            working_directory="/repos/iiwi",
         ),
         repository=RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -188,7 +188,7 @@ def test_extraction_carries_session_title_and_directory() -> None:
     evidence = extract_evidence(resolved)
 
     assert evidence.title == "Fix the exporter"
-    assert evidence.working_directory == "/repos/agent-worklog"
+    assert evidence.working_directory == "/repos/iiwi"
 
 
 def command(content: str, **metadata: object) -> SessionActivity:
@@ -312,8 +312,8 @@ def test_clean_stderr_records_the_run_without_claiming_success() -> None:
             ],
         ),
         repository=RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -382,8 +382,8 @@ def test_stderr_redirecting_command_yields_no_outcome() -> None:
             ],
         ),
         repository=RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -414,8 +414,8 @@ def test_stderr_redirecting_command_yields_no_error_either() -> None:
             ],
         ),
         repository=RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -446,8 +446,8 @@ def test_nonempty_stderr_is_not_treated_as_failure() -> None:
             ],
         ),
         repository=RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -478,8 +478,8 @@ def test_interrupted_command_yields_no_verification_outcome() -> None:
             ],
         ),
         repository=RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),
@@ -510,8 +510,8 @@ def test_missing_stderr_metadata_leaves_opencode_behavior_untouched() -> None:
             ],
         ),
         repository=RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
             resolution_method="git_origin_remote",
         ),

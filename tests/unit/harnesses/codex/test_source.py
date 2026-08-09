@@ -5,9 +5,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.errors import HarnessSourceError
-from agent_worklog.harnesses.codex.source import CodexSource, describe_discovery
-from agent_worklog.models.time_range import DateRange
+from iiwi.errors import HarnessSourceError
+from iiwi.harnesses.codex.source import CodexSource, describe_discovery
+from iiwi.models.time_range import DateRange
 
 TZ = ZoneInfo("Asia/Taipei")
 PERIOD = DateRange(

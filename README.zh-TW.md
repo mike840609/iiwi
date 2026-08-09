@@ -1,18 +1,25 @@
-# Agent Worklog
+# Iiwi
 
-[![CI](https://github.com/mike840609/agent-worklog/actions/workflows/ci.yml/badge.svg)](https://github.com/mike840609/agent-worklog/actions/workflows/ci.yml)
-[![Release](https://github.com/mike840609/agent-worklog/actions/workflows/release.yml/badge.svg)](https://github.com/mike840609/agent-worklog/actions/workflows/release.yml)
-[![PyPI](https://img.shields.io/pypi/v/agent-worklog.svg)](https://pypi.org/project/agent-worklog/)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://pypi.org/project/agent-worklog/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/mike840609/agent-worklog/blob/main/LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mike840609/agent-worklog/pulls)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mike840609/agent-worklog)
+Iiwi · /ˈiː.wiː/ "ee-wee" — 為工程工作而生的 Agent Session Intelligence
 
-[English](https://github.com/mike840609/agent-worklog/blob/main/README.md) | 繁體中文
+探測 coding-agent 工作階段，浮現真正重要的工作。
 
-Agent Worklog 把 coding-agent 的工作階段整理成給主管看的週報，替工程師省下時間。
+ʻiʻiwi 是夏威夷的緋紅色旋蜜雀，彎長的喙能探到其他鳥觸及不了的花蜜。
+本專案採用英語化的發音。
 
-![Agent 工作階段被分組為每週工程報告](https://github.com/mike840609/agent-worklog/raw/refs/heads/main/docs/assets/agent-worklog-overview.png)
+[![CI](https://github.com/mike840609/iiwi/actions/workflows/ci.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/ci.yml)
+[![Release](https://github.com/mike840609/iiwi/actions/workflows/release.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/release.yml)
+[![PyPI](https://img.shields.io/pypi/v/iiwi.svg)](https://pypi.org/project/iiwi/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://pypi.org/project/iiwi/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/mike840609/iiwi/blob/main/LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mike840609/iiwi/pulls)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mike840609/iiwi)
+
+[English](https://github.com/mike840609/iiwi/blob/main/README.md) | 繁體中文
+
+Iiwi 把 coding-agent 的工作階段整理成給主管看的週報，替工程師省下時間。
+
+![Agent 工作階段被分組為每週工程報告](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-overview.png)
 
 ## 特色
 
@@ -36,18 +43,18 @@ Agent Worklog 把 coding-agent 的工作階段整理成給主管看的週報，�
 ## 安裝
 
 ```bash
-pipx install agent-worklog
+pipx install iiwi
 ```
 
-也可以在一般的 Python 環境中使用 `pip install agent-worklog`。
+也可以在一般的 Python 環境中使用 `pip install iiwi`。
 
 ## 快速開始
 
 不帶任何參數執行，就會進入可以用方向鍵操作的終端選單：
 
 ```text
-$ agent-worklog
-Agent Worklog
+$ iiwi
+Iiwi
 ══════════════════════════════════════════════════════
 Turn coding-agent sessions into engineering reports
 
@@ -91,7 +98,7 @@ Review Sessions   6 / 6 selected │ 252 / 252 msgs
 ══════════════════════════════════════════════════════
 Select sessions to include in the report:
 
-  1. ▾ ████████████  71% ● agent-worklog   3 / 3    Aug 5 │ 180 msgs
+  1. ▾ ████████████  71% ● iiwi   3 / 3    Aug 5 │ 180 msgs
 ▶      ████░░░░░░░░  24% ● Add the interactive menu Aug 5 │ 60 msgs
        ████░░░░░░░░  24% ● Redact before writing    Aug 5 │ 60 msgs
        ████░░░░░░░░  24% ● Group worktrees          Aug 5 │ 60 msgs
@@ -104,16 +111,16 @@ Select sessions to include in the report:
 或直接下指令：
 
 ```bash
-agent-worklog doctor                       # harness 準備好了嗎？
-agent-worklog scan --period last-week      # 預覽工作階段如何分組
-agent-worklog report --period last-week    # 產生報告
+iiwi doctor                       # harness 準備好了嗎？
+iiwi scan --period last-week      # 預覽工作階段如何分組
+iiwi report --period last-week    # 產生報告
 ```
 
 報告預設會在本機執行 `opencode run` 撰寫敘事式週報。加上 `--no-llm` 則產生決定性的結構化
 報告，不論是否安裝 OpenCode，所有 harness 都可以使用：
 
 ```bash
-agent-worklog report --period last-week --no-llm
+iiwi report --period last-week --no-llm
 ```
 
 輸出預設寫到 `reports/` 底下。要換 harness 就加上 `--harness claude-code` 或
@@ -124,12 +131,12 @@ agent-worklog report --period last-week --no-llm
 結果：
 
 ```bash
-agent-worklog run
+iiwi run
 ```
 
 加上 `--dry-run` 會把報告印到終端機，而不寫入檔案。
 
-用 `agent-worklog --help` 查看指令清單。在腳本中請直接呼叫子指令，因為沒有終端機可以
+用 `iiwi --help` 查看指令清單。在腳本中請直接呼叫子指令，因為沒有終端機可以
 作答時，選單會以狀態碼 3 結束，而不會去讀取 stdin。
 
 ## 文件
@@ -138,24 +145,24 @@ agent-worklog run
 
 | 頁面 | 內容 |
 |---|---|
-| [CLI reference](https://github.com/mike840609/agent-worklog/blob/main/docs/cli-reference.md) | 所有指令、選項與結束代碼 |
-| [Configuration](https://github.com/mike840609/agent-worklog/blob/main/docs/configuration.md) | 設定檔、環境變數與優先順序 |
-| [Privacy and security](https://github.com/mike840609/agent-worklog/blob/main/docs/privacy.md) | 資料流向、去敏邊界，以及報告仍會包含什麼 |
-| [Usage guides](https://github.com/mike840609/agent-worklog/blob/main/docs/guides.md) | 統計期間、subagent、repository 分組與輸出處理 |
-| [Usage statistics](https://github.com/mike840609/agent-worklog/blob/main/docs/usage-statistics.md) | 使用量區塊的產生方式與期間但書 |
-| [Support and limits](https://github.com/mike840609/agent-worklog/blob/main/docs/limitations.md) | 各 harness 的完整但書清單 |
-| [Releasing](https://github.com/mike840609/agent-worklog/blob/main/docs/releasing.md) | 發布流程 |
+| [CLI reference](https://github.com/mike840609/iiwi/blob/main/docs/cli-reference.md) | 所有指令、選項與結束代碼 |
+| [Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md) | 設定檔、環境變數與優先順序 |
+| [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md) | 資料流向、去敏邊界，以及報告仍會包含什麼 |
+| [Usage guides](https://github.com/mike840609/iiwi/blob/main/docs/guides.md) | 統計期間、subagent、repository 分組與輸出處理 |
+| [Usage statistics](https://github.com/mike840609/iiwi/blob/main/docs/usage-statistics.md) | 使用量區塊的產生方式與期間但書 |
+| [Support and limits](https://github.com/mike840609/iiwi/blob/main/docs/limitations.md) | 各 harness 的完整但書清單 |
+| [Releasing](https://github.com/mike840609/iiwi/blob/main/docs/releasing.md) | 發布流程 |
 
 ## 隱私
 
-OpenCode 預設使用 raw export，讓報告保留可用的工作細節。Agent Worklog 會先在本機清理常見
+OpenCode 預設使用 raw export，讓報告保留可用的工作細節。Iiwi 會先在本機清理常見
 機密，再把分組、去敏後的 transcript 交給本機安裝的 `opencode run` 撰寫敘事式週報；資料不會
 離開本機，也不需要 API key。要決定性的結構化報告可用 `--no-llm`；需要 OpenCode 強力遮蔽時
 可加上 `--sanitize`，但這會刻意移除大部分工作 evidence。
 
 報告仍可能包含私人目標、檔名、指令與完整路徑，分享前請務必檢查。完整的資料流向與目前限制
 請見
-[Privacy and security](https://github.com/mike840609/agent-worklog/blob/main/docs/privacy.md)。
+[Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md)。
 
 ## 設定
 
@@ -163,14 +170,14 @@ OpenCode 預設使用 raw export，讓報告保留可用的工作細節。Agent 
 `config set` 則寫入單一項目：
 
 ```bash
-agent-worklog config init                                          # 逐項詢問
-agent-worklog config set harnesses.opencode.cli.model deepseek-r1  # 寫入單一設定
-agent-worklog config list                                          # 列出所有設定與來源
-agent-worklog config unset report.timezone                         # 回到預設值
+iiwi config init                                          # 逐項詢問
+iiwi config set harnesses.opencode.cli.model deepseek-r1  # 寫入單一設定
+iiwi config list                                          # 列出所有設定與來源
+iiwi config unset report.timezone                         # 回到預設值
 ```
 
 完整設定清單與對應的環境變數名稱，請見
-[Configuration](https://github.com/mike840609/agent-worklog/blob/main/docs/configuration.md)。
+[Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md)。
 
 ## 架構
 
@@ -178,20 +185,20 @@ agent-worklog config unset report.timezone                         # 回到預�
      原始碼當純文字顯示。要修改請編輯 docs/assets/architecture.mmd，
      並依該檔開頭的指令重新產生 SVG。 -->
 
-![架構圖：CLI 讀取三種工作階段來源之一，掃描並解析 repository，再擷取、去敏、摘要並寫出報告](https://github.com/mike840609/agent-worklog/raw/refs/heads/main/docs/assets/architecture.svg)
+![架構圖：CLI 讀取三種工作階段來源之一，掃描並解析 repository，再擷取、去敏、摘要並寫出報告](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/architecture.svg)
 
-Agent Worklog 會依 harness 選用三種來源之一，只載入與指定期間重疊的工作階段，依
+Iiwi 會依 harness 選用三種來源之一，只載入與指定期間重疊的工作階段，依
 repository 分組，再對佐證資料做去敏與摘要，最後以僅擁有者可讀寫的權限原子性地寫出
 Markdown 報告。
 
 ## 開發
 
 ```bash
-git clone https://github.com/mike840609/agent-worklog.git
-cd agent-worklog
+git clone https://github.com/mike840609/iiwi.git
+cd iiwi
 uv sync --locked --extra dev
 
-uv run pytest --cov=agent_worklog --cov-fail-under=80
+uv run pytest --cov=iiwi --cov-fail-under=80
 uv run ruff check .
 uv run pyright
 ```

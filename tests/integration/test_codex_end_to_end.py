@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from typer.testing import CliRunner
 
-import agent_worklog.cli as cli
+import iiwi.cli as cli
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -25,7 +25,7 @@ def _invoke(
     )
     monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: git_only_runner)
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CODEX__HOME_DIRECTORY", str(codex_home)
+        "IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(codex_home)
     )
     args = [subcommand, "--harness", "codex", "--period", "last-week"]
     if subcommand == "report":
@@ -46,7 +46,7 @@ def test_codex_report_groups_by_repository_and_reports_usage(
 
     assert result.exit_code == 0, result.stdout
     content = output.read_text(encoding="utf-8")
-    assert "github.com/mike/agent-worklog" in content
+    assert "github.com/mike/iiwi" in content
     assert "github.com/mike/assets-tracker" in content
     assert "Retry for the price fetcher" in content
     assert "Add retry to the price fetcher" in content
@@ -104,7 +104,7 @@ def test_root_only_excludes_the_subagent_repository(
 
     assert result.exit_code == 0, result.stdout
     content = output.read_text(encoding="utf-8")
-    assert "github.com/mike/agent-worklog" in content
+    assert "github.com/mike/iiwi" in content
     assert "github.com/mike/assets-tracker" not in content
 
 
@@ -118,7 +118,7 @@ def test_report_works_without_the_state_database(
 
     assert result.exit_code == 0, result.stdout
     content = output.read_text(encoding="utf-8")
-    assert "github.com/mike/agent-worklog" in content
+    assert "github.com/mike/iiwi" in content
     assert "github.com/mike/assets-tracker" in content
 
 

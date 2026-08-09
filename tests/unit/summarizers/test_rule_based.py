@@ -1,11 +1,11 @@
-from agent_worklog.models.evidence import (
+from iiwi.models.evidence import (
     EvidenceConfidence,
     EvidenceItem,
     EvidenceStatus,
     RepositoryEvidence,
     SessionEvidence,
 )
-from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
+from iiwi.summarizers.rule_based import RuleBasedSummarizer
 
 
 def item(text: str, status: EvidenceStatus, confidence: EvidenceConfidence) -> EvidenceItem:
@@ -20,14 +20,14 @@ def item(text: str, status: EvidenceStatus, confidence: EvidenceConfidence) -> E
 
 def test_rule_summary_separates_completed_and_in_progress() -> None:
     evidence = RepositoryEvidence(
-        repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
-        normalized_remote="github.com/mike/agent-worklog",
+        repository_id="git:github.com/mike/iiwi",
+        display_name="Iiwi",
+        normalized_remote="github.com/mike/iiwi",
         branches=["main"],
         sessions=[
             SessionEvidence(
                 session_id="s1",
-                repository_id="git:github.com/mike/agent-worklog",
+                repository_id="git:github.com/mike/iiwi",
                 goals=[item("Add cache", EvidenceStatus.IN_PROGRESS, EvidenceConfidence.HIGH)],
                 outcomes=[
                     item("Tests passed", EvidenceStatus.COMPLETED, EvidenceConfidence.HIGH),
@@ -90,12 +90,12 @@ def test_medium_confidence_completed_evidence_is_marked_inferred() -> None:
     """An observed outcome reads plainly; an inferred one is labelled as inferred."""
 
     evidence = RepositoryEvidence(
-        repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        repository_id="git:github.com/mike/iiwi",
+        display_name="Iiwi",
         sessions=[
             SessionEvidence(
                 session_id="sess-1",
-                repository_id="git:github.com/mike/agent-worklog",
+                repository_id="git:github.com/mike/iiwi",
                 outcomes=[
                     EvidenceItem(
                         text="Coverage threshold met",
@@ -130,12 +130,12 @@ def test_unobserved_outcomes_are_listed_in_progress_not_completed() -> None:
     """
 
     evidence = RepositoryEvidence(
-        repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        repository_id="git:github.com/mike/iiwi",
+        display_name="Iiwi",
         sessions=[
             SessionEvidence(
                 session_id="sess-1",
-                repository_id="git:github.com/mike/agent-worklog",
+                repository_id="git:github.com/mike/iiwi",
                 outcomes=[
                     EvidenceItem(
                         text="Ran verification command: pytest -q",
@@ -159,12 +159,12 @@ def test_low_confidence_outcomes_are_still_excluded() -> None:
     """Assistant self-claims stay out of the report entirely, in every section."""
 
     evidence = RepositoryEvidence(
-        repository_id="git:github.com/mike/agent-worklog",
-        display_name="Agent Worklog",
+        repository_id="git:github.com/mike/iiwi",
+        display_name="Iiwi",
         sessions=[
             SessionEvidence(
                 session_id="sess-1",
-                repository_id="git:github.com/mike/agent-worklog",
+                repository_id="git:github.com/mike/iiwi",
                 outcomes=[
                     EvidenceItem(
                         text="I implemented the retry",

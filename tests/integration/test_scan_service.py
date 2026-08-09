@@ -1,17 +1,17 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from agent_worklog.errors import SessionParseError
-from agent_worklog.models.repository import RepositoryIdentity, RepositoryIdentityType
-from agent_worklog.models.session import (
+from iiwi.errors import SessionParseError
+from iiwi.models.repository import RepositoryIdentity, RepositoryIdentityType
+from iiwi.models.session import (
     ActivityType,
     AgentSession,
     SessionActivity,
     SessionDescriptor,
 )
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.progress import ProgressStage
-from agent_worklog.services.scan import ScanService
+from iiwi.models.time_range import DateRange
+from iiwi.progress import ProgressStage
+from iiwi.services.scan import ScanService
 from tests.progress import RecordingProgressReporter
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -54,10 +54,10 @@ class FakeSource:
 class StaticResolver:
     def resolve(self, session: AgentSession) -> RepositoryIdentity:
         return RepositoryIdentity(
-            repository_id="git:github.com/mike/agent-worklog",
-            display_name="Agent Worklog",
+            repository_id="git:github.com/mike/iiwi",
+            display_name="Iiwi",
             identity_type=RepositoryIdentityType.GIT_REMOTE,
-            normalized_remote="github.com/mike/agent-worklog",
+            normalized_remote="github.com/mike/iiwi",
             branch="main",
             resolution_method="git_origin_remote",
         )
@@ -182,7 +182,7 @@ def test_scan_continues_after_one_export_failure() -> None:
     assert result.loaded_session_count == 2
     assert result.failed_session_count == 1
     assert any("bad" in warning for warning in result.warnings)
-    assert list(result.sessions_by_repository) == ["git:github.com/mike/agent-worklog"]
+    assert list(result.sessions_by_repository) == ["git:github.com/mike/iiwi"]
 
 
 def test_scan_reports_every_discovered_descriptor_as_processed() -> None:

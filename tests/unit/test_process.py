@@ -4,8 +4,8 @@ import sys
 
 import pytest
 
-from agent_worklog import process
-from agent_worklog.process import CommandRunner
+from iiwi import process
+from iiwi.process import CommandRunner
 
 _TRUNCATED_ECHO = (
     # A child that mimics opencode's stdout behaviour: when its stdout is a pipe
@@ -46,11 +46,11 @@ def test_timeout_becomes_a_failed_result(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_missing_executable_becomes_a_failed_result() -> None:
-    result = CommandRunner(timeout_seconds=5).run(["agent-worklog-missing-binary"])
+    result = CommandRunner(timeout_seconds=5).run(["iiwi-missing-binary"])
 
     assert result.returncode != 0
     assert result.stdout == ""
-    assert "agent-worklog-missing-binary" in result.stderr
+    assert "iiwi-missing-binary" in result.stderr
 
 
 def test_pipe_capture_truncates_output_at_pipe_buffer() -> None:

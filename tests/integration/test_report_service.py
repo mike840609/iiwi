@@ -5,20 +5,20 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.errors import HarnessSourceError, ReportOutputError
-from agent_worklog.models.session import (
+from iiwi.errors import HarnessSourceError, ReportOutputError
+from iiwi.models.session import (
     ActivityType,
     AgentSession,
     SessionActivity,
     SessionDescriptor,
 )
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.progress import ProgressReporter, ProgressStage
-from agent_worklog.renderers.markdown import DetailLevel, MarkdownRenderer
-from agent_worklog.services.report import ReportService
-from agent_worklog.services.scan import ScanResult, ScanService
-from agent_worklog.summarizers.opencode_run import OpenCodeRunError
-from agent_worklog.summarizers.rule_based import RuleBasedSummarizer
+from iiwi.models.time_range import DateRange
+from iiwi.progress import ProgressReporter, ProgressStage
+from iiwi.renderers.markdown import DetailLevel, MarkdownRenderer
+from iiwi.services.report import ReportService
+from iiwi.services.scan import ScanResult, ScanService
+from iiwi.summarizers.opencode_run import OpenCodeRunError
+from iiwi.summarizers.rule_based import RuleBasedSummarizer
 from tests.integration.test_scan_service import FakeSource, StaticResolver
 from tests.progress import RecordingProgressReporter
 
@@ -167,7 +167,7 @@ def test_report_service_writes_markdown_for_loaded_sessions(tmp_path: Path) -> N
     assert result.output_path == output
     assert output.exists()
     assert "# Engineering Worklog" in output.read_text()
-    assert result.report.repositories[0].display_name == "Agent Worklog"
+    assert result.report.repositories[0].display_name == "Iiwi"
 
 
 class WarningSummarizer:
@@ -407,7 +407,7 @@ def test_narrative_mode_feeds_a_grouped_transcript(tmp_path: Path) -> None:
 
     assert len(runner.calls) == 1
     transcript = runner.calls[0]["transcript"]
-    assert "# Agent Worklog sessions grouped by repository" in transcript
+    assert "# Iiwi sessions grouped by repository" in transcript
     assert "## Project:" in transcript
     assert "Subagent sessions included: yes" in transcript
     assert "OpenCode" in runner.calls[0]["prompt"]

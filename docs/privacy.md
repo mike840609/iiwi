@@ -1,18 +1,18 @@
 # Privacy and security
 
-Agent Worklog is local-first, but coding-agent transcripts are sensitive inputs. This
+Iiwi is local-first, but coding-agent transcripts are sensitive inputs. This
 document defines what the MVP protects and what remains the operator's responsibility.
 
 ## Data flow
 
 With `--harness opencode` (the default):
 
-1. Agent Worklog queries candidate session metadata with `opencode db`.
+1. Iiwi queries candidate session metadata with `opencode db`.
 2. It requests each transcript with `opencode export <session-id> --sanitize`.
 
 With `--harness claude-code`:
 
-1. Agent Worklog lists the JSONL transcript files under the configured
+1. Iiwi lists the JSONL transcript files under the configured
    `projects_directory` (default `~/.claude/projects`), including subagent transcripts
    unless `--root-only` is used.
 2. It reads each file directly from disk. There is no harness-side export or sanitize
@@ -23,7 +23,7 @@ With `--harness claude-code`:
 
 With `--harness codex`:
 
-1. Agent Worklog finds the newest `state_<n>.sqlite` under the configured
+1. Iiwi finds the newest `state_<n>.sqlite` under the configured
    `home_directory` (default `~/.codex`) and queries it for threads whose activity
    overlaps the period, or, when that database is absent or its schema cannot be read,
    scans the `sessions/` and `archived_sessions/` rollout files under the same directory
@@ -48,7 +48,7 @@ All three harnesses then continue:
 7. Markdown is written with an atomic replacement and owner-only `0600` permissions on
    POSIX systems.
 
-Agent Worklog does not persist raw OpenCode exports or raw Claude Code or Codex
+Iiwi does not persist raw OpenCode exports or raw Claude Code or Codex
 transcripts beyond the in-memory read above. The secure writer may create a short-lived
 sibling file during atomic report replacement; it is removed after completion or failure.
 
@@ -77,20 +77,20 @@ working-directory paths, session titles, and business-sensitive descriptions may
 ## OpenCode sanitization
 
 Every OpenCode transcript request includes `--sanitize`. This is a defense-in-depth input
-boundary, not a replacement for Agent Worklog redaction. A command fails the acceptance
+boundary, not a replacement for Iiwi redaction. A command fails the acceptance
 suite if an OpenCode export is invoked without that flag.
 
 ## Claude Code has no sanitize step
 
 Claude Code has no export command at all, so there is nothing equivalent to `opencode
-export --sanitize` for Agent Worklog to request. With `--harness claude-code`, Agent
-Worklog reads `~/.claude/projects/**/*.jsonl` directly, and those files contain full tool
-output, whole file contents, environment dumps, and hook output exactly as Claude Code
-wrote them to disk.
+export --sanitize` for Iiwi to request. With `--harness claude-code`, Iiwi reads
+`~/.claude/projects/**/*.jsonl` directly, and those files contain full tool output,
+whole file contents, environment dumps, and hook output exactly as Claude Code wrote
+them to disk.
 
 What replaces the missing sanitize step is not a scrub of that file on disk — it is that
 the JSONL mapper deliberately keeps only a narrow slice of each record before anything
-else in Agent Worklog sees it:
+else in Iiwi sees it:
 
 - human prompts (tool results, hook injections, and system reminders that Claude Code
   also writes as `type: "user"` records are excluded, so they are never mistaken for
@@ -117,7 +117,7 @@ report records only that the command ran, under "In Progress".
 The same pattern-based secret checks described above still run on top of that reduced set
 of fields, exactly as they do for OpenCode evidence.
 
-This is a description of a deliberate design choice about what Agent Worklog retains, not
+This is a description of a deliberate design choice about what Iiwi retains, not
 a guarantee about what Claude Code itself writes to disk, and not a claim that the
 retained fields are free of secrets — a command, file path, or a truncated serialized
 tool input can itself contain a credential, and pattern checks cannot find every possible
@@ -133,7 +133,7 @@ status text exactly as Codex wrote them to disk.
 
 What replaces the missing sanitize step is the same kind of boundary as Claude Code's: the
 rollout mapper deliberately keeps only a narrow slice of each record before anything else
-in Agent Worklog sees it — user and assistant messages, tool names, and one field per
+in Iiwi sees it — user and assistant messages, tool names, and one field per
 record type:
 
 - `exec_command`'s `cmd` argument, the one Codex tool whose arguments name a command;
@@ -153,7 +153,7 @@ tool's name survive for those two record types. A rename's destination path live
 Everything else is dropped at that boundary and never reaches a report or the narrative
 `opencode run` transcript:
 tool `stdout` and `stderr`, and Codex's free-form status text. Codex records exit codes
-only inside that free-form text, in several formats, so Agent Worklog does not parse it —
+only inside that free-form text, in several formats, so Iiwi does not parse it —
 the mapper stores no `exit_code` and no `stderr_empty` for a Codex command, which is why no
 Codex report claims a command passed or failed. The one structured outcome signal Codex
 does provide is `patch_apply_end`'s `success` flag, used to decide whether a patch's paths
@@ -163,7 +163,7 @@ result.
 The same pattern-based secret checks described above still run on top of that reduced set
 of fields, exactly as they do for OpenCode and Claude Code evidence.
 
-This is a description of a deliberate design choice about what Agent Worklog retains, not
+This is a description of a deliberate design choice about what Iiwi retains, not
 a guarantee about what Codex itself writes to disk, and not a claim that the retained
 fields are free of secrets. Reports built from Codex sessions may still contain prompts,
 commands, file paths, and full working-directory paths, exactly as reports built from the
@@ -248,7 +248,7 @@ are reported using session IDs and redacted error text.
 ## OpenCode raw export default
 
 OpenCode sessions are loaded with raw `opencode export` by default. The complete
-JSON stays in subprocess stdout and Python memory; Agent Worklog does not persist or
+JSON stays in subprocess stdout and Python memory; Iiwi does not persist or
 log it. Extracted evidence still passes through the local redactor before rendering
 or before it reaches the narrative `opencode run` invocation.
 

@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agent_worklog.models.repository import RepositoryIdentity, RepositoryIdentityType
-from agent_worklog.models.session import AgentSession
-from agent_worklog.process import CommandResult
-from agent_worklog.repositories.resolver import RepositoryResolver, reattach_by_branch
+from iiwi.models.repository import RepositoryIdentity, RepositoryIdentityType
+from iiwi.models.session import AgentSession
+from iiwi.process import CommandResult
+from iiwi.repositories.resolver import RepositoryResolver, reattach_by_branch
 
 
 def test_same_remote_groups_different_worktrees(fake_git_runner) -> None:

@@ -5,12 +5,12 @@ from dataclasses import dataclass, field
 import pytest
 import typer
 
-import agent_worklog.cli as cli
-from agent_worklog.config import AppSettings
-from agent_worklog.harnesses.opencode.mapper import OpenCodeExportMapper
-from agent_worklog.harnesses.opencode.source import OpenCodeCliSource
-from agent_worklog.models.session import SessionDescriptor
-from agent_worklog.process import CommandResult
+import iiwi.cli as cli
+from iiwi.config import AppSettings
+from iiwi.harnesses.opencode.mapper import OpenCodeExportMapper
+from iiwi.harnesses.opencode.source import OpenCodeCliSource
+from iiwi.models.session import SessionDescriptor
+from iiwi.process import CommandResult
 
 
 @dataclass
@@ -29,7 +29,7 @@ class FakeRunner:
 
 def test_opencode_sanitize_defaults_to_false(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE",
+        "IIWI_HARNESSES__OPENCODE__CLI__SANITIZE",
         raising=False,
     )
 
@@ -40,7 +40,7 @@ def test_opencode_sanitize_can_be_enabled_from_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE",
+        "IIWI_HARNESSES__OPENCODE__CLI__SANITIZE",
         "true",
     )
 
@@ -108,7 +108,7 @@ def test_effective_sanitize_uses_setting_and_cli_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__OPENCODE__CLI__SANITIZE",
+        "IIWI_HARNESSES__OPENCODE__CLI__SANITIZE",
         "true",
     )
     settings = AppSettings()

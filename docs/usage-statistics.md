@@ -4,7 +4,7 @@ With `--harness opencode`, each report includes a usage section built from `open
 stats`, covering models, tokens, and tools. OpenCode reports usage only for a period that
 ends now. The period shown in the report therefore starts when the report period starts
 and runs to the time the report is created. It covers the report period but is wider than
-it. If `opencode stats` is not available, Agent Worklog leaves the section out and adds a
+it. If `opencode stats` is not available, Iiwi leaves the section out and adds a
 warning to the report.
 
 With `--harness claude-code` or `--harness codex`, the usage section is built from token

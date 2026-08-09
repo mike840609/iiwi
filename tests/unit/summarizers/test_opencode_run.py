@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_worklog.process import CommandResult
-from agent_worklog.summarizers.opencode_run import (
+from iiwi.process import CommandResult
+from iiwi.summarizers.opencode_run import (
     OpenCodeRunError,
     OpenCodeRunner,
     build_summary_prompt,
@@ -52,7 +52,7 @@ def test_run_invokes_opencode_with_transcript_file(tmp_path: Path) -> None:
     narrative = driver.run(
         transcript="## Project: Alpha\n",
         prompt="Write a report.",
-        title="Agent Worklog - 2026-07-20 to 2026-07-27",
+        title="Iiwi - 2026-07-20 to 2026-07-27",
     )
 
     assert narrative == "# Weekly OpenCode Review\n\nWork happened."

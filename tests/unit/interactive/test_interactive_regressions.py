@@ -10,26 +10,26 @@ from zoneinfo import ZoneInfo
 import pytest
 from rich.console import Console
 
-from agent_worklog import cli
-from agent_worklog import errors as app_errors
-from agent_worklog.interactive import cli_actions
-from agent_worklog.interactive import input as interactive_input
-from agent_worklog.interactive import render as interactive_render
-from agent_worklog.interactive.controller import (
+from iiwi import cli
+from iiwi import errors as app_errors
+from iiwi.interactive import cli_actions
+from iiwi.interactive import input as interactive_input
+from iiwi.interactive import render as interactive_render
+from iiwi.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
     run_interactive,
 )
-from agent_worklog.interactive.input import Key, KeyPress, normalize_posix_sequence
-from agent_worklog.interactive.models import ReportDraft
-from agent_worklog.models.repository import (
+from iiwi.interactive.input import Key, KeyPress, normalize_posix_sequence
+from iiwi.interactive.models import ReportDraft
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.time_range import DateRange
+from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 

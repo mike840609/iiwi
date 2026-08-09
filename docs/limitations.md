@@ -7,10 +7,10 @@ full, including the ones that apply only to a specific harness.
 
 - OpenCode, Claude Code, and Codex are the supported coding-agent tools; select one with
   `--harness`.
-- For `--harness opencode`, Agent Worklog gets session data through the OpenCode
+- For `--harness opencode`, Iiwi gets session data through the OpenCode
   command-line tool. It does not read the SQLite database directly.
 - Markdown is the only report format.
-- Agent Worklog does not keep a cache between runs and does not provide an `inspect`
+- Iiwi does not keep a cache between runs and does not provide an `inspect`
   command.
 - Repository grouping uses the Git information available when the report is created.
 - Older OpenCode sessions may use a backup ID if their working folders have been deleted.
@@ -47,18 +47,18 @@ full, including the ones that apply only to a specific harness.
 - No Codex report claims that a command passed or failed. Codex records exit codes only
   inside free-form tool output, in several formats, so only `patch_apply_end`'s structured
   `success` flag is trusted — and it reports a file change, not a verification result.
-- When there is no readable Codex state database and Agent Worklog falls back to scanning
+- When there is no readable Codex state database and Iiwi falls back to scanning
   rollout files, session titles are lost: rollout files carry an `agent_nickname` but never
   a `title`, which lives only in the state database.
 - A Codex message sent with attachments — a browser context, mentioned files, a shell
   command and its output, a slash command, a background-task notice, or a resume summary —
-  contributes no goal. Agent Worklog cannot tell a genuine request apart from the rest of
+  contributes no goal. Iiwi cannot tell a genuine request apart from the rest of
   that envelope without parsing an undocumented format, and it would rather lose the goal
   than mis-attribute one.
 
 ## OpenCode sanitized reports
 
 OpenCode's `--sanitize` replaces conversation text, tool input and output, paths, and
-patches with redaction placeholders. Agent Worklog cannot restore that content. It
+patches with redaction placeholders. Iiwi cannot restore that content. It
 filters placeholders and keeps available database metadata, repository grouping,
 session counts, and usage statistics, but detailed goals and outcomes are unavailable.

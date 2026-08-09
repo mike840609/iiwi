@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from agent_worklog.history import (
+from iiwi.history import (
     HistoryEntry,
     append_history,
     history_to_json,

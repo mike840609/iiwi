@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from typer.testing import CliRunner
 
-import agent_worklog.cli as cli
+import iiwi.cli as cli
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -24,7 +24,7 @@ def _invoke(
     )
     monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: git_only_runner)
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
+        "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
         str(claude_code_projects),
     )
     args = ["report", "--harness", "claude-code", "--period", "last-week"]
@@ -46,7 +46,7 @@ def test_claude_code_report_groups_by_repository_and_reports_usage(
 
     assert result.exit_code == 0, result.stdout
     content = output.read_text(encoding="utf-8")
-    assert "github.com/mike/agent-worklog" in content
+    assert "github.com/mike/iiwi" in content
     assert "github.com/mike/assets-tracker" in content
     assert "Retry for the price fetcher" in content
     assert "## Usage" in content
@@ -61,7 +61,11 @@ def test_claude_code_report_groups_by_repository_and_reports_usage(
     # No exit code exists, so the run is reported without claiming an outcome, and
     # it lands under In Progress rather than disappearing from the report.
     assert "Verification passed" not in content
-    in_progress = content.split("#### In Progress")[1]
+    # Scope to the Iiwi repository's own section: repos sort case-insensitively by
+    # display name, and "Iiwi" now sorts after "Assets Tracker", so a bare first-match
+    # split on "#### In Progress" would grab the wrong repository's section.
+    iiwi_section = content.split("### Iiwi")[1]
+    in_progress = iiwi_section.split("#### In Progress")[1]
     assert "- Ran verification command: pytest -q" in in_progress
 
 
@@ -83,7 +87,7 @@ def test_root_only_excludes_the_subagent_repository(
 
     assert result.exit_code == 0, result.stdout
     content = output.read_text(encoding="utf-8")
-    assert "github.com/mike/agent-worklog" in content
+    assert "github.com/mike/iiwi" in content
     assert "github.com/mike/assets-tracker" not in content
 
 
@@ -99,7 +103,7 @@ def test_scan_reports_the_claude_code_sessions(
     )
     monkeypatch.setattr(cli, "CommandRunner", lambda timeout_seconds: git_only_runner)
     monkeypatch.setenv(
-        "AGENT_WORKLOG_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
+        "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY",
         str(claude_code_projects),
     )
 

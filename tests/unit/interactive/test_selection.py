@@ -5,15 +5,15 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agent_worklog.interactive.selection import SelectionMark, SelectionState, noise_reason
-from agent_worklog.models.repository import (
+from iiwi.interactive.selection import SelectionMark, SelectionState, noise_reason
+from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
     ResolvedSession,
 )
-from agent_worklog.models.session import ActivityType, AgentSession, SessionActivity
-from agent_worklog.models.time_range import DateRange
-from agent_worklog.services.scan import ScanResult
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.models.time_range import DateRange
+from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
 
