@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## 0.9.1 - 2026-08-10
+
+Documentation only; no functional change. PyPI renders the description that
+shipped with each release, so the rewritten README reaches the project page
+only through a new version.
+
+- Restructured both READMEs. One sentence now says what Iiwi does, and the
+  hundred-line quick start is split into Quick start, The interactive menu,
+  and Commands, with the report flags as a table. English drops from 236 to
+  170 lines, zh-TW from 208 to 161.
+- The zh-TW README documents `history`, `update`, `run`, JSON output, the `p`
+  and `e` keys, and the security policy, which it was missing.
+- The architecture diagram moves to `docs/architecture.md`; its nodes are
+  internal class names that mean nothing to someone installing the tool.
+- A banner replaces the overview screenshot at the top of both READMEs, and
+  `docs/assets/social-preview.jpg` is the 1280x640 crop GitHub wants.
+- The PyPI badge dropped its legacy `.svg` suffix. shields.io cached a 404
+  from the window between the rename and the first `iiwi` upload, and both it
+  and GitHub's camo proxy key that cache on the exact URL.
+- `uv run iiwi` is documented in Development, with a note on what each command
+  in that block is for.
+
 ## 0.9.0 - 2026-08-10
 
 - Renamed the project from Agent Worklog to Iiwi. The command is now `iiwi`,
