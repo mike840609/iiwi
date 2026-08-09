@@ -1,0 +1,67 @@
+name: Iiwi Migration
+
+on:
+  push:
+    branches:
+      - "docs/iiwi-brand-foundation"
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/iiwi-brand-foundation
+          fetch-depth: 0
+
+      - name: Detect completed migration
+        id: guard
+        run: |
+          if test -d src/iiwi; then
+            echo "done=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "done=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.guard.outputs.done != 'true'
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.guard.outputs.done != 'true'
+
+      - name: Install baseline dependencies
+        if: steps.guard.outputs.done != 'true'
+        run: uv sync --locked --extra dev
+
+      - name: Patch temporary runner glob handling
+        if: steps.guard.outputs.done != 'true'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tools/iiwi_brand_migration.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace(
+              'run("uv", "tool", "run", "twine", "check", "dist/*")',
+              'run("uv", "tool", "run", "twine", "check", '
+              '*(str(path) for path in sorted(dist.iterdir())))',
+          )
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Execute approved TDD migration plan
+        if: steps.guard.outputs.done != 'true'
+        run: uv run python tools/iiwi_brand_migration.py
+
+      - name: Push verified migration commits
+        if: steps.guard.outputs.done != 'true'
+        run: |
+          git status --short
+          git log --oneline -8
+          git push origin HEAD:refs/heads/docs/iiwi-brand-foundation
