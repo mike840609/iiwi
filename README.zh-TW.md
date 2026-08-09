@@ -13,7 +13,7 @@
 
 [English](https://github.com/mike840609/iiwi/blob/main/README.md) | 繁體中文
 
-![Agent 工作階段被分組為每週工程報告](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-overview.png)
+![Iiwi — 看見你的 agent 做了什麼](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-banner.jpg)
 
 每週工作回報，其實是把已經做過的事再寫一次。Iiwi 直接讀取 coding agent 已經留下的工作階段
 紀錄，依 repository 分組，替你把報告寫出來。支援 OpenCode、Claude Code 與 Codex。

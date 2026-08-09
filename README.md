@@ -13,7 +13,7 @@ engineering report, without anything leaving your machine.
 
 English | [繁體中文](https://github.com/mike840609/iiwi/blob/main/README.zh-TW.md)
 
-![Agent sessions are grouped into weekly engineering reports](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-overview.png)
+![Iiwi — see what your agents did](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-banner.jpg)
 
 The weekly status update is work you already did once. Iiwi reads the sessions
 your coding agent already recorded, groups them by repository, and writes the
