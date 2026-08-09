@@ -5,7 +5,9 @@ so its threat model is about transcript data — what is read, what is written,
 and what leaves the machine. The guiding principle is:
 
 > **Nothing leaves your machine.** The narrative review is written by your
-> locally installed `opencode run` — no network request, no API key.
+> locally installed `opencode run` — no network request, no API key. The one
+> exception is `update`, which fetches the version index from PyPI only when
+> you run it.
 
 ## Reporting a vulnerability
 

@@ -12,6 +12,7 @@ Every command, option, and exit code. For a guided tour instead, see the
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
 | `history` | Lists the reports this tool has written. |
+| `update` | Checks PyPI for a newer release. |
 | `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
 | `config` | Shows and edits the settings file: `path`, `list`, `init`, `set`, `unset`. |
 
@@ -176,6 +177,16 @@ narrative review was used, and the output path. It accepts `--json` and prints
 `--dry-run` are not recorded, and a history write failure never fails the
 report that triggered it.
 
+## update
+
+`update` compares the installed version against the latest release on PyPI and
+accepts `--json`. It is the only command that touches the network, and it only
+does so when run. When an update is available, the command prints the new
+version and the upgrade command and exits with code 8; up to date means exit 0.
+An unreachable index is not an error — offline machines are legitimate — so a
+failed check prints the reason and exits 0, and in JSON mode emits
+`{"error": "..."}`.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -186,6 +197,7 @@ report that triggered it.
 | 4 | No matching activity |
 | 5 | Harness or Git dependency error |
 | 7 | Report file error |
+| 8 | Update available (`update` only) |
 
 If one session cannot be read, Agent Worklog skips it and adds a warning to the report.
 If no sessions can be read, the command stops with an error instead of creating an empty
