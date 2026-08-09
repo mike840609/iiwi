@@ -41,25 +41,25 @@ uv tool run twine check dist/*
 4. Create an annotated tag that exactly matches the package version.
 5. Push the tag.
 
-For version `0.1.0`:
+For the first Iiwi release, `0.9.0`:
 
 ```bash
 git checkout main
 git pull --ff-only
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
+git tag -a v0.9.0 -m "Release v0.9.0"
+git push origin v0.9.0
 ```
 
-The workflow verifies that `v0.1.0` matches `version = "0.1.0"`, builds the package, publishes it through OIDC, and then creates a GitHub Release containing the same distributions. PyPI publication and GitHub Release creation run as separate sequential jobs.
+The workflow verifies that `v0.9.0` matches `version = "0.9.0"`, builds the package, publishes it through OIDC, and then creates a GitHub Release containing the same distributions. PyPI publication and GitHub Release creation run as separate sequential jobs.
 
-PyPI versions are immutable. A corrected release must use a new version such as `0.1.1`; an existing file or version cannot be overwritten.
+PyPI versions are immutable. A corrected release must use a new version such as `0.9.1`; an existing file or version cannot be overwritten.
 
 ## Recover after PyPI succeeds
 
 If the `publish` job succeeds but the later `release` job fails, diagnose the failure and confirm that PyPI contains the version before retrying. Do not create another tag, rerun the whole workflow, or rerun the `publish` job. Rerun only failed jobs in the original workflow run:
 
 ```bash
-version=0.1.0
+version=0.9.0
 gh run view RUN_ID --repo mike840609/iiwi --json jobs \
   --jq '.jobs[] | [.name, .conclusion] | @tsv'
 curl -fsS "https://pypi.org/pypi/iiwi/${version}/json" |
