@@ -68,6 +68,24 @@ jobs:
           text = text.replace('            char("1"),', '            char("2"),', 1)
           collapsed.write_text(text)
 
+          regressions = Path("tests/unit/interactive/test_interactive_regressions.py")
+          text = regressions.read_text()
+          text = text.replace(
+              '            KeyPress(key=Key.DOWN),\n            KeyPress(key=Key.ENTER),\n            char("l"),\n            char("h"),\n            char("R"),',
+              '            KeyPress(key=Key.ENTER),\n            char("l"),\n            char("h"),\n            char("R"),',
+              1,
+          )
+          regressions.write_text(text)
+
+          render_test = Path("tests/unit/interactive/test_render.py")
+          text = render_test.read_text()
+          text = text.replace(
+              '    column = generate.index("Scan the period and produce the report")\n    assert review.index("Explore sessions by repository") == column\n',
+              '    column = review.index("Explore sessions by repository")\n    assert generate.index("Configure and produce a report") == column\n',
+              1,
+          )
+          render_test.write_text(text)
+
           Path(".github/workflows/sync-pr-71.yml").unlink()
           PY
 
