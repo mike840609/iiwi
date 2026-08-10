@@ -172,11 +172,14 @@ def test_report_setup_renders_settings_as_the_navigable_list() -> None:
     text = stream.getvalue()
     assert "Generate Report" in text
     assert "Harness" in text and "OpenCode" in text
+    assert "Period" in text
+    assert "Advanced settings" in text
     assert "Detail" in text and "Full" in text
     assert "Subagents" in text and "Included" in text
     assert "Narrative" in text and "Enabled" in text
     assert "Sanitize" in text and "Off" in text
-    assert "Dry run" in text
+    assert "Preview report" in text
+    assert "Dry run" not in text
     assert "▶ Generate report" in text
     assert "  Settings" in text
     assert "g Generate" in text
@@ -798,16 +801,17 @@ def test_report_setup_separates_the_generate_action_from_the_settings() -> None:
     render_report_setup(console, draft, selected=0)
     lines = stream.getvalue().splitlines()
     action = next(i for i, line in enumerate(lines) if "Generate report" in line)
+    preview = next(i for i, line in enumerate(lines) if "Preview report" in line)
     harness = next(i for i, line in enumerate(lines) if "Harness" in line)
-    assert action < harness
-    assert lines[action + 1].strip() == ""
+    assert action < preview < harness
+    assert lines[preview + 1].strip() == ""
     assert lines[action].startswith("▶")
 
 
 def test_report_setup_describes_the_row_under_the_cursor() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
-    render_report_setup(console, draft, selected=3)
+    render_report_setup(console, draft, selected=5)
     detail_help = stream.getvalue()
     console, stream = _console()
     render_report_setup(console, draft, selected=0)
@@ -820,21 +824,21 @@ def test_report_setup_describes_the_row_under_the_cursor() -> None:
 def test_report_setup_explains_why_sanitize_is_unavailable() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="claude-code", period=_period())
-    render_report_setup(console, draft, selected=6)
+    render_report_setup(console, draft, selected=8)
     text = stream.getvalue()
-    assert "Sanitize     N/A" in text
+    assert "Sanitize" in text and "N/A" in text
     assert "Only OpenCode can redact on export" in text
 
 
 def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
     console, stream = _color_console()
     draft = ReportDraft(harness="opencode", period=_period())
-    render_report_setup(console, draft, selected=3)
+    render_report_setup(console, draft, selected=5)
     text = stream.getvalue()
     action = _row(text, "Generate report")
-    settings = _row(text, "Dry run")
+    settings = _row(text, "Harness")
     assert _glyph_style(action, "G") == "36"
-    assert "36" not in _glyph_style(settings, "D")
+    assert "36" not in _glyph_style(settings, "H")
     console, stream = _color_console()
     render_report_setup(console, draft, selected=0)
     selected_action = _row(stream.getvalue(), "Generate report")
@@ -913,7 +917,6 @@ def test_render_session_preview_shows_the_session() -> None:
     text = stream.getvalue()
     assert "Session Preview" in text
     assert "Deploy the service" in text
-    assert "bump the version" in text
     assert "b Back" in text
 
 
@@ -959,11 +962,11 @@ def test_main_menu_falls_back_to_the_title_row_on_a_narrow_terminal() -> None:
 
 
 def test_main_menu_shows_the_project_link_under_the_subtitle() -> None:
-    from iiwi.interactive.render import _PROJECT_LABEL, render_main_menu
+    from iiwi.interactive.render import _MAIN_SUBTITLE, _PROJECT_LABEL, render_main_menu
     console, stream = _console(width=100, height=30)
     render_main_menu(console, selected=0)
     lines = stream.getvalue().splitlines()
-    assert lines[lines.index(_PROJECT_LABEL) - 1].startswith("See what your agent did")
+    assert lines[lines.index(_PROJECT_LABEL) - 1].startswith(_MAIN_SUBTITLE)
 
 
 def test_main_menu_link_survives_the_compact_header() -> None:

@@ -35,6 +35,7 @@ from iiwi.interactive.render import (
     render_session_review,
     report_generate_row,
     report_preview_capacity,
+    report_preview_row,
     report_result_options,
     report_setup_rows,
 )
@@ -43,6 +44,8 @@ from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
 from iiwi.renderers.markdown import DetailLevel
 from iiwi.services.scan import ScanResult
+
+_ADVANCED_ROW = "Advanced settings"
 
 
 class KeySource(Protocol):
@@ -93,6 +96,7 @@ class _State:
     screen: Screen = Screen.MAIN
     main_cursor: int = 0
     setup_cursor: int = 0
+    setup_advanced: bool = False
     browser_cursor: int = 0
     review_cursor: int = 0
     result_cursor: int = 0
@@ -199,12 +203,14 @@ def _reset_search(state: _State) -> None:
 def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.draft = actions.new_draft()
     state.setup_cursor = 0
+    state.setup_advanced = False
     state.selection = None
     state.result = None
     state.error = None
     state.review_message = None
     state.review_from_main = False
     state.preview_offset = 0
+    state.preview_return_screen = None
     state.expanded_repositories = set()
     _reset_search(state)
     state.screen = Screen.REPORT_SETUP
@@ -398,33 +404,43 @@ def _edit_setup_field(state: _State, actions: InteractiveActions, *, field: str)
     elif field == "Sanitize":
         if draft.harness == "opencode":
             draft.set_sanitize(not draft.sanitize)
-    elif field == "Dry run":
-        draft.set_dry_run(not draft.dry_run)
     _clear_expansions_if_scan_was_invalidated(state, draft, had_scan=had_scan)
 
 
 def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
-    rows = report_setup_rows()
+    rows = report_setup_rows(advanced=state.setup_advanced)
     state.setup_cursor = _move(state.setup_cursor, key, len(rows))
     if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = Screen.MAIN
         return
     if _char(key, "r"):
+        assert state.draft is not None
+        state.draft.set_dry_run(False)
         state.review_from_main = False
         _review(state, actions)
         return
     if _char(key, "g"):
-        _generate_from_setup(state, actions)
+        _generate_from_setup(state, actions, preview=False)
         return
     row = rows[state.setup_cursor]
-    if row == report_generate_row():
-        # Generating writes a file, so the action row answers to Enter alone —
-        # a stray left/right while scrolling the settings must not produce a report.
+    if row in {report_generate_row(), report_preview_row()}:
+        # Actions answer to Enter alone. Left/right remains reserved for changing
+        # settings, so scrolling across an action can never execute it by accident.
         if key.key is Key.ENTER:
-            _generate_from_setup(state, actions)
+            _generate_from_setup(
+                state,
+                actions,
+                preview=row == report_preview_row(),
+            )
         return
     horizontal_edit = key.key in {Key.LEFT, Key.RIGHT} or _char(key, "h") or _char(key, "l")
     if key.key is not Key.ENTER and not horizontal_edit:
+        return
+    if row == _ADVANCED_ROW:
+        advanced_index = rows.index(_ADVANCED_ROW)
+        state.setup_advanced = not state.setup_advanced
+        if not state.setup_advanced:
+            state.setup_cursor = min(state.setup_cursor, advanced_index)
         return
     _edit_setup_field(state, actions, field=row)
 
@@ -637,18 +653,33 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
     state.screen = Screen.REPORT_RESULT
 
 
-def _generate_from_setup(state: _State, actions: InteractiveActions) -> None:
-    """Scan the way Review does, then generate against the selection it built.
+def _generate_from_setup(
+    state: _State,
+    actions: InteractiveActions,
+    *,
+    preview: bool,
+) -> None:
+    """Generate from setup, using dry-run only for the Preview action.
 
-    `_generate` needs `state.selection`, which only `_review` establishes, and
-    `_review` is also what surfaces a failed or empty scan. Reusing it means
-    generating from here cannot reach a state that reviewing first could not.
+    Both actions share the same scan and restored selection. Preview temporarily
+    enables ``dry_run`` for the business layer, then restores the draft so a later
+    Generate action can never inherit a hidden no-write mode.
     """
-    state.review_from_main = False
-    _review(state, actions)
-    if state.screen is not Screen.SESSION_REVIEW:
-        return
-    _generate(state, actions, force=False)
+    assert state.draft is not None
+    draft = state.draft
+    draft.set_dry_run(preview)
+    try:
+        state.review_from_main = False
+        _review(state, actions)
+        if state.screen is not Screen.SESSION_REVIEW:
+            return
+        _generate(state, actions, force=False)
+    finally:
+        draft.set_dry_run(False)
+    if preview and state.screen is Screen.REPORT_RESULT:
+        state.preview_offset = 0
+        state.preview_return_screen = Screen.REPORT_SETUP
+        state.screen = Screen.REPORT_PREVIEW
 
 
 def _rescan_review(state: _State, actions: InteractiveActions) -> None:
@@ -867,6 +898,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
     choice = options[state.result_cursor]
     if choice == "Preview report":
         state.preview_offset = 0
+        state.preview_return_screen = Screen.REPORT_RESULT
         state.screen = Screen.REPORT_PREVIEW
     elif choice == "Back to main menu":
         state.screen = Screen.MAIN
@@ -878,6 +910,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
         state.review_message = None
         state.review_from_main = False
         state.setup_cursor = 0
+        state.setup_advanced = False
         state.preview_offset = 0
         state.expanded_repositories = set()
         _reset_search(state)
@@ -902,7 +935,8 @@ def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
         state.screen = Screen.MAIN
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
-        state.screen = Screen.REPORT_RESULT
+        state.screen = state.preview_return_screen or Screen.REPORT_RESULT
+        state.preview_return_screen = None
         return
     lines = state.result.content.splitlines() or [""]
     capacity = report_preview_capacity(console.size.height)
@@ -962,7 +996,12 @@ def _render_screen(state: _State, console: Console) -> None:
         render_main_menu(console, selected=state.main_cursor)
     elif state.screen is Screen.REPORT_SETUP:
         assert state.draft is not None
-        render_report_setup(console, state.draft, selected=state.setup_cursor)
+        render_report_setup(
+            console,
+            state.draft,
+            selected=state.setup_cursor,
+            advanced=state.setup_advanced,
+        )
     elif state.screen is Screen.SESSION_BROWSER:
         assert state.browser_scan is not None
         render_session_browser(
@@ -1038,7 +1077,8 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
     elif state.screen is Screen.REPORT_RESULT:
         state.screen = Screen.MAIN
     elif state.screen is Screen.REPORT_PREVIEW:
-        state.screen = Screen.REPORT_RESULT
+        state.screen = state.preview_return_screen or Screen.REPORT_RESULT
+        state.preview_return_screen = None
     elif state.screen is Screen.SESSION_PREVIEW:
         state.screen = state.preview_return_screen or Screen.MAIN
     elif state.screen is Screen.RECOVERABLE_ERROR and state.error is not None:

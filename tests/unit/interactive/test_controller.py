@@ -195,15 +195,7 @@ def test_default_navigation_enters_read_only_activity_without_prompting_and_retu
 def test_review_reuses_cached_scan_after_back() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [
-            char("2"),
-            char("r"),
-            char("b"),
-            char("r"),
-            char("b"),
-            char("b"),
-            char("q"),
-        ]
+        [char("1"), char("r"), char("b"), char("r"), char("b"), char("b"), char("q")]
     )
 
     run_interactive(
@@ -222,6 +214,9 @@ def test_setup_detail_edit_does_not_require_a_scan() -> None:
             char("2"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.ENTER),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("b"),
@@ -332,6 +327,8 @@ def test_setup_edits_the_field_under_the_cursor() -> None:
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.ENTER),
+            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
@@ -347,13 +344,14 @@ def test_setup_edits_the_field_under_the_cursor() -> None:
         console=_console(),
     )
 
-    assert draft.dry_run is True
+    assert draft.sanitize is True
+    assert draft.dry_run is False
     assert draft.include_subagents is True
     assert draft.narrative is True
 
 
 def test_setup_escape_returns_to_main_without_a_back_row() -> None:
-    input_source = ScriptedInput([char("2"), KeyPress(key=Key.ESCAPE), char("q")])
+    input_source = ScriptedInput([char("1"), KeyPress(key=Key.ESCAPE), char("q")])
 
     run_interactive(
         actions=_actions(),
