@@ -1,0 +1,146 @@
+name: Sync PR 72
+
+on:
+  push:
+    branches:
+      - agent/simplify-interactive-footer
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/simplify-interactive-footer
+          fetch-depth: 0
+
+      - name: Merge latest main and keep footer-only scope
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge -X theirs origin/main --no-edit
+
+          # Drop stale pre-#69/#71 overlap. These files are not part of PR 72's behavior.
+          git checkout origin/main -- \
+            src/iiwi/interactive/controller.py \
+            tests/unit/interactive/test_interactive_regressions.py \
+            tests/unit/interactive/test_render.py \
+            tests/unit/interactive/test_review_regressions.py
+
+          # Rebuild the renderer change from latest main so only footer copy differs.
+          git checkout origin/main -- src/iiwi/interactive/render.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/iiwi/interactive/render.py")
+          text = path.read_text()
+
+          replacements = [
+              (
+                  '''    hints = [
+                      "↑↓ jk",
+                      "←→ hl",
+                      "Space Toggle",
+                      "a All",
+                      "n None",
+                      "g Generate",
+                      "p Preview",
+                      "e Exclude repo",
+                      "R Rescan",
+                      "/ Search",
+                      "? Help",
+                      "b Back",
+                  ]
+          ''',
+                  '''    hints = [
+                      "↑↓ jk",
+                      "Space Select",
+                      "p Inspect",
+                      "/ Search",
+                      "g Report",
+                      "? More",
+                      "b Back",
+                  ]
+          ''',
+              ),
+              (
+                  '''    hints = [
+                      "↑↓ jk",
+                      "←→ hl",
+                      "p Preview",
+                      "R Rescan",
+                      "/ Search",
+                      "? Help",
+                      "b Back",
+                  ]
+          ''',
+                  '''    hints = [
+                      "↑↓ jk",
+                      "p Inspect",
+                      "/ Search",
+                      "? More",
+                      "b Back",
+                  ]
+          ''',
+              ),
+              (
+                  '''        [
+                      "↑↓ jk",
+                      "←→ hl Change",
+                      "Enter Select",
+                      "r Review",
+                      "g Generate",
+                      "? Help",
+                      "b Back",
+                      "q Menu",
+                  ],
+          ''',
+                  '''        [
+                      "↑↓ jk",
+                      "←→ Change",
+                      "r Review",
+                      "g Generate",
+                      "? More",
+                      "b Back",
+                  ],
+          ''',
+              ),
+          ]
+
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one renderer block, found {text.count(old)}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Verify footer behavior
+        run: uv run pytest tests/unit/interactive/test_simplified_footer.py -q
+
+      - name: Verify full suite
+        run: |
+          uv run pytest --cov=iiwi --cov-fail-under=80
+          uv run ruff check .
+          uv run pyright
+          uv build
+
+      - name: Commit synced branch and remove helper workflow
+        run: |
+          git rm .github/workflows/sync-pr72.yml
+          git add -A
+          git commit -m "chore: sync footer simplification with latest main"
+          git push origin HEAD:agent/simplify-interactive-footer
