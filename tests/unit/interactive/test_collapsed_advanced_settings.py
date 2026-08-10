@@ -138,7 +138,7 @@ def test_enter_on_advanced_settings_expands_instead_of_editing_detail() -> None:
     console, _ = _console()
     input_source = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),

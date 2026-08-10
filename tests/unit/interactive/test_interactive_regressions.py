@@ -278,7 +278,6 @@ def test_browser_supports_horizontal_expand_collapse_and_rescan() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("l"),
             char("h"),

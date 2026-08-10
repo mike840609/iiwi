@@ -147,8 +147,8 @@ def test_main_menu_describes_each_option() -> None:
     assert "Configure and produce a report" in generate
     assert "Diagnose the harness setup" in setup
     assert "Edit saved settings" in settings
-    column = generate.index("Scan the period and produce the report")
-    assert browse.index("Explore sessions by repository") == column
+    column = review.index("Explore sessions by repository")
+    assert generate.index("Configure and produce a report") == column
     assert setup.index("Diagnose the harness setup") == column
     assert settings.index("Edit saved settings") == column
 
