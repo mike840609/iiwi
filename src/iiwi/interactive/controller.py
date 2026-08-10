@@ -11,11 +11,7 @@ from typing import Protocol, Self
 import typer
 from rich.console import Console
 
-from iiwi.errors import (
-    IiwiError,
-    ReportAlreadyExistsError,
-    ReportOutputError,
-)
+from iiwi.errors import IiwiError, ReportAlreadyExistsError, ReportOutputError
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.interactive.render import (
@@ -44,10 +40,10 @@ from iiwi.models.time_range import DateRange
 from iiwi.renderers.markdown import DetailLevel
 from iiwi.services.scan import ScanResult
 
+_ADVANCED_ROW = "Advanced settings"
+
 
 class KeySource(Protocol):
-    """Minimal input contract; one context restores terminal mode after each key."""
-
     def __enter__(self) -> Self: ...
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None: ...
@@ -65,8 +61,6 @@ class InteractiveReportResult:
 
 @dataclass(frozen=True)
 class InteractiveActions:
-    """Business-logic seams supplied by `cli.py`, keeping this module cycle-free."""
-
     new_draft: Callable[[], ReportDraft]
     choose_harness: Callable[[str], str]
     choose_period: Callable[[str | None], tuple[str, DateRange]]
@@ -93,6 +87,7 @@ class _State:
     screen: Screen = Screen.MAIN
     main_cursor: int = 0
     setup_cursor: int = 0
+    setup_advanced: bool = False
     browser_cursor: int = 0
     review_cursor: int = 0
     result_cursor: int = 0
@@ -103,7 +98,6 @@ class _State:
     result: InteractiveReportResult | None = None
     expanded_repositories: set[str] | None = None
     preview_session: AgentSession | None = None
-    preview_offset: int = 0
     preview_return_screen: Screen | None = None
     error: _ErrorState | None = None
     review_message: str | None = None
@@ -118,8 +112,6 @@ class _State:
 
 
 def _read_key(input_source: KeySource) -> KeyPress:
-    """Read exactly one key while guaranteeing terminal restoration before actions run."""
-
     with input_source:
         return input_source.read_key()
 
@@ -144,11 +136,6 @@ def _move(cursor: int, key: KeyPress, count: int) -> int:
     return cursor
 
 
-# Clearing and then reprinting shows the terminal an empty screen between the two,
-# which is the flicker. The next frame is painted over the last instead: only the
-# rows whose bytes actually changed are rewritten in place, the cursor is hidden
-# while the frame lands, and one erase after the last frame row drops whatever the
-# previous frame — or an action's prompt — left below it.
 _CURSOR_HIDE = "\x1b[?25l"
 _CURSOR_SHOW = "\x1b[?25h"
 _HOME = "\x1b[H"
@@ -157,15 +144,6 @@ _ERASE_BELOW = "\x1b[J"
 
 
 def _paint(console: Console, frame: str, previous: list[str] | None) -> list[str]:
-    """Write one frame over the last, rewriting only the rows that changed.
-
-    Moving the cursor changes exactly two rows, so exactly two rows are
-    rewritten: nothing else on screen moves, so there is nothing to flash. The
-    cursor is hidden while the frame lands, then parked below it — actions that
-    hand off to typer prompts print there, and the next paint positions every
-    row absolutely anyway.
-    """
-
     lines = frame.split("\n")
     if lines and lines[-1] == "":
         lines.pop()
@@ -198,6 +176,7 @@ def _reset_search(state: _State) -> None:
 def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.draft = actions.new_draft()
     state.setup_cursor = 0
+    state.setup_advanced = False
     state.selection = None
     state.result = None
     state.error = None
@@ -208,13 +187,7 @@ def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.screen = Screen.REPORT_SETUP
 
 
-def _load_browse(
-    state: _State,
-    actions: InteractiveActions,
-    draft: ReportDraft,
-) -> None:
-    """Scan an already configured browse draft, preserving it for recovery actions."""
-
+def _load_browse(state: _State, actions: InteractiveActions, draft: ReportDraft) -> None:
     state.draft = draft
     try:
         scan = actions.scan(draft)
@@ -231,8 +204,10 @@ def _load_browse(
             state.error = _ErrorState(
                 kind="browse-empty",
                 title="Sessions excluded by configuration",
-                detail="All sessions matched by the selected harness and period "
-                "were excluded by configuration.",
+                detail=(
+                    "All sessions matched by the selected harness and period "
+                    "were excluded by configuration."
+                ),
             )
         else:
             state.error = _ErrorState(
@@ -251,8 +226,6 @@ def _load_browse(
 
 
 def _begin_browse(state: _State, actions: InteractiveActions) -> None:
-    """Browse with configured defaults; edits happen inside the key-driven screens."""
-
     _load_browse(state, actions, actions.new_draft())
 
 
@@ -275,8 +248,10 @@ def _review(state: _State, actions: InteractiveActions) -> None:
                 state.error = _ErrorState(
                     kind="report-empty",
                     title="Sessions excluded by configuration",
-                    detail="All sessions matched by the selected harness and period "
-                    "were excluded by configuration.",
+                    detail=(
+                        "All sessions matched by the selected harness and period "
+                        "were excluded by configuration."
+                    ),
                 )
             else:
                 state.error = _ErrorState(
@@ -325,7 +300,6 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
         activate = key.key is Key.ENTER
     if not activate:
         return
-
     if state.main_cursor == 0:
         _new_report(state, actions)
     elif state.main_cursor == 1:
@@ -338,11 +312,7 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
             detail = f"ERROR: {exc}"
         else:
             detail = "\n".join(lines)
-        state.error = _ErrorState(
-            kind="doctor-result",
-            title="Check Setup",
-            detail=detail,
-        )
+        state.error = _ErrorState(kind="doctor-result", title="Check Setup", detail=detail)
         state.screen = Screen.RECOVERABLE_ERROR
     else:
         actions.edit_settings()
@@ -355,10 +325,7 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
 
 
 def _clear_expansions_if_scan_was_invalidated(
-    state: _State,
-    draft: ReportDraft,
-    *,
-    had_scan: bool,
+    state: _State, draft: ReportDraft, *, had_scan: bool
 ) -> None:
     if had_scan and draft.scan is None:
         state.expanded_repositories = set()
@@ -390,7 +357,7 @@ def _edit_setup_field(state: _State, actions: InteractiveActions, *, field: str)
 
 
 def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
-    rows = report_setup_rows()
+    rows = report_setup_rows(advanced=state.setup_advanced)
     state.setup_cursor = _move(state.setup_cursor, key, len(rows))
     if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = Screen.MAIN
@@ -403,13 +370,18 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         return
     row = rows[state.setup_cursor]
     if row == report_generate_row():
-        # Generating writes a file, so the action row answers to Enter alone —
-        # a stray left/right while scrolling the settings must not produce a report.
         if key.key is Key.ENTER:
             _generate_from_setup(state, actions)
         return
-    horizontal_edit = key.key in {Key.LEFT, Key.RIGHT} or _char(key, "h") or _char(key, "l")
+    horizontal_edit = (
+        key.key in {Key.LEFT, Key.RIGHT} or _char(key, "h") or _char(key, "l")
+    )
     if key.key is not Key.ENTER and not horizontal_edit:
+        return
+    if row == _ADVANCED_ROW:
+        state.setup_advanced = not state.setup_advanced
+        if not state.setup_advanced:
+            state.setup_cursor = min(state.setup_cursor, 3)
         return
     _edit_setup_field(state, actions, field=row)
 
@@ -423,8 +395,7 @@ def _tree_rows(scan: ScanResult, state: _State) -> list:
 def _expand_tree_row(state: _State, rows: list, cursor_name: str) -> None:
     if not rows:
         return
-    cursor = getattr(state, cursor_name)
-    cursor = min(cursor, len(rows) - 1)
+    cursor = min(getattr(state, cursor_name), len(rows) - 1)
     row = rows[cursor]
     if row.kind == "repository":
         state.expansions().add(row.repository_id)
@@ -478,10 +449,7 @@ def _session_by_id(scan: ScanResult, session_id: str) -> AgentSession | None:
 
 
 def _open_session_preview(
-    state: _State,
-    session: AgentSession,
-    *,
-    return_screen: Screen,
+    state: _State, session: AgentSession, *, return_screen: Screen
 ) -> None:
     state.preview_session = session
     state.preview_offset = 0
@@ -497,7 +465,6 @@ def _preview_from_row(
     *,
     return_screen: Screen,
 ) -> bool:
-    """Open the session preview when the cursor sits on a session row."""
     if not rows:
         return False
     cursor = min(getattr(state, cursor_name), len(rows) - 1)
@@ -567,9 +534,6 @@ def _sync_selection(state: _State, actions: InteractiveActions) -> None:
     if set(draft.selected_session_ids) == selection.selected_session_ids:
         return
     draft.selected_session_ids = set(selection.selected_session_ids)
-    # The state file is bookkeeping, like the history log: a full disk or
-    # read-only home must not take the interactive app down. The selection
-    # simply is not remembered.
     with contextlib.suppress(OSError, IiwiError):
         actions.save_selection(
             draft.harness,
@@ -592,25 +556,19 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
         result = actions.generate(state.draft, filtered_scan, force)
     except ReportAlreadyExistsError as exc:
         state.error = _ErrorState(
-            kind="report-output-conflict",
-            title="Could not write report",
-            detail=str(exc),
+            kind="report-output-conflict", title="Could not write report", detail=str(exc)
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
     except ReportOutputError as exc:
         state.error = _ErrorState(
-            kind="report-output",
-            title="Could not write report",
-            detail=str(exc),
+            kind="report-output", title="Could not write report", detail=str(exc)
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
     except IiwiError as exc:
         state.error = _ErrorState(
-            kind="report-generate",
-            title="Could not generate report",
-            detail=str(exc),
+            kind="report-generate", title="Could not generate report", detail=str(exc)
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
@@ -623,12 +581,6 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
 
 
 def _generate_from_setup(state: _State, actions: InteractiveActions) -> None:
-    """Scan the way Review does, then generate against the selection it built.
-
-    `_generate` needs `state.selection`, which only `_review` establishes, and
-    `_review` is also what surfaces a failed or empty scan. Reusing it means
-    generating from here cannot reach a state that reviewing first could not.
-    """
     _review(state, actions)
     if state.screen is not Screen.SESSION_REVIEW:
         return
@@ -810,7 +762,6 @@ def _error_key(
         return
     if key.key is not Key.ENTER:
         return
-
     choice = options[error.selected]
     if choice == "Main menu":
         state.screen = Screen.MAIN
@@ -847,7 +798,6 @@ def _result_key(state: _State, key: KeyPress) -> None:
         return
     if key.key is not Key.ENTER:
         return
-
     choice = options[state.result_cursor]
     if choice == "Preview report":
         state.preview_offset = 0
@@ -861,6 +811,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
         state.error = None
         state.review_message = None
         state.setup_cursor = 0
+        state.setup_advanced = False
         state.preview_offset = 0
         state.expanded_repositories = set()
         _reset_search(state)
@@ -871,11 +822,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
             if state.result.output_path is not None
             else "Dry run has no output path."
         )
-        state.error = _ErrorState(
-            kind="report-path",
-            title="Report path",
-            detail=detail,
-        )
+        state.error = _ErrorState(kind="report-path", title="Report path", detail=detail)
         state.screen = Screen.RECOVERABLE_ERROR
 
 
@@ -945,7 +892,12 @@ def _render_screen(state: _State, console: Console) -> None:
         render_main_menu(console, selected=state.main_cursor)
     elif state.screen is Screen.REPORT_SETUP:
         assert state.draft is not None
-        render_report_setup(console, state.draft, selected=state.setup_cursor)
+        render_report_setup(
+            console,
+            state.draft,
+            selected=state.setup_cursor,
+            advanced=state.setup_advanced,
+        )
     elif state.screen is Screen.SESSION_BROWSER:
         assert state.browser_scan is not None
         render_session_browser(
@@ -969,11 +921,7 @@ def _render_screen(state: _State, console: Console) -> None:
         )
     elif state.screen is Screen.SESSION_PREVIEW:
         assert state.preview_session is not None
-        render_session_preview(
-            console,
-            state.preview_session,
-            offset=state.preview_offset,
-        )
+        render_session_preview(console, state.preview_session, offset=state.preview_offset)
     elif state.screen is Screen.REPORT_RESULT:
         assert state.draft is not None
         assert state.result is not None
@@ -988,11 +936,7 @@ def _render_screen(state: _State, console: Console) -> None:
         )
     elif state.screen is Screen.REPORT_PREVIEW:
         assert state.result is not None
-        render_report_preview(
-            console,
-            content=state.result.content,
-            offset=state.preview_offset,
-        )
+        render_report_preview(console, content=state.result.content, offset=state.preview_offset)
     elif state.screen is Screen.RECOVERABLE_ERROR:
         assert state.error is not None
         render_recoverable_error(
@@ -1008,8 +952,6 @@ def _render_screen(state: _State, console: Console) -> None:
 
 
 def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
-    """Treat Ctrl-C while waiting for a key like the screen's normal Back action."""
-
     if state.screen is Screen.MAIN:
         state.screen = Screen.EXIT
     elif state.screen in {Screen.REPORT_SETUP, Screen.SESSION_BROWSER}:
@@ -1032,10 +974,7 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
 
 
 def _dispatch(
-    state: _State,
-    key: KeyPress,
-    actions: InteractiveActions,
-    console: Console,
+    state: _State, key: KeyPress, actions: InteractiveActions, console: Console
 ) -> None:
     if _exact_char(key, "?") and state.screen is not Screen.HELP:
         _open_help(state)
@@ -1061,12 +1000,8 @@ def _dispatch(
 
 
 def _render(
-    state: _State,
-    console: Console,
-    previous: list[str] | None,
+    state: _State, console: Console, previous: list[str] | None
 ) -> list[str] | None:
-    """Paint the current screen over the last one, or print it plain off a TTY."""
-
     if not console.is_terminal:
         _render_screen(state, console)
         return None
@@ -1076,13 +1011,8 @@ def _render(
 
 
 def run_interactive(
-    *,
-    actions: InteractiveActions,
-    input_source: KeySource,
-    console: Console,
+    *, actions: InteractiveActions, input_source: KeySource, console: Console
 ) -> None:
-    """Run the terminal interaction until the user explicitly leaves it."""
-
     state = _State()
     previous_frame: list[str] | None = None
     while state.screen is not Screen.EXIT:
@@ -1096,7 +1026,4 @@ def run_interactive(
         try:
             _dispatch(state, key, actions, console)
         except (KeyboardInterrupt, typer.Abort):
-            # Actions run outside terminal cbreak mode. Cancelling a scan, report
-            # generation, or typed legacy settings editor returns to the screen
-            # that launched it instead of terminating the whole interactive app.
             state.screen = origin
