@@ -308,15 +308,14 @@ def test_user_labels_are_rendered_as_literal_text_not_rich_markup() -> None:
     assert "add [link=x] support" in text
 
 
-def test_dry_run_result_can_preview_generated_report_content() -> None:
-    draft = ReportDraft(harness="opencode", period=_period(), dry_run=True)
+def test_preview_action_can_preview_generated_report_content() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     console, stream = _console()
     keys = ScriptedInput(
         [
             char("2"),
-            char("r"),
-            char("g"),
+            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("b"),
             char("q"),

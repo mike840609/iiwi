@@ -215,6 +215,7 @@ def test_setup_detail_edit_does_not_require_a_scan() -> None:
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
@@ -325,8 +326,8 @@ def test_setup_edits_the_field_under_the_cursor() -> None:
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
-            KeyPress(key=Key.ENTER),
             KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.ENTER),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
@@ -343,7 +344,8 @@ def test_setup_edits_the_field_under_the_cursor() -> None:
         console=_console(),
     )
 
-    assert draft.dry_run is True
+    assert draft.sanitize is True
+    assert draft.dry_run is False
     assert draft.include_subagents is True
     assert draft.narrative is True
 

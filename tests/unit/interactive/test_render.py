@@ -178,7 +178,8 @@ def test_report_setup_renders_settings_as_the_navigable_list() -> None:
     assert "Subagents" in text and "Included" in text
     assert "Narrative" in text and "Enabled" in text
     assert "Sanitize" in text and "Off" in text
-    assert "Dry run" in text
+    assert "Preview report" in text
+    assert "Dry run" not in text
     assert "▶ Generate report" in text
     assert "  Settings" in text
     assert "g Generate" in text
@@ -800,16 +801,17 @@ def test_report_setup_separates_the_generate_action_from_the_settings() -> None:
     render_report_setup(console, draft, selected=0)
     lines = stream.getvalue().splitlines()
     action = next(i for i, line in enumerate(lines) if "Generate report" in line)
+    preview = next(i for i, line in enumerate(lines) if "Preview report" in line)
     harness = next(i for i, line in enumerate(lines) if "Harness" in line)
-    assert action < harness
-    assert lines[action + 1].strip() == ""
+    assert action < preview < harness
+    assert lines[preview + 1].strip() == ""
     assert lines[action].startswith("▶")
 
 
 def test_report_setup_describes_the_row_under_the_cursor() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
-    render_report_setup(console, draft, selected=4)
+    render_report_setup(console, draft, selected=5)
     detail_help = stream.getvalue()
     console, stream = _console()
     render_report_setup(console, draft, selected=0)
@@ -822,7 +824,7 @@ def test_report_setup_describes_the_row_under_the_cursor() -> None:
 def test_report_setup_explains_why_sanitize_is_unavailable() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="claude-code", period=_period())
-    render_report_setup(console, draft, selected=7)
+    render_report_setup(console, draft, selected=8)
     text = stream.getvalue()
     assert "Sanitize" in text and "N/A" in text
     assert "Only OpenCode can redact on export" in text
@@ -831,10 +833,10 @@ def test_report_setup_explains_why_sanitize_is_unavailable() -> None:
 def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
     console, stream = _color_console()
     draft = ReportDraft(harness="opencode", period=_period())
-    render_report_setup(console, draft, selected=4)
+    render_report_setup(console, draft, selected=5)
     text = stream.getvalue()
     action = _row(text, "Generate report")
-    settings = _row(text, "Dry run")
+    settings = _row(text, "Detail")
     assert _glyph_style(action, "G") == "36"
     assert "36" not in _glyph_style(settings, "D")
     console, stream = _color_console()

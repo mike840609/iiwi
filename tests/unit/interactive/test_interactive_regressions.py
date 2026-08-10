@@ -328,12 +328,11 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
     page_down = getattr(Key, "PAGE_DOWN", None)
     assert page_down is not None, "missing Key.PAGE_DOWN"
     console, stream = _console(height=12)
-    draft = ReportDraft(harness="opencode", period=_period(), dry_run=True)
+    draft = ReportDraft(harness="opencode", period=_period())
     keys = ScriptedInput(
         [
             char("2"),
-            char("r"),
-            char("g"),
+            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             KeyPress(key=page_down),
             char("G"),
