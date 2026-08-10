@@ -123,6 +123,23 @@ _MIN_BAR_WIDTH = 80
 # trade the bar column makes on a narrow one — content outranks decoration. Below this
 # height the list would otherwise render zero rows.
 _MIN_SUBTITLE_HEIGHT = 16
+_MAIN_SUBTITLE = "Turn coding-agent sessions into engineering reports"
+# The main menu opens on the name, drawn rather than written, when the terminal
+# can spend four rows on it. A partial wordmark reads as noise, so both gates are
+# all-or-nothing: below either one the one-line title comes back unchanged.
+_WORDMARK = (
+    " ___ _        _",
+    "|_ _(_)_ __ _(_)",
+    " | || \\ V  V / |",
+    "|___|_|\\_/\\_/|_|",
+)
+_MIN_WORDMARK_HEIGHT = 24
+# 16 cells of wordmark plus `v0.0.0` on the same row, with a gap between them.
+_MIN_WORDMARK_WIDTH = 24
+# Where to file a bug, one Cmd-click away in a terminal that supports OSC 8 and
+# still readable as text in one that does not.
+_PROJECT_URL = "https://github.com/mike840609/iiwi"
+_PROJECT_LABEL = "github.com/mike840609/iiwi"
 _REVIEW_SUBTITLE = "Select sessions to include in the report:"
 _BROWSE_SUBTITLE = "Select a repository to explore:"
 
@@ -380,10 +397,33 @@ def report_preview_capacity(terminal_height: int) -> int:
     return max(0, terminal_height - 8)
 
 
+def _print_wordmark(console: Console) -> None:
+    """Print the wordmark, carrying the version flush right on its last row so
+    the art costs four lines rather than five."""
+
+    version = f"v{__version__}"
+    for line in _WORDMARK[:-1]:
+        _print_viewport_line(console, line, style="bold cyan")
+    last = _WORDMARK[-1]
+    padding = console.size.width - cell_len(last) - cell_len(version)
+    _print_viewport_text(
+        console,
+        Text.assemble((last, "bold cyan"), " " * padding, (version, "dim")),
+    )
+
+
 def render_main_menu(console: Console, *, selected: int) -> None:
     title = "Iiwi"
     version = f"v{__version__}"
-    if cell_len(title) + 1 + cell_len(version) <= console.size.width:
+    if (
+        console.size.height >= _MIN_WORDMARK_HEIGHT
+        and console.size.width >= _MIN_WORDMARK_WIDTH
+    ):
+        _print_wordmark(console)
+        _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
+        # The wordmark's height gate already clears _MIN_SUBTITLE_HEIGHT.
+        _print_viewport_line(console, _MAIN_SUBTITLE, style="dim")
+    elif cell_len(title) + 1 + cell_len(version) <= console.size.width:
         padding = console.size.width - cell_len(title) - cell_len(version)
         title_line = Text.assemble((title, "bold"), " " * padding, (version, "dim"))
         _print_viewport_text(console, title_line)
@@ -391,15 +431,22 @@ def render_main_menu(console: Console, *, selected: int) -> None:
         if console.size.height >= _MIN_SUBTITLE_HEIGHT:
             _print_viewport_line(
                 console,
-                "Turn coding-agent sessions into engineering reports",
+                _MAIN_SUBTITLE,
                 style="dim",
             )
     else:
         _print_header(
             console,
             "Iiwi",
-            subtitle="Turn coding-agent sessions into engineering reports",
+            subtitle=_MAIN_SUBTITLE,
         )
+    # The link is chrome of the same rank as the subtitle, so it lives or dies
+    # with it; truncated to half a URL it would read as neither.
+    if (
+        console.size.height >= _MIN_SUBTITLE_HEIGHT
+        and cell_len(_PROJECT_LABEL) <= console.size.width
+    ):
+        _print_viewport_line(console, _PROJECT_LABEL, style=f"dim link {_PROJECT_URL}")
     console.print()
     label_width = max(cell_len(label) for label in _MAIN_OPTIONS)
     for index, label in enumerate(_MAIN_OPTIONS):

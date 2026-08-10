@@ -32,10 +32,16 @@ from iiwi.services.scan import ScanResult
 TZ = ZoneInfo("Asia/Taipei")
 
 
-def _console(width: int = 100) -> tuple[Console, StringIO]:
+def _console(width: int = 100, height: int | None = None) -> tuple[Console, StringIO]:
     stream = StringIO()
     return (
-        Console(file=stream, color_system=None, force_terminal=False, width=width),
+        Console(
+            file=stream,
+            color_system=None,
+            force_terminal=False,
+            width=width,
+            height=height,
+        ),
         stream,
     )
 
@@ -121,7 +127,7 @@ def test_main_menu_renders_navigation_and_footer() -> None:
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "Iiwi" in text
+    assert "|___|_|\\_/\\_/|_|" in text
     assert "▶ Generate Report" in text
     assert "Browse Sessions" in text
     assert "↑↓ jk" in text
@@ -1161,15 +1167,138 @@ def test_render_session_preview_shows_the_session() -> None:
     assert "b Back" in text
 
 
-def test_main_menu_title_row_shows_the_version_right_aligned() -> None:
-    import iiwi
-    from iiwi.interactive.render import render_main_menu
+def test_main_menu_draws_the_wordmark_when_it_fits() -> None:
+    """A terminal with rows and columns to spare gets the four-row wordmark."""
 
-    console, stream = _console(width=100)
+    from iiwi.interactive.render import _WORDMARK, render_main_menu
+
+    console, stream = _console(width=100, height=30)
     render_main_menu(console, selected=0)
 
-    title_line = _row(stream.getvalue(), "Iiwi")
+    text = stream.getvalue()
+    for line in _WORDMARK[:-1]:
+        assert line in text
+    assert _WORDMARK[-1] in text
+
+
+def test_main_menu_version_sits_flush_right_on_the_wordmark() -> None:
+    """The version keeps its row rather than costing a line of its own."""
+
+    import iiwi
+    from iiwi.interactive.render import _WORDMARK, render_main_menu
+
+    console, stream = _console(width=100, height=30)
+    render_main_menu(console, selected=0)
+
+    version = f"v{iiwi.__version__}"
+    last_row = _row(stream.getvalue(), _WORDMARK[-1])
+    assert last_row.rstrip().endswith(version)
+    assert cell_len(last_row.rstrip()) == 100
+
+
+def test_main_menu_falls_back_to_the_title_row_on_a_short_terminal() -> None:
+    """Below the height gate the compact header returns, version included."""
+
+    import iiwi
+    from iiwi.interactive.render import _WORDMARK, render_main_menu
+
+    console, stream = _console(width=100, height=20)
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert _WORDMARK[-1] not in text
+    title_line = _row(text, "Iiwi")
     assert f"v{iiwi.__version__}" in title_line
+
+
+def test_main_menu_falls_back_to_the_title_row_on_a_narrow_terminal() -> None:
+    """The wordmark is all-or-nothing: a partial one would read as noise."""
+
+    from iiwi.interactive.render import _WORDMARK, render_main_menu
+
+    console, stream = _console(width=23, height=30)
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert _WORDMARK[-1] not in text
+    assert "Iiwi" in text
+
+
+def test_main_menu_shows_the_project_link_under_the_subtitle() -> None:
+    from iiwi.interactive.render import _PROJECT_LABEL, render_main_menu
+
+    console, stream = _console(width=100, height=30)
+    render_main_menu(console, selected=0)
+
+    lines = stream.getvalue().splitlines()
+    assert lines[lines.index(_PROJECT_LABEL) - 1].startswith(
+        "Turn coding-agent sessions"
+    )
+
+
+def test_main_menu_link_survives_the_compact_header() -> None:
+    """The link belongs to the menu, not to the art, so it outlives the wordmark."""
+
+    from iiwi.interactive.render import _PROJECT_LABEL, _WORDMARK, render_main_menu
+
+    console, stream = _console(width=100, height=20)
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert _WORDMARK[-1] not in text
+    assert _PROJECT_LABEL in text
+
+
+def test_main_menu_drops_the_link_with_the_subtitle() -> None:
+    """Both are chrome, so a terminal too short for one is too short for both."""
+
+    from iiwi.interactive.render import (
+        _MAIN_SUBTITLE,
+        _PROJECT_LABEL,
+        render_main_menu,
+    )
+
+    console, stream = _console(width=100, height=15)
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert _MAIN_SUBTITLE not in text
+    assert _PROJECT_LABEL not in text
+    assert "Iiwi" in text
+
+
+def test_main_menu_drops_the_link_when_it_would_be_truncated() -> None:
+    """Half a URL is not a link, so a narrow terminal gets none."""
+
+    from iiwi.interactive.render import _PROJECT_LABEL, render_main_menu
+
+    console, stream = _console(width=20, height=30)
+    render_main_menu(console, selected=0)
+
+    assert "github.com" not in stream.getvalue()
+    assert cell_len(_PROJECT_LABEL) > 20
+
+
+def test_main_menu_link_is_clickable_on_a_terminal() -> None:
+    from iiwi.interactive.render import _PROJECT_LABEL, _PROJECT_URL, render_main_menu
+
+    console, stream = _color_console(width=100)
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert _PROJECT_LABEL in text
+    # Rich stamps its own id into the OSC 8 opener, so assert the stable tail.
+    assert "\x1b]8;id=" in text
+    assert f";{_PROJECT_URL}\x1b\\" in text
+
+
+def test_main_menu_wordmark_appears_at_its_exact_width_gate() -> None:
+    from iiwi.interactive.render import _MIN_WORDMARK_WIDTH, _WORDMARK, render_main_menu
+
+    console, stream = _console(width=_MIN_WORDMARK_WIDTH, height=30)
+    render_main_menu(console, selected=0)
+
+    assert _WORDMARK[-1] in stream.getvalue()
 
 
 def test_main_menu_omits_the_version_on_a_narrow_terminal() -> None:
