@@ -112,13 +112,8 @@ jobs:
           )
           replace_once(
               "tests/unit/interactive/test_render.py",
-              '    assert "Space Toggle" in text\n',
-              '    assert "Space Select" in text\n',
-          )
-          replace_once(
-              "tests/unit/interactive/test_render.py",
-              '    assert "g Generate" in text\n',
-              '    assert "g Report" in text\n',
+              '    assert "Space Toggle" in text\n    assert "g Generate" in text\n',
+              '    assert "Space Select" in text\n    assert "g Report" in text\n',
           )
           replace_once(
               "tests/unit/interactive/test_review_regressions.py",
