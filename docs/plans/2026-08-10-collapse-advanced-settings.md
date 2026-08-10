@@ -2,7 +2,7 @@
 
 > **For agentic workers:** implement task-by-task with test-first changes and verify the full CI matrix before marking complete.
 
-**Goal:** Reduce report-setup cognitive load by showing Harness and Period as primary controls and placing Detail, Subagents, Narrative, Sanitize, and Dry run behind one expandable Advanced settings row.
+**Goal:** Reduce report-setup cognitive load with explicit Generate/Preview actions, primary Harness and Period controls, and Detail, Subagents, Narrative, and Sanitize behind one expandable Advanced settings row.
 
 **Architecture:** Keep `ReportDraft` and all existing field mutators unchanged. Add a short-lived controller flag for whether advanced settings are expanded, make the setup renderer derive its navigable rows from that flag, and keep the same keyboard edit behavior for visible fields. No setting persistence or scan-invalidation semantics change.
 
@@ -12,8 +12,10 @@
 
 - Branch is independent and starts from `main`.
 - Direct CLI and `ReportDraft` behavior is unchanged.
-- Primary rows: `Generate report`, `Harness`, `Period`, `Advanced settings`.
-- Advanced rows when expanded: `Detail`, `Subagents`, `Narrative`, `Sanitize`, `Dry run`.
+- Action rows: `Generate report`, `Preview report`.
+- Primary settings: `Harness`, `Period`, `Advanced settings`.
+- Advanced rows when expanded: `Detail`, `Subagents`, `Narrative`, `Sanitize`, indented beneath the disclosure row.
+- `Preview report` uses dry-run internally and returns directly to report preview; `Dry run` is no longer a visible setup setting.
 - Advanced settings start collapsed for each new report flow.
 - Existing `r Review`, `g Generate`, Back/Menu behavior remains available.
 - Changing scan-identity settings preserves the existing invalidation rules.
@@ -29,8 +31,9 @@
 - Consumes: `render_report_setup`, `run_interactive`.
 - Produces: regression coverage for collapsed default, expansion, and editing an advanced field.
 
-- [ ] Write a render test asserting Harness/Period/Advanced settings are visible while Detail/Subagents/Narrative/Sanitize/Dry run are not visible by default.
-- [ ] Write a controller/render-flow test that activates Advanced settings and then sees the five advanced rows.
+- [ ] Write a render test asserting Generate/Preview plus Harness/Period/Advanced settings are visible while the four advanced fields are collapsed by default.
+- [ ] Write a controller/render-flow test that activates Advanced settings and sees the four indented advanced rows.
+- [ ] Write controller tests proving Preview uses dry-run temporarily and Generate always writes normally.
 - [ ] Write a controller test that edits Detail after expansion and keeps the existing no-scan behavior.
 - [ ] Open/update the PR and verify GitHub Actions fails because all seven settings are currently always rendered.
 
@@ -42,7 +45,7 @@
 - Modify: `docs/cli-reference.md`
 
 **Interfaces:**
-- `report_setup_rows(*, advanced: bool)` returns the action, primary settings, Advanced settings row, and optionally advanced fields.
+- `report_setup_rows(*, advanced: bool)` returns both action rows, primary settings, Advanced settings, and optionally the indented advanced fields.
 - `render_report_setup(..., advanced: bool = False)` renders only rows returned for the current state.
 - Controller `_State` gains `setup_advanced: bool = False` and resets it when starting a new report.
 

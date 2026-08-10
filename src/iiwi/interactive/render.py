@@ -48,12 +48,14 @@ _MAIN_DESCRIPTIONS = {
 # Keep the common choices visible and put the lower-frequency report knobs
 # behind a disclosure row so the default setup remains quick to scan.
 _PRIMARY_SETUP_FIELDS = ["Harness", "Period"]
-_ADVANCED_SETUP_FIELDS = ["Detail", "Subagents", "Narrative", "Sanitize", "Dry run"]
+_ADVANCED_SETUP_FIELDS = ["Detail", "Subagents", "Narrative", "Sanitize"]
 _ADVANCED_ROW = "Advanced settings"
-# Generate is the screen's one terminal action, so it gets the first row, above
-# a blank line and a dim group label. Review stays a key: it is a detour, not
-# the destination.
+# Report setup begins with two terminal actions. Preview uses the same report
+# pipeline in dry-run mode, but dry-run is an execution choice rather than a
+# persistent setting the user has to toggle and then remember to undo.
 _GENERATE_ROW = "Generate report"
+_PREVIEW_ROW = "Preview report"
+_ACTION_ROWS = [_GENERATE_ROW, _PREVIEW_ROW]
 _SETTINGS_LABEL = "Settings"
 _SETUP_LABEL_CELLS = 18
 # Each row's name and value say what it is set to, never what it does. One line
@@ -66,8 +68,8 @@ _SETUP_HELP = {
     "Subagents": "Include sessions spawned as subagents, or only the ones you started.",
     "Narrative": "Write the prose review with the local opencode run, or emit structure only.",
     "Sanitize": "Ask OpenCode to redact session content on export.",
-    "Dry run": "Print the report instead of writing a file.",
     "Generate report": "Scan the period and produce the report.",
+    "Preview report": "Preview the report without writing a file.",
 }
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
 _DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
@@ -146,18 +148,24 @@ def main_menu_options() -> list[str]:
 
 
 def report_setup_rows(*, advanced: bool = True) -> list[str]:
-    """Return setup rows, optionally including lower-frequency controls."""
+    """Return setup actions and settings in keyboard-navigation order."""
 
-    rows = [_GENERATE_ROW, *_PRIMARY_SETUP_FIELDS, _ADVANCED_ROW]
+    rows = [*_ACTION_ROWS, *_PRIMARY_SETUP_FIELDS, _ADVANCED_ROW]
     if advanced:
         rows.extend(_ADVANCED_SETUP_FIELDS)
     return rows
 
 
 def report_generate_row() -> str:
-    """Return the action row's label, so identity checks survive any reordering."""
+    """Return the write-to-disk action label."""
 
     return _GENERATE_ROW
+
+
+def report_preview_row() -> str:
+    """Return the no-write preview action label."""
+
+    return _PREVIEW_ROW
 
 
 def _option(label: str, index: int, selected: int) -> str:
@@ -481,7 +489,7 @@ def _setup_value(draft: ReportDraft, field: str) -> str:
         if draft.harness != "opencode":
             return "N/A"
         return _bool_label(draft.sanitize, "On", "Off")
-    return _bool_label(draft.dry_run, "On", "Off")
+    raise ValueError(f"Unknown report setup field: {field}")
 
 
 def _setup_help(draft: ReportDraft, row: str) -> str:
@@ -500,17 +508,19 @@ def render_report_setup(
 ) -> None:
     _print_header(console, "Generate Report")
     console.print()
-    action_selected = selected == 0
-    _print_viewport_line(
-        console,
-        f"{_CURSOR if action_selected else ' '} {_GENERATE_ROW}",
-        style=_CURSOR_STYLE if action_selected else _ACTION_STYLE,
-    )
+    rows = report_setup_rows(advanced=advanced)
+    for index, action in enumerate(_ACTION_ROWS):
+        focused = selected == index
+        _print_viewport_line(
+            console,
+            f"{_CURSOR if focused else ' '} {action}",
+            style=_CURSOR_STYLE if focused else _ACTION_STYLE,
+        )
     console.print()
     if console.size.height >= _MIN_SUBTITLE_HEIGHT:
         _print_viewport_line(console, f"  {_SETTINGS_LABEL}", style="bright_black")
-    rows = report_setup_rows(advanced=advanced)
-    for index, field in enumerate(rows[1:], start=1):
+    settings_start = len(_ACTION_ROWS)
+    for index, field in enumerate(rows[settings_start:], start=settings_start):
         focused = selected == index
         if field == _ADVANCED_ROW:
             cursor = _CURSOR if focused else " "
@@ -527,11 +537,14 @@ def render_report_setup(
             else ("dim" if field == "Sanitize" and draft.harness != "opencode" else "")
         )
         cursor = _CURSOR if focused else " "
-        _print_viewport_line(
-            console,
-            f"{cursor} {field:<{_SETUP_LABEL_CELLS}}{_setup_value(draft, field)}",
-            style=style,
-        )
+        if field in _ADVANCED_SETUP_FIELDS:
+            line = (
+                f"{cursor}   {field:<{_SETUP_LABEL_CELLS - 2}}"
+                f"{_setup_value(draft, field)}"
+            )
+        else:
+            line = f"{cursor} {field:<{_SETUP_LABEL_CELLS}}{_setup_value(draft, field)}"
+        _print_viewport_line(console, line, style=style)
     console.print()
     _print_viewport_line(console, _setup_help(draft, rows[selected]), style="dim")
     console.print()
