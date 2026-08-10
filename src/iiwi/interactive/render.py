@@ -92,10 +92,10 @@ _MARK_STYLES = {
     SelectionMark.NONE: "dim",
     SelectionMark.PARTIAL: "yellow",
 }
-_CURSOR_STYLE = "bold bright_red"
+_CURSOR_STYLE = "bold cyan"
 # The cursor row takes the cursor's own colour, so where the cursor sits reads as
 # one thing. The action keeps its role colour when it is not the cursor row.
-_ACTION_STYLE = "bright_red"
+_ACTION_STYLE = "cyan"
 # The expansion arrow recedes behind the glyphs that carry a decision.
 _EXPANSION_STYLE = "dim"
 _ROW_GAP = 3
@@ -111,7 +111,7 @@ _HINT_SEPARATOR = " │ "
 _BAR_FULL = "█"
 _BAR_EMPTY = "░"
 _BAR_CELLS = 12
-_BAR_STYLE = "bright_red"
+_BAR_STYLE = "cyan"
 _PERCENT_CELLS = 4  # "100%" at its widest
 # Bars are the first thing to go on a narrow terminal: the title column matters
 # more than the decoration.
