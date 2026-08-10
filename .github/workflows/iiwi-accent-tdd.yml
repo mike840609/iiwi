@@ -39,6 +39,16 @@ jobs:
               raise SystemExit(f"expected 2 cyan cursor assertions, found {text.count(old_cursor)}")
           text = text.replace(old_cursor, 'assert _glyph_style(line, "▶") == "1;91"')
 
+          old_action_assertions = {
+              'assert _glyph_style(action, "G") == "36"': 'assert _glyph_style(action, "G") == "91"',
+              'assert "36" not in _glyph_style(settings, "H")': 'assert "91" not in _glyph_style(settings, "H")',
+              'assert _glyph_style(selected_action, "▶") == "1;36"': 'assert _glyph_style(selected_action, "▶") == "1;91"',
+          }
+          for old, new in old_action_assertions.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one legacy action assertion: {old}")
+              text = text.replace(old, new, 1)
+
           action_test = '''\n\ndef test_report_setup_colors_unselected_actions_with_iiwi_accent() -> None:\n    console, stream = _color_console()\n    render_report_setup(\n        console,\n        ReportDraft(harness="opencode", period=_period()),\n        selected=0,\n    )\n    line = _row(stream.getvalue(), "Preview report")\n    assert _glyph_style(line, "P") == "91"\n'''
           action_anchor = '\n\ndef test_session_review_renders_group_marks_expansion_and_controls() -> None:\n'
           if text.count(action_anchor) != 1:
@@ -60,6 +70,7 @@ jobs:
           uv run pytest \
             tests/unit/interactive/test_render.py::test_session_review_gives_the_three_repository_glyphs_three_styles \
             tests/unit/interactive/test_render.py::test_session_browser_separates_the_cursor_from_the_expansion_glyph \
+            tests/unit/interactive/test_render.py::test_report_setup_gives_the_generate_action_its_own_colour \
             tests/unit/interactive/test_render.py::test_report_setup_colors_unselected_actions_with_iiwi_accent \
             tests/unit/interactive/test_render.py::test_session_browser_colors_activity_bar_with_iiwi_accent \
             -q 2>&1 | tee /tmp/red.log
@@ -69,7 +80,7 @@ jobs:
             echo "Expected accent tests to fail before production change"
             exit 1
           fi
-          grep -q "4 failed" /tmp/red.log
+          grep -q "5 failed" /tmp/red.log
 
       - name: Apply iiwi bright-red accent
         run: |
@@ -95,8 +106,10 @@ jobs:
           uv run pytest \
             tests/unit/interactive/test_render.py::test_session_review_gives_the_three_repository_glyphs_three_styles \
             tests/unit/interactive/test_render.py::test_session_browser_separates_the_cursor_from_the_expansion_glyph \
+            tests/unit/interactive/test_render.py::test_report_setup_gives_the_generate_action_its_own_colour \
             tests/unit/interactive/test_render.py::test_report_setup_colors_unselected_actions_with_iiwi_accent \
             tests/unit/interactive/test_render.py::test_session_browser_colors_activity_bar_with_iiwi_accent \
+            tests/unit/interactive/test_render.py::test_session_review_colors_selection_markers_by_state \
             -q
 
       - name: Verify full suite
