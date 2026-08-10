@@ -9,8 +9,8 @@ def test_readmes_show_key_driven_bare_command_menu() -> None:
         assert "Generate Report" in text
         assert "═" in text
         assert "████" in text
-        assert "Browse Sessions" in text
-        assert "Review sessions" in text
+        assert "Review Sessions" in text
+        assert "Space Toggle" in text
 
 
 def test_cli_reference_documents_repository_and_session_selection() -> None:
