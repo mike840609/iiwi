@@ -1224,6 +1224,74 @@ def test_main_menu_falls_back_to_the_title_row_on_a_narrow_terminal() -> None:
     assert "Iiwi" in text
 
 
+def test_main_menu_shows_the_project_link_under_the_subtitle() -> None:
+    from iiwi.interactive.render import _PROJECT_LABEL, render_main_menu
+
+    console, stream = _console(width=100, height=30)
+    render_main_menu(console, selected=0)
+
+    lines = stream.getvalue().splitlines()
+    assert lines[lines.index(_PROJECT_LABEL) - 1].startswith(
+        "Turn coding-agent sessions"
+    )
+
+
+def test_main_menu_link_survives_the_compact_header() -> None:
+    """The link belongs to the menu, not to the art, so it outlives the wordmark."""
+
+    from iiwi.interactive.render import _PROJECT_LABEL, _WORDMARK, render_main_menu
+
+    console, stream = _console(width=100, height=20)
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert _WORDMARK[-1] not in text
+    assert _PROJECT_LABEL in text
+
+
+def test_main_menu_drops_the_link_with_the_subtitle() -> None:
+    """Both are chrome, so a terminal too short for one is too short for both."""
+
+    from iiwi.interactive.render import (
+        _MAIN_SUBTITLE,
+        _PROJECT_LABEL,
+        render_main_menu,
+    )
+
+    console, stream = _console(width=100, height=15)
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert _MAIN_SUBTITLE not in text
+    assert _PROJECT_LABEL not in text
+    assert "Iiwi" in text
+
+
+def test_main_menu_drops_the_link_when_it_would_be_truncated() -> None:
+    """Half a URL is not a link, so a narrow terminal gets none."""
+
+    from iiwi.interactive.render import _PROJECT_LABEL, render_main_menu
+
+    console, stream = _console(width=20, height=30)
+    render_main_menu(console, selected=0)
+
+    assert "github.com" not in stream.getvalue()
+    assert cell_len(_PROJECT_LABEL) > 20
+
+
+def test_main_menu_link_is_clickable_on_a_terminal() -> None:
+    from iiwi.interactive.render import _PROJECT_LABEL, _PROJECT_URL, render_main_menu
+
+    console, stream = _color_console(width=100)
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert _PROJECT_LABEL in text
+    # Rich stamps its own id into the OSC 8 opener, so assert the stable tail.
+    assert "\x1b]8;id=" in text
+    assert f";{_PROJECT_URL}\x1b\\" in text
+
+
 def test_main_menu_wordmark_appears_at_its_exact_width_gate() -> None:
     from iiwi.interactive.render import _MIN_WORDMARK_WIDTH, _WORDMARK, render_main_menu
 

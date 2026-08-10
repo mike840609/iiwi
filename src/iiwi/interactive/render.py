@@ -136,6 +136,10 @@ _WORDMARK = (
 _MIN_WORDMARK_HEIGHT = 24
 # 16 cells of wordmark plus `v0.0.0` on the same row, with a gap between them.
 _MIN_WORDMARK_WIDTH = 24
+# Where to file a bug, one Cmd-click away in a terminal that supports OSC 8 and
+# still readable as text in one that does not.
+_PROJECT_URL = "https://github.com/mike840609/iiwi"
+_PROJECT_LABEL = "github.com/mike840609/iiwi"
 _REVIEW_SUBTITLE = "Select sessions to include in the report:"
 _BROWSE_SUBTITLE = "Select a repository to explore:"
 
@@ -436,6 +440,13 @@ def render_main_menu(console: Console, *, selected: int) -> None:
             "Iiwi",
             subtitle=_MAIN_SUBTITLE,
         )
+    # The link is chrome of the same rank as the subtitle, so it lives or dies
+    # with it; truncated to half a URL it would read as neither.
+    if (
+        console.size.height >= _MIN_SUBTITLE_HEIGHT
+        and cell_len(_PROJECT_LABEL) <= console.size.width
+    ):
+        _print_viewport_line(console, _PROJECT_LABEL, style=f"dim link {_PROJECT_URL}")
     console.print()
     label_width = max(cell_len(label) for label in _MAIN_OPTIONS)
     for index, label in enumerate(_MAIN_OPTIONS):
