@@ -1,0 +1,116 @@
+name: Iiwi Accent TDD
+
+on:
+  push:
+    branches:
+      - style/iiwi-tui-accent
+
+permissions:
+  contents: write
+
+jobs:
+  tdd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: style/iiwi-tui-accent
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Add iiwi accent renderer tests
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/unit/interactive/test_render.py")
+          text = path.read_text()
+
+          old_cursor = 'assert _glyph_style(line, "▶") == "1;36"'
+          if text.count(old_cursor) != 2:
+              raise SystemExit(f"expected 2 cyan cursor assertions, found {text.count(old_cursor)}")
+          text = text.replace(old_cursor, 'assert _glyph_style(line, "▶") == "1;91"')
+
+          action_test = '''\n\ndef test_report_setup_colors_unselected_actions_with_iiwi_accent() -> None:\n    console, stream = _color_console()\n    render_report_setup(\n        console,\n        ReportDraft(harness="opencode", period=_period()),\n        selected=0,\n    )\n    line = _row(stream.getvalue(), "Preview report")\n    assert _glyph_style(line, "P") == "91"\n'''
+          action_anchor = '\n\ndef test_session_review_renders_group_marks_expansion_and_controls() -> None:\n'
+          if text.count(action_anchor) != 1:
+              raise SystemExit("action test anchor not unique")
+          text = text.replace(action_anchor, action_test + action_anchor, 1)
+
+          bar_test = '''\n\ndef test_session_browser_colors_activity_bar_with_iiwi_accent() -> None:\n    console, stream = _color_console()\n    render_session_browser(\n        console,\n        _mixed_volume_scan(),\n        expanded_repositories=set(),\n        cursor=0,\n    )\n    line = _row(stream.getvalue(), "repo-x")\n    assert _glyph_style(line, "█") == "91"\n'''
+          bar_anchor = '\n\ndef test_session_browser_header_totals_message_volume() -> None:\n'
+          if text.count(bar_anchor) != 1:
+              raise SystemExit("bar test anchor not unique")
+          text = text.replace(bar_anchor, bar_test + bar_anchor, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Verify RED before production change
+        run: |
+          set +e
+          uv run pytest \
+            tests/unit/interactive/test_render.py::test_session_review_gives_the_three_repository_glyphs_three_styles \
+            tests/unit/interactive/test_render.py::test_session_browser_separates_the_cursor_from_the_expansion_glyph \
+            tests/unit/interactive/test_render.py::test_report_setup_colors_unselected_actions_with_iiwi_accent \
+            tests/unit/interactive/test_render.py::test_session_browser_colors_activity_bar_with_iiwi_accent \
+            -q 2>&1 | tee /tmp/red.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "Expected accent tests to fail before production change"
+            exit 1
+          fi
+          grep -q "4 failed" /tmp/red.log
+
+      - name: Apply iiwi bright-red accent
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/iiwi/interactive/render.py")
+          text = path.read_text()
+          replacements = {
+              '_CURSOR_STYLE = "bold cyan"': '_CURSOR_STYLE = "bold bright_red"',
+              '_ACTION_STYLE = "cyan"': '_ACTION_STYLE = "bright_red"',
+              '_BAR_STYLE = "cyan"': '_BAR_STYLE = "bright_red"',
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one style constant: {old}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - name: Verify GREEN targeted tests
+        run: |
+          uv run pytest \
+            tests/unit/interactive/test_render.py::test_session_review_gives_the_three_repository_glyphs_three_styles \
+            tests/unit/interactive/test_render.py::test_session_browser_separates_the_cursor_from_the_expansion_glyph \
+            tests/unit/interactive/test_render.py::test_report_setup_colors_unselected_actions_with_iiwi_accent \
+            tests/unit/interactive/test_render.py::test_session_browser_colors_activity_bar_with_iiwi_accent \
+            -q
+
+      - name: Verify full suite
+        run: |
+          uv run pytest --cov=iiwi --cov-fail-under=80
+          uv run ruff check .
+          uv run pyright
+          uv build
+
+      - name: Commit final implementation and remove helper workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/iiwi-accent-tdd.yml
+          git add src/iiwi/interactive/render.py tests/unit/interactive/test_render.py
+          git commit -m "style: apply iiwi accent to interactive TUI"
+          git push origin HEAD:style/iiwi-tui-accent
