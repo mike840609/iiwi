@@ -107,6 +107,7 @@ class _State:
     preview_return_screen: Screen | None = None
     error: _ErrorState | None = None
     review_message: str | None = None
+    review_from_main: bool = False
     search_query: str = ""
     searching: bool = False
     help_return_screen: Screen | None = None
@@ -202,6 +203,7 @@ def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.result = None
     state.error = None
     state.review_message = None
+    state.review_from_main = False
     state.preview_offset = 0
     state.expanded_repositories = set()
     _reset_search(state)
@@ -213,7 +215,7 @@ def _load_browse(
     actions: InteractiveActions,
     draft: ReportDraft,
 ) -> None:
-    """Scan an already configured browse draft, preserving it for recovery actions."""
+    """Load configured activity into the same selectable tree used by reports."""
 
     state.draft = draft
     try:
@@ -242,16 +244,28 @@ def _load_browse(
             )
         state.screen = Screen.RECOVERABLE_ERROR
         return
-    state.browser_scan = scan
-    state.browser_cursor = 0
+    draft.set_scan(scan)
+    restored = actions.restore_selection(
+        draft.harness, draft.period, draft.include_subagents
+    )
+    if restored is not None:
+        available = {item.session.session_id for item in scan.resolved_sessions}
+        draft.selected_session_ids = restored & available
+    state.selection = SelectionState.from_scan(
+        scan,
+        selected_session_ids=draft.selected_session_ids,
+    )
+    state.review_cursor = 0
+    state.review_message = None
+    state.review_from_main = True
     state.error = None
     state.expanded_repositories = set()
     _reset_search(state)
-    state.screen = Screen.SESSION_BROWSER
+    state.screen = Screen.SESSION_REVIEW
 
 
 def _begin_browse(state: _State, actions: InteractiveActions) -> None:
-    """Browse with configured defaults; edits happen inside the key-driven screens."""
+    """Open the unified activity explorer with configured defaults."""
 
     _load_browse(state, actions, actions.new_draft())
 
@@ -396,6 +410,7 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         state.screen = Screen.MAIN
         return
     if _char(key, "r"):
+        state.review_from_main = False
         _review(state, actions)
         return
     if _char(key, "g"):
@@ -629,6 +644,7 @@ def _generate_from_setup(state: _State, actions: InteractiveActions) -> None:
     `_review` is also what surfaces a failed or empty scan. Reusing it means
     generating from here cannot reach a state that reviewing first could not.
     """
+    state.review_from_main = False
     _review(state, actions)
     if state.screen is not Screen.SESSION_REVIEW:
         return
@@ -669,7 +685,7 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         return
     if key.key is Key.ESCAPE or _char(key, "b"):
         _sync_selection(state, actions)
-        state.screen = Screen.REPORT_SETUP
+        state.screen = Screen.MAIN if state.review_from_main else Screen.REPORT_SETUP
         return
     if key.key is Key.RIGHT or _char(key, "l"):
         _expand_tree_row(state, rows, "review_cursor")
@@ -860,6 +876,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
         state.result = None
         state.error = None
         state.review_message = None
+        state.review_from_main = False
         state.setup_cursor = 0
         state.preview_offset = 0
         state.expanded_repositories = set()
@@ -1017,7 +1034,7 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
     elif state.screen is Screen.SESSION_REVIEW:
         if state.selection is not None and state.draft is not None:
             _sync_selection(state, actions)
-        state.screen = Screen.REPORT_SETUP
+        state.screen = Screen.MAIN if state.review_from_main else Screen.REPORT_SETUP
     elif state.screen is Screen.REPORT_RESULT:
         state.screen = Screen.MAIN
     elif state.screen is Screen.REPORT_PREVIEW:
