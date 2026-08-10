@@ -836,9 +836,9 @@ def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
     render_report_setup(console, draft, selected=5)
     text = stream.getvalue()
     action = _row(text, "Generate report")
-    settings = _row(text, "Detail")
+    settings = _row(text, "Harness")
     assert _glyph_style(action, "G") == "36"
-    assert "36" not in _glyph_style(settings, "D")
+    assert "36" not in _glyph_style(settings, "H")
     console, stream = _color_console()
     render_report_setup(console, draft, selected=0)
     selected_action = _row(stream.getvalue(), "Generate report")
