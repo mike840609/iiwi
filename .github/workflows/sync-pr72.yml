@@ -116,6 +116,11 @@ jobs:
               '    assert "Space Select" in text\n',
           )
           replace_once(
+              "tests/unit/interactive/test_render.py",
+              '    assert "g Generate" in text\n',
+              '    assert "g Report" in text\n',
+          )
+          replace_once(
               "tests/unit/interactive/test_review_regressions.py",
               'def test_report_setup_footer_lists_supported_main_menu_shortcut() -> None:\n',
               'def test_report_setup_footer_omits_redundant_main_menu_shortcut() -> None:\n',
