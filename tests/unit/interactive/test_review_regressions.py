@@ -118,8 +118,6 @@ def _scan(count: int = 1, *, unsafe_labels: bool = False, excluded: int = 0) -> 
             f"ses-{index}",
             repository_name="repo [/] name" if unsafe_labels else "repo-a",
             title="add [link=x] support" if unsafe_labels and index == 0 else f"Session {index}",
-            # Descending recency, so the newest-first display order matches these indices
-            # and these tests keep asserting on windowing rather than on ordering.
             at=datetime(2026, 8, 9, tzinfo=TZ) - timedelta(minutes=index),
         )
         for index in range(count)
@@ -183,7 +181,7 @@ def test_non_opencode_sanitize_enter_stays_in_report_setup() -> None:
     console, _ = _console()
     keys = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             *[KeyPress(key=Key.DOWN) for _ in range(6)],
             KeyPress(key=Key.ENTER),
             char("r"),
@@ -225,9 +223,8 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
     console, _ = _console()
     keys = ScriptedInput(
         [
-            KeyPress(key=Key.DOWN),
+            char("1"),
             KeyPress(key=Key.ENTER),
-            KeyPress(key=Key.ENTER),  # Change period from the empty-state screen.
             char("b"),
             char("q"),
         ]
@@ -255,14 +252,7 @@ def test_browse_empty_state_says_configuration_exclusion() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     console, stream = _console()
-    keys = ScriptedInput(
-        [
-            KeyPress(key=Key.DOWN),
-            KeyPress(key=Key.ENTER),
-            char("b"),
-            char("q"),
-        ]
-    )
+    keys = ScriptedInput([char("1"), char("b"), char("q")])
 
     run_interactive(
         actions=_actions(
@@ -284,7 +274,7 @@ def test_report_empty_state_says_configuration_exclusion() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     console, stream = _console()
-    keys = ScriptedInput([char("1"), char("r"), char("b"), char("q"), char("q")])
+    keys = ScriptedInput([char("2"), char("r"), char("b"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(
@@ -324,10 +314,10 @@ def test_dry_run_result_can_preview_generated_report_content() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             char("r"),
             char("g"),
-            KeyPress(key=Key.ENTER),  # Preview report.
+            KeyPress(key=Key.ENTER),
             char("b"),
             char("q"),
             char("q"),
@@ -375,9 +365,9 @@ def test_review_back_and_reenter_preserves_repository_expansion() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             char("r"),
-            KeyPress(key=Key.ENTER),  # expand repo-a
+            KeyPress(key=Key.ENTER),
             char("b"),
             char("r"),
             char("b"),

@@ -126,8 +126,8 @@ def test_main_menu_renders_navigation_and_footer() -> None:
 
     text = stream.getvalue()
     assert "|___|_|\\_/\\_/|_|" in text
-    assert "▶ Generate Report" in text
-    assert "Browse Sessions" in text
+    assert "▶ Review Activity" in text
+    assert "Generate Report" in text
     assert "↑↓ jk" in text
     assert "Enter Select" in text
     assert "q Quit" in text
@@ -139,12 +139,12 @@ def test_main_menu_describes_each_option() -> None:
     render_main_menu(console, selected=0)
 
     lines = stream.getvalue().splitlines()
+    review = next(line for line in lines if "Review Activity" in line)
     generate = next(line for line in lines if "Generate Report" in line)
-    browse = next(line for line in lines if "Browse Sessions" in line)
     setup = next(line for line in lines if "Check Setup" in line)
     settings = next(line for line in lines if "Settings" in line)
-    assert "Scan the period and produce the report" in generate
-    assert "Explore sessions by repository" in browse
+    assert "Explore sessions by repository" in review
+    assert "Configure and produce a report" in generate
     assert "Diagnose the harness setup" in setup
     assert "Edit saved settings" in settings
     column = generate.index("Scan the period and produce the report")
@@ -159,8 +159,8 @@ def test_main_menu_drops_descriptions_on_a_narrow_terminal() -> None:
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "Generate Report" in text
-    assert "Scan the period and produce the report" not in text
+    assert "Review Activity" in text
+    assert "Explore sessions by repository" not in text
 
 
 def test_report_setup_renders_settings_as_the_navigable_list() -> None:

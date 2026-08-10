@@ -156,7 +156,7 @@ def _actions(
 
 def test_numeric_generate_then_back_returns_to_main_without_restarting() -> None:
     counters: dict[str, int] = {}
-    input_source = ScriptedInput([char("1"), char("b"), char("q")])
+    input_source = ScriptedInput([char("2"), char("b"), char("q")])
 
     run_interactive(
         actions=_actions(counters=counters),
@@ -168,11 +168,10 @@ def test_numeric_generate_then_back_returns_to_main_without_restarting() -> None
     assert input_source.entered == input_source.exited == 3
 
 
-def test_arrow_navigation_enters_read_only_browse_without_prompting_and_returns() -> None:
+def test_default_navigation_enters_read_only_activity_without_prompting_and_returns() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
         [
-            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             KeyPress(key=Key.ENTER),
             KeyPress(key=Key.SPACE),
@@ -212,7 +211,7 @@ def test_setup_detail_edit_does_not_require_a_scan() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     input_source = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
@@ -240,7 +239,7 @@ def test_harness_source_error_is_recoverable_by_changing_harness() -> None:
         raise HarnessSourceError("session store missing")
 
     input_source = ScriptedInput(
-        [char("1"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
+        [char("2"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
     )
 
     run_interactive(
@@ -256,7 +255,7 @@ def test_harness_source_error_is_recoverable_by_changing_harness() -> None:
 def test_zero_sessions_is_recoverable_by_changing_period() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("1"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
+        [char("2"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
     )
 
     run_interactive(
@@ -306,7 +305,7 @@ def test_setup_g_generates_without_visiting_review() -> None:
             sessions_by_repository={"repo-a": sessions},
         )
 
-    input_source = ScriptedInput([char("1"), char("g"), char("q"), char("q")])
+    input_source = ScriptedInput([char("2"), char("g"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=populated_scan, counters=counters),
@@ -322,7 +321,7 @@ def test_setup_edits_the_field_under_the_cursor() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     input_source = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
@@ -372,7 +371,7 @@ def test_setup_g_on_an_empty_scan_does_not_reach_the_result_screen() -> None:
             sessions_by_repository={},
         )
 
-    input_source = ScriptedInput([char("1"), char("g"), char("b"), char("q"), char("q")])
+    input_source = ScriptedInput([char("2"), char("g"), char("b"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=empty_scan, counters=counters),
@@ -422,7 +421,7 @@ def _setup_populated_scan(draft: ReportDraft) -> ScanResult:
 def test_setup_enter_on_the_action_row_generates() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("1"), KeyPress(key=Key.ENTER), char("q"), char("q")]
+        [char("2"), KeyPress(key=Key.ENTER), char("q"), char("q")]
     )
 
     run_interactive(
@@ -438,7 +437,7 @@ def test_setup_enter_on_the_action_row_generates() -> None:
 def test_setup_horizontal_keys_on_the_action_row_do_not_generate() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("1"), char("l"), KeyPress(key=Key.RIGHT), char("q"), char("q")]
+        [char("2"), char("l"), KeyPress(key=Key.RIGHT), char("q"), char("q")]
     )
 
     run_interactive(

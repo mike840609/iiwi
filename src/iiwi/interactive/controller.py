@@ -345,9 +345,9 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
         return
 
     if state.main_cursor == 0:
-        _new_report(state, actions)
-    elif state.main_cursor == 1:
         _begin_browse(state, actions)
+    elif state.main_cursor == 1:
+        _new_report(state, actions)
     elif state.main_cursor == 2:
         draft = actions.new_draft()
         try:
