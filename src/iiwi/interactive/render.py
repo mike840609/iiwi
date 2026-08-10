@@ -125,17 +125,19 @@ _MIN_BAR_WIDTH = 80
 _MIN_SUBTITLE_HEIGHT = 16
 _MAIN_SUBTITLE = "See what your agent did"
 # The main menu opens on the name, drawn rather than written, when the terminal
-# can spend four rows on it. A partial wordmark reads as noise, so both gates are
+# can spend six rows on it. A partial wordmark reads as noise, so both gates are
 # all-or-nothing: below either one the one-line title comes back unchanged.
 _WORDMARK = (
-    " ___ _        _",
-    "|_ _(_)_ __ _(_)",
-    " | || \\ V  V / |",
-    "|___|_|\\_/\\_/|_|",
+    "██╗ ██╗ ██╗     ██╗ ██╗",
+    "██║ ██║ ██║     ██║ ██║",
+    "██║ ██║ ██║ ██╗ ██║ ██║",
+    "██║ ██║ ██║████╗██║ ██║",
+    "██║ ██║ ╚███╔████╔╝ ██║",
+    "╚═╝ ╚═╝  ╚══╝╚═══╝  ╚═╝",
 )
-_MIN_WORDMARK_HEIGHT = 24
-# 16 cells of wordmark plus `v0.0.0` on the same row, with a gap between them.
-_MIN_WORDMARK_WIDTH = 24
+_MIN_WORDMARK_HEIGHT = 26
+# 23 cells of wordmark plus `v0.0.0` and one separating cell.
+_MIN_WORDMARK_WIDTH = 30
 # Where to file a bug, one Cmd-click away in a terminal that supports OSC 8 and
 # still readable as text in one that does not.
 _PROJECT_URL = "https://github.com/mike840609/iiwi"
@@ -399,7 +401,7 @@ def report_preview_capacity(terminal_height: int) -> int:
 
 def _print_wordmark(console: Console) -> None:
     """Print the wordmark, carrying the version flush right on its last row so
-    the art costs four lines rather than five."""
+    the art costs six lines rather than seven."""
 
     version = f"v{__version__}"
     for line in _WORDMARK[:-1]:
