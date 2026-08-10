@@ -31,7 +31,7 @@ jobs:
             tests/unit/interactive/test_render.py \
             tests/unit/interactive/test_review_regressions.py
 
-          # Rebuild the renderer change from latest main so only footer copy differs.
+          # Rebuild the renderer change from latest main so only footer/help copy differs.
           git checkout origin/main -- src/iiwi/interactive/render.py
           python - <<'PY'
           from pathlib import Path
@@ -87,6 +87,15 @@ jobs:
               f'{item_indent}\"{item}\",\n' for item in setup_replacement
           ) + indent + "],"
           text = text[:match.start()] + new + text[match.end():]
+
+          help_anchor = '        "Enter / Space  Activate / toggle",\n'
+          help_additions = (
+              '        "a              Select all sessions",\n'
+              '        "n              Select no sessions",\n'
+          )
+          if text.count(help_anchor) != 1:
+              raise SystemExit(f"expected one help anchor, found {text.count(help_anchor)}")
+          text = text.replace(help_anchor, help_anchor + help_additions, 1)
 
           path.write_text(text)
           PY
