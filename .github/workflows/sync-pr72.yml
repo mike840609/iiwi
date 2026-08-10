@@ -24,7 +24,7 @@ jobs:
           git fetch origin main
           git merge -X theirs origin/main --no-edit
 
-          # Drop stale pre-#69/#71 overlap. These files are not part of PR 72's behavior.
+          # Drop stale pre-#69/#71 overlap, then reapply only #72-specific renderer assertions.
           git checkout origin/main -- \
             src/iiwi/interactive/controller.py \
             tests/unit/interactive/test_interactive_regressions.py \
@@ -96,8 +96,35 @@ jobs:
           if text.count(help_anchor) != 1:
               raise SystemExit(f"expected one help anchor, found {text.count(help_anchor)}")
           text = text.replace(help_anchor, help_anchor + help_additions, 1)
-
           path.write_text(text)
+
+          def replace_once(file: str, old: str, new: str) -> None:
+              target = Path(file)
+              current = target.read_text()
+              if current.count(old) != 1:
+                  raise SystemExit(f"expected one assertion in {file}, found {current.count(old)}: {old!r}")
+              target.write_text(current.replace(old, new, 1))
+
+          replace_once(
+              "tests/unit/interactive/test_interactive_regressions.py",
+              '    assert len(setup_stream.getvalue().splitlines()) == 21\n',
+              '    assert len(setup_stream.getvalue().splitlines()) == 19\n',
+          )
+          replace_once(
+              "tests/unit/interactive/test_render.py",
+              '    assert "Space Toggle" in text\n',
+              '    assert "Space Select" in text\n',
+          )
+          replace_once(
+              "tests/unit/interactive/test_review_regressions.py",
+              'def test_report_setup_footer_lists_supported_main_menu_shortcut() -> None:\n',
+              'def test_report_setup_footer_omits_redundant_main_menu_shortcut() -> None:\n',
+          )
+          replace_once(
+              "tests/unit/interactive/test_review_regressions.py",
+              '    assert "q Menu" in stream.getvalue()\n',
+              '    assert "q Menu" not in stream.getvalue()\n',
+          )
           PY
 
       - uses: actions/setup-python@v5
