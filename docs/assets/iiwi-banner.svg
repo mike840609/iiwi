@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="853" viewBox="0 0 1280 853" role="img" aria-labelledby="title desc">
+  <title id="title">Iiwi — see what your agent did</title>
+  <desc id="desc">Forest-green Iiwi banner with a stylized scarlet iiwi bird and the G2 terminal wordmark.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#28604c"/>
+      <stop offset="1" stop-color="#123e33"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="853" fill="url(#bg)"/>
+  <g fill="#97c7aa" opacity=".09">
+    <circle cx="70" cy="115" r="205"/>
+    <circle cx="635" cy="85" r="280"/>
+    <circle cx="1160" cy="165" r="250"/>
+    <circle cx="210" cy="805" r="300"/>
+    <circle cx="1040" cy="830" r="320"/>
+  </g>
+
+  <g transform="translate(70 205)">
+    <ellipse cx="170" cy="205" rx="145" ry="150" fill="#d9273f"/>
+    <ellipse cx="280" cy="92" rx="84" ry="80" fill="#e33149"/>
+    <ellipse cx="160" cy="220" rx="91" ry="91" fill="#1f211f"/>
+    <path d="M100 218 L230 176 L205 286 Z" fill="#ba1e34"/>
+    <circle cx="302" cy="70" r="10" fill="#f5f6ef"/>
+    <circle cx="305" cy="72" r="5" fill="#171918"/>
+    <path d="M356 103 C414 95 474 65 537 4" fill="none" stroke="#181a19" stroke-width="11" stroke-linecap="round"/>
+    <path d="M356 111 C420 106 484 82 546 28" fill="none" stroke="#181a19" stroke-width="4" stroke-linecap="round"/>
+    <path d="M100 340 L145 455 L178 341 Z" fill="#1f211f"/>
+    <path d="M157 340 L200 466 L225 330 Z" fill="#2b2d2b"/>
+    <path d="M190 345 L183 408" stroke="#1d1f1e" stroke-width="5"/>
+    <path d="M232 340 L242 404" stroke="#1d1f1e" stroke-width="5"/>
+  </g>
+
+  <g fill="#f5f7f0" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace" font-size="48" font-weight="700" xml:space="preserve">
+    <text x="472" y="230">██╗ ██╗ ██╗     ██╗ ██╗</text>
+    <text x="472" y="286">██║ ██║ ██║     ██║ ██║</text>
+    <text x="472" y="342">██║ ██║ ██║ ██╗ ██║ ██║</text>
+    <text x="472" y="398">██║ ██║ ██║██╔██╗██║ ██║</text>
+    <text x="472" y="454">██║ ██║ ╚███╔╝╚███╔╝ ██║</text>
+    <text x="472" y="510">╚═╝ ╚═╝  ╚══╝  ╚══╝  ╚═╝</text>
+  </g>
+
+  <text x="474" y="615" fill="#ffffff" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="42" font-weight="700">see what your agent did</text>
+  <text x="476" y="665" fill="#bdd4c5" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22">agent session intelligence</text>
+</svg>
