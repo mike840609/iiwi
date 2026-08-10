@@ -13,7 +13,7 @@
 
 [English](https://github.com/mike840609/iiwi/blob/main/README.md) | 繁體中文
 
-![Iiwi — 看見你的 agent 做了什麼](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-banner.jpg)
+![Iiwi — 看見你的 agent 做了什麼](docs/assets/iiwi-banner.svg)
 
 每週工作回報，其實是把已經做過的事再寫一次。Iiwi 直接讀取 coding agent 已經留下的工作階段
 紀錄，依 repository 分組，替你把報告寫出來。支援 OpenCode、Claude Code 與 Codex。
@@ -44,16 +44,18 @@ iiwi report --period last-week    # 產生報告
 
 ```text
 $ iiwi
- ___ _        _
-|_ _(_)_ __ _(_)
- | || \ V  V / |
-|___|_|\_/\_/|_|                                v0.9.1
+██╗ ██╗ ██╗     ██╗ ██╗
+██║ ██║ ██║     ██║ ██║
+██║ ██║ ██║ ██╗ ██║ ██║
+██║ ██║ ██║██╔██╗██║ ██║
+██║ ██║ ╚███╔╝╚███╔╝ ██║
+╚═╝ ╚═╝  ╚══╝  ╚══╝  ╚═╝                        v0.9.1
 ══════════════════════════════════════════════════════
-Turn coding-agent sessions into engineering reports
+See what your agent did
 github.com/mike840609/iiwi
 
-▶ Generate Report
-  Browse Sessions
+▶ Review Activity
+  Generate Report
   Check Setup
   Settings
 
