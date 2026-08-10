@@ -172,6 +172,18 @@ uv run pyright                                  # type check
 
 The last three are exactly what CI runs, so a green local run means a green PR.
 
+### Name forms
+
+The name is cased by where it appears:
+
+| Context | Form |
+|---|---|
+| Distribution, CLI, URLs, application directories | `iiwi` |
+| Python package and imports | `iiwi` |
+| Prose | `Iiwi` |
+| Environment variables | `IIWI_` prefix |
+| Error base class | `IiwiError` |
+
 ## License
 
 MIT
