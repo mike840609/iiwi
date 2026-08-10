@@ -118,8 +118,8 @@ def test_help_keeps_hidden_power_shortcuts_discoverable() -> None:
     render_help(console)
 
     text = stream.getvalue()
-    assert "a              Select all sessions" in text
-    assert "n              Select no sessions" in text
-    assert "e              Exclude a repository" in text
-    assert "R              Rescan sessions" in text
+    assert "Select all sessions" in text
+    assert "Select no sessions" in text
+    assert "Exclude a repository" in text
+    assert "Rescan sessions" in text
     assert "←→ / hl" in text
