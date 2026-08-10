@@ -135,7 +135,7 @@ _WORDMARK = (
     "██║ ██║ ╚███╔████╔╝ ██║",
     "╚═╝ ╚═╝  ╚══╝╚═══╝  ╚═╝",
 )
-_MIN_WORDMARK_HEIGHT = 26
+_MIN_WORDMARK_HEIGHT = 24
 # 23 cells of wordmark plus `v0.0.0` and one separating cell.
 _MIN_WORDMARK_WIDTH = 30
 # Where to file a bug, one Cmd-click away in a terminal that supports OSC 8 and
