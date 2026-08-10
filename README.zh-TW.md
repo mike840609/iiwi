@@ -163,6 +163,18 @@ uv run pyright                                  # 型別檢查
 
 後三行就是 CI 實際執行的指令，本機過了 PR 就會過。
 
+### 名稱寫法
+
+同一個名字依出現的位置決定大小寫：
+
+| 用在哪 | 寫法 |
+|---|---|
+| 發行套件、CLI、URL、應用程式目錄 | `iiwi` |
+| Python package 與 import | `iiwi` |
+| 散文 | `Iiwi` |
+| 環境變數 | `IIWI_` 前綴 |
+| 錯誤基底類別 | `IiwiError` |
+
 ## 授權
 
 MIT
