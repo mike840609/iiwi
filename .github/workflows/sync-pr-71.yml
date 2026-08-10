@@ -80,8 +80,13 @@ jobs:
           render_test = Path("tests/unit/interactive/test_render.py")
           text = render_test.read_text()
           text = text.replace(
-              '    column = generate.index("Scan the period and produce the report")\n    assert review.index("Explore sessions by repository") == column\n',
-              '    column = review.index("Explore sessions by repository")\n    assert generate.index("Configure and produce a report") == column\n',
+              'column = generate.index("Scan the period and produce the report")',
+              'column = review.index("Explore sessions by repository")',
+              1,
+          )
+          text = text.replace(
+              'assert review.index("Explore sessions by repository") == column',
+              'assert generate.index("Configure and produce a report") == column',
               1,
           )
           render_test.write_text(text)
