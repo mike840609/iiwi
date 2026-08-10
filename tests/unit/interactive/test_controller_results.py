@@ -151,7 +151,7 @@ def test_print_report_path_opens_a_persistent_path_screen() -> None:
         actions=_actions(),
         input_source=ScriptedInput(
             [
-                char("1"),
+                char("2"),
                 char("r"),
                 char("g"),
                 KeyPress(key=Key.DOWN),
@@ -177,7 +177,7 @@ def test_p_opens_session_preview_from_review_and_back_returns_to_it() -> None:
         actions=_actions(),
         input_source=ScriptedInput(
             [
-                char("1"),
+                char("2"),
                 char("r"),
                 KeyPress(key=Key.RIGHT),
                 KeyPress(key=Key.DOWN),
@@ -203,8 +203,7 @@ def test_p_opens_session_preview_from_browse_and_returns() -> None:
         actions=_actions(),
         input_source=ScriptedInput(
             [
-                KeyPress(key=Key.DOWN),
-                KeyPress(key=Key.ENTER),
+                char("1"),
                 KeyPress(key=Key.RIGHT),
                 KeyPress(key=Key.DOWN),
                 char("p"),
@@ -227,7 +226,7 @@ def test_p_on_a_repository_row_does_not_open_a_preview() -> None:
         actions=_actions(),
         input_source=ScriptedInput(
             [
-                char("1"),
+                char("2"),
                 char("r"),
                 char("p"),
                 char("b"),

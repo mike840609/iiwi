@@ -239,7 +239,7 @@ def test_ctrl_c_during_scan_returns_to_previous_screen_instead_of_exiting() -> N
         return _scan()
 
     console, _ = _console()
-    keys = ScriptedInput([char("1"), char("r"), char("b"), char("q")])
+    keys = ScriptedInput([char("2"), char("r"), char("b"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=interrupt_once),
@@ -280,7 +280,7 @@ def test_browser_supports_horizontal_expand_collapse_and_rescan() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("2"),
+            char("1"),
             char("l"),
             char("h"),
             char("R"),
@@ -333,7 +333,7 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
     draft = ReportDraft(harness="opencode", period=_period(), dry_run=True)
     keys = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             char("r"),
             char("g"),
             KeyPress(key=Key.ENTER),

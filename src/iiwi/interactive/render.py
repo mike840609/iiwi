@@ -36,12 +36,12 @@ class VisibleRow:
     session_id: str | None = None
 
 
-_MAIN_OPTIONS = ["Generate Report", "Browse Sessions", "Check Setup", "Settings"]
+_MAIN_OPTIONS = ["Review Activity", "Generate Report", "Check Setup", "Settings"]
 # The main menu explains what each option does, the way mole's menu does: one
 # dim clause per row, aligned under the widest label.
 _MAIN_DESCRIPTIONS = {
-    "Generate Report": "Scan the period and produce the report",
-    "Browse Sessions": "Explore sessions by repository",
+    "Review Activity": "Explore sessions by repository",
+    "Generate Report": "Configure and produce a report",
     "Check Setup": "Diagnose the harness setup",
     "Settings": "Edit saved settings",
 }
@@ -123,7 +123,7 @@ _MIN_BAR_WIDTH = 80
 # trade the bar column makes on a narrow one — content outranks decoration. Below this
 # height the list would otherwise render zero rows.
 _MIN_SUBTITLE_HEIGHT = 16
-_MAIN_SUBTITLE = "Turn coding-agent sessions into engineering reports"
+_MAIN_SUBTITLE = "See what your agent did"
 # The main menu opens on the name, drawn rather than written, when the terminal
 # can spend four rows on it. A partial wordmark reads as noise, so both gates are
 # all-or-nothing: below either one the one-line title comes back unchanged.
