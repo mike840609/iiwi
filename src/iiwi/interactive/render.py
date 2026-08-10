@@ -131,13 +131,13 @@ _WORDMARK = (
     "██╗ ██╗ ██╗     ██╗ ██╗",
     "██║ ██║ ██║     ██║ ██║",
     "██║ ██║ ██║ ██╗ ██║ ██║",
-    "██║ ██║ ██║████╗██║ ██║",
-    "██║ ██║ ╚███╔████╔╝ ██║",
-    "╚═╝ ╚═╝  ╚══╝╚═══╝  ╚═╝",
+    "██║ ██║ ██║██╔██╗██║ ██║",
+    "██║ ██║ ╚███╔╝╚███╔╝ ██║",
+    "╚═╝ ╚═╝  ╚══╝  ╚══╝  ╚═╝",
 )
 _MIN_WORDMARK_HEIGHT = 24
-# 23 cells of wordmark plus `v0.0.0` and one separating cell.
-_MIN_WORDMARK_WIDTH = 30
+# 24 cells of wordmark plus `v0.0.0` and one separating cell.
+_MIN_WORDMARK_WIDTH = 31
 # Where to file a bug, one Cmd-click away in a terminal that supports OSC 8 and
 # still readable as text in one that does not.
 _PROJECT_URL = "https://github.com/mike840609/iiwi"
