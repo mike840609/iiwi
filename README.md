@@ -13,7 +13,7 @@ engineering report, without anything leaving your machine.
 
 English | [繁體中文](https://github.com/mike840609/iiwi/blob/main/README.zh-TW.md)
 
-![Iiwi — see what your agents did](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-banner.jpg)
+![Iiwi — see what your agent did](docs/assets/iiwi-banner.svg)
 
 The weekly status update is work you already did once. Iiwi reads the sessions
 your coding agent already recorded, groups them by repository, and writes the
@@ -46,16 +46,18 @@ Run `iiwi` with no arguments if you would rather not remember flags:
 
 ```text
 $ iiwi
- ___ _        _
-|_ _(_)_ __ _(_)
- | || \ V  V / |
-|___|_|\_/\_/|_|                                v0.9.1
+██╗ ██╗ ██╗     ██╗ ██╗
+██║ ██║ ██║     ██║ ██║
+██║ ██║ ██║ ██╗ ██║ ██║
+██║ ██║ ██║██╔██╗██║ ██║
+██║ ██║ ╚███╔╝╚███╔╝ ██║
+╚═╝ ╚═╝  ╚══╝  ╚══╝  ╚═╝                        v0.9.1
 ══════════════════════════════════════════════════════
-Turn coding-agent sessions into engineering reports
+See what your agent did
 github.com/mike840609/iiwi
 
-▶ Generate Report
-  Browse Sessions
+▶ Review Activity
+  Generate Report
   Check Setup
   Settings
 
