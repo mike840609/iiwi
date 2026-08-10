@@ -177,7 +177,7 @@ def test_non_opencode_sanitize_enter_stays_in_report_setup() -> None:
     console, _ = _console()
     keys = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             *[KeyPress(key=Key.DOWN) for _ in range(6)],
             KeyPress(key=Key.ENTER),
             char("r"),
@@ -219,8 +219,7 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
     console, _ = _console()
     keys = ScriptedInput(
         [
-            KeyPress(key=Key.DOWN),
-            KeyPress(key=Key.ENTER),
+            char("1"),
             KeyPress(key=Key.ENTER),
             char("b"),
             char("q"),
@@ -247,9 +246,7 @@ def test_browse_empty_state_says_configuration_exclusion() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     console, stream = _console()
-    keys = ScriptedInput(
-        [KeyPress(key=Key.DOWN), KeyPress(key=Key.ENTER), char("b"), char("q")]
-    )
+    keys = ScriptedInput([char("1"), char("b"), char("q")])
 
     run_interactive(
         actions=_actions(
@@ -271,7 +268,7 @@ def test_report_empty_state_says_configuration_exclusion() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     console, stream = _console()
-    keys = ScriptedInput([char("1"), char("r"), char("b"), char("q"), char("q")])
+    keys = ScriptedInput([char("2"), char("r"), char("b"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(
@@ -305,15 +302,14 @@ def test_user_labels_are_rendered_as_literal_text_not_rich_markup() -> None:
     assert "add [link=x] support" in text
 
 
-def test_dry_run_result_can_preview_generated_report_content() -> None:
-    draft = ReportDraft(harness="opencode", period=_period(), dry_run=True)
+def test_preview_action_can_preview_generated_report_content() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("1"),
-            char("r"),
-            char("g"),
+            char("2"),
+            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("b"),
             char("q"),
@@ -362,7 +358,7 @@ def test_review_back_and_reenter_preserves_repository_expansion() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             char("r"),
             KeyPress(key=Key.ENTER),
             char("b"),

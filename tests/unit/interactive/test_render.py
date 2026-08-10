@@ -126,8 +126,8 @@ def test_main_menu_renders_navigation_and_footer() -> None:
 
     text = stream.getvalue()
     assert "|___|_|\\_/\\_/|_|" in text
-    assert "▶ Generate Report" in text
-    assert "Browse Sessions" in text
+    assert "▶ Review Activity" in text
+    assert "Generate Report" in text
     assert "↑↓ jk" in text
     assert "Enter Select" in text
     assert "q Quit" in text
@@ -139,16 +139,16 @@ def test_main_menu_describes_each_option() -> None:
     render_main_menu(console, selected=0)
 
     lines = stream.getvalue().splitlines()
+    review = next(line for line in lines if "Review Activity" in line)
     generate = next(line for line in lines if "Generate Report" in line)
-    browse = next(line for line in lines if "Browse Sessions" in line)
     setup = next(line for line in lines if "Check Setup" in line)
     settings = next(line for line in lines if "Settings" in line)
-    assert "Scan the period and produce the report" in generate
-    assert "Explore sessions by repository" in browse
+    assert "Explore sessions by repository" in review
+    assert "Configure and produce a report" in generate
     assert "Diagnose the harness setup" in setup
     assert "Edit saved settings" in settings
-    column = generate.index("Scan the period and produce the report")
-    assert browse.index("Explore sessions by repository") == column
+    column = review.index("Explore sessions by repository")
+    assert generate.index("Configure and produce a report") == column
     assert setup.index("Diagnose the harness setup") == column
     assert settings.index("Edit saved settings") == column
 
@@ -159,8 +159,8 @@ def test_main_menu_drops_descriptions_on_a_narrow_terminal() -> None:
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "Generate Report" in text
-    assert "Scan the period and produce the report" not in text
+    assert "Review Activity" in text
+    assert "Explore sessions by repository" not in text
 
 
 def test_report_setup_renders_settings_as_the_navigable_list() -> None:
@@ -172,11 +172,14 @@ def test_report_setup_renders_settings_as_the_navigable_list() -> None:
     text = stream.getvalue()
     assert "Generate Report" in text
     assert "Harness" in text and "OpenCode" in text
+    assert "Period" in text
+    assert "Advanced settings" in text
     assert "Detail" in text and "Full" in text
     assert "Subagents" in text and "Included" in text
     assert "Narrative" in text and "Enabled" in text
     assert "Sanitize" in text and "Off" in text
-    assert "Dry run" in text
+    assert "Preview report" in text
+    assert "Dry run" not in text
     assert "▶ Generate report" in text
     assert "  Settings" in text
     assert "g Generate" in text
@@ -804,16 +807,17 @@ def test_report_setup_separates_the_generate_action_from_the_settings() -> None:
     render_report_setup(console, draft, selected=0)
     lines = stream.getvalue().splitlines()
     action = next(i for i, line in enumerate(lines) if "Generate report" in line)
+    preview = next(i for i, line in enumerate(lines) if "Preview report" in line)
     harness = next(i for i, line in enumerate(lines) if "Harness" in line)
-    assert action < harness
-    assert lines[action + 1].strip() == ""
+    assert action < preview < harness
+    assert lines[preview + 1].strip() == ""
     assert lines[action].startswith("▶")
 
 
 def test_report_setup_describes_the_row_under_the_cursor() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
-    render_report_setup(console, draft, selected=3)
+    render_report_setup(console, draft, selected=5)
     detail_help = stream.getvalue()
     console, stream = _console()
     render_report_setup(console, draft, selected=0)
@@ -826,21 +830,21 @@ def test_report_setup_describes_the_row_under_the_cursor() -> None:
 def test_report_setup_explains_why_sanitize_is_unavailable() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="claude-code", period=_period())
-    render_report_setup(console, draft, selected=6)
+    render_report_setup(console, draft, selected=8)
     text = stream.getvalue()
-    assert "Sanitize     N/A" in text
+    assert "Sanitize" in text and "N/A" in text
     assert "Only OpenCode can redact on export" in text
 
 
 def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
     console, stream = _color_console()
     draft = ReportDraft(harness="opencode", period=_period())
-    render_report_setup(console, draft, selected=3)
+    render_report_setup(console, draft, selected=5)
     text = stream.getvalue()
     action = _row(text, "Generate report")
-    settings = _row(text, "Dry run")
+    settings = _row(text, "Harness")
     assert _glyph_style(action, "G") == "36"
-    assert "36" not in _glyph_style(settings, "D")
+    assert "36" not in _glyph_style(settings, "H")
     console, stream = _color_console()
     render_report_setup(console, draft, selected=0)
     selected_action = _row(stream.getvalue(), "Generate report")

@@ -178,7 +178,7 @@ def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
         ReportDraft(harness="opencode", period=_period()),
         selected=0,
     )
-    assert len(setup_stream.getvalue().splitlines()) == 18
+    assert len(setup_stream.getvalue().splitlines()) == 21
 
     console, result_stream = _console(width=30, height=30)
     interactive_render.render_report_result(
@@ -237,7 +237,7 @@ def test_ctrl_c_during_scan_returns_to_previous_screen_instead_of_exiting() -> N
         return _scan()
 
     console, _ = _console()
-    keys = ScriptedInput([char("1"), char("r"), char("b"), char("q")])
+    keys = ScriptedInput([char("2"), char("r"), char("b"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=interrupt_once),
@@ -278,7 +278,6 @@ def test_browser_supports_horizontal_expand_collapse_and_rescan() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("l"),
             char("h"),
@@ -329,12 +328,11 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
     page_down = getattr(Key, "PAGE_DOWN", None)
     assert page_down is not None, "missing Key.PAGE_DOWN"
     console, stream = _console(height=12)
-    draft = ReportDraft(harness="opencode", period=_period(), dry_run=True)
+    draft = ReportDraft(harness="opencode", period=_period())
     keys = ScriptedInput(
         [
-            char("1"),
-            char("r"),
-            char("g"),
+            char("2"),
+            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             KeyPress(key=page_down),
             char("G"),

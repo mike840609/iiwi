@@ -142,7 +142,7 @@ def test_bare_command_runs_generate_select_result_main_quit_flow(
     )
     scripted = ScriptedInput(
         [
-            char("1"),
+            char("2"),
             char("r"),
             KeyPress(key=Key.SPACE),
             KeyPress(key=Key.SPACE),
