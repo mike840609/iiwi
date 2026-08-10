@@ -913,6 +913,7 @@ def test_render_session_preview_shows_the_session() -> None:
     text = stream.getvalue()
     assert "Session Preview" in text
     assert "Deploy the service" in text
+    assert "bump the version" in text
     assert "b Back" in text
 
 
