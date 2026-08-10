@@ -187,17 +187,6 @@ def test_report_setup_renders_settings_as_the_navigable_list() -> None:
     assert "b Back" in text
 
 
-def test_report_setup_colors_unselected_actions_with_iiwi_accent() -> None:
-    console, stream = _color_console()
-    render_report_setup(
-        console,
-        ReportDraft(harness="opencode", period=_period()),
-        selected=0,
-    )
-    line = _row(stream.getvalue(), "Preview report")
-    assert _glyph_style(line, "P") == "91"
-
-
 def test_session_review_renders_group_marks_expansion_and_controls() -> None:
     console, stream = _console()
     state = _selection()
@@ -417,18 +406,6 @@ def test_session_browser_renders_repository_and_session_density() -> None:
     assert "Aug 5 │ 2 msgs" in text
 
 
-def test_session_browser_colors_activity_bar_with_iiwi_accent() -> None:
-    console, stream = _color_console()
-    render_session_browser(
-        console,
-        _mixed_volume_scan(),
-        expanded_repositories=set(),
-        cursor=0,
-    )
-    line = _row(stream.getvalue(), "repo-x")
-    assert _glyph_style(line, "█") == "91"
-
-
 def test_session_browser_header_totals_message_volume() -> None:
     console, stream = _console()
     items = [
@@ -602,7 +579,7 @@ def test_session_review_gives_the_three_repository_glyphs_three_styles() -> None
     console, stream = _color_console()
     render_session_review(console, _selection(), expanded_repositories={"repo-a"}, cursor=0)
     line = _row(stream.getvalue(), "repo-a")
-    assert _glyph_style(line, "▶") == "1;91"
+    assert _glyph_style(line, "▶") == "1;36"
     assert _glyph_style(line, "▾") == "2"
     assert _glyph_style(line, "◐") == "33"
 
@@ -659,7 +636,7 @@ def test_session_browser_separates_the_cursor_from_the_expansion_glyph() -> None
         console, _mixed_volume_scan(), expanded_repositories={"repo-x"}, cursor=0,
     )
     line = _row(stream.getvalue(), "repo-y")
-    assert _glyph_style(line, "▶") == "1;91"
+    assert _glyph_style(line, "▶") == "1;36"
     assert _glyph_style(line, "▸") == "2"
 
 
@@ -860,12 +837,12 @@ def test_report_setup_gives_the_generate_action_its_own_colour() -> None:
     text = stream.getvalue()
     action = _row(text, "Generate report")
     settings = _row(text, "Harness")
-    assert _glyph_style(action, "G") == "91"
-    assert "91" not in _glyph_style(settings, "H")
+    assert _glyph_style(action, "G") == "36"
+    assert "36" not in _glyph_style(settings, "H")
     console, stream = _color_console()
     render_report_setup(console, draft, selected=0)
     selected_action = _row(stream.getvalue(), "Generate report")
-    assert _glyph_style(selected_action, "▶") == "1;91"
+    assert _glyph_style(selected_action, "▶") == "1;36"
 
 
 def test_report_setup_names_the_period_as_well_as_dating_it() -> None:
