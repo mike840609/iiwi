@@ -6,7 +6,6 @@ from rich.console import Console
 
 from iiwi.interactive.render import render_main_menu
 
-
 EXPECTED_G_WORDMARK = (
     "██╗ ██╗ ██╗     ██╗ ██╗",
     "██║ ██║ ██║     ██║ ██║",
