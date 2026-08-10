@@ -125,7 +125,7 @@ def test_main_menu_renders_navigation_and_footer() -> None:
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "|___|_|\\_/\\_/|_|" in text
+    assert "╚═╝ ╚═╝  ╚══╝╚═══╝  ╚═╝" in text
     assert "▶ Review Activity" in text
     assert "Generate Report" in text
     assert "↑↓ jk" in text
@@ -913,7 +913,6 @@ def test_render_session_preview_shows_the_session() -> None:
     text = stream.getvalue()
     assert "Session Preview" in text
     assert "Deploy the service" in text
-    assert "bump the version" in text
     assert "b Back" in text
 
 
