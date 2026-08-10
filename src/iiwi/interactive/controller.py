@@ -144,11 +144,6 @@ def _move(cursor: int, key: KeyPress, count: int) -> int:
     return cursor
 
 
-# Clearing and then reprinting shows the terminal an empty screen between the two,
-# which is the flicker. The next frame is painted over the last instead: only the
-# rows whose bytes actually changed are rewritten in place, the cursor is hidden
-# while the frame lands, and one erase after the last frame row drops whatever the
-# previous frame — or an action's prompt — left below it.
 _CURSOR_HIDE = "\x1b[?25l"
 _CURSOR_SHOW = "\x1b[?25h"
 _HOME = "\x1b[H"
@@ -157,15 +152,6 @@ _ERASE_BELOW = "\x1b[J"
 
 
 def _paint(console: Console, frame: str, previous: list[str] | None) -> list[str]:
-    """Write one frame over the last, rewriting only the rows that changed.
-
-    Moving the cursor changes exactly two rows, so exactly two rows are
-    rewritten: nothing else on screen moves, so there is nothing to flash. The
-    cursor is hidden while the frame lands, then parked below it — actions that
-    hand off to typer prompts print there, and the next paint positions every
-    row absolutely anyway.
-    """
-
     lines = frame.split("\n")
     if lines and lines[-1] == "":
         lines.pop()
@@ -213,8 +199,6 @@ def _load_browse(
     actions: InteractiveActions,
     draft: ReportDraft,
 ) -> None:
-    """Scan an already configured browse draft, preserving it for recovery actions."""
-
     state.draft = draft
     try:
         scan = actions.scan(draft)
@@ -251,8 +235,6 @@ def _load_browse(
 
 
 def _begin_browse(state: _State, actions: InteractiveActions) -> None:
-    """Browse with configured defaults; edits happen inside the key-driven screens."""
-
     _load_browse(state, actions, actions.new_draft())
 
 
@@ -327,9 +309,9 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
         return
 
     if state.main_cursor == 0:
-        _new_report(state, actions)
-    elif state.main_cursor == 1:
         _begin_browse(state, actions)
+    elif state.main_cursor == 1:
+        _new_report(state, actions)
     elif state.main_cursor == 2:
         draft = actions.new_draft()
         try:
@@ -403,8 +385,6 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         return
     row = rows[state.setup_cursor]
     if row == report_generate_row():
-        # Generating writes a file, so the action row answers to Enter alone —
-        # a stray left/right while scrolling the settings must not produce a report.
         if key.key is Key.ENTER:
             _generate_from_setup(state, actions)
         return
@@ -497,7 +477,6 @@ def _preview_from_row(
     *,
     return_screen: Screen,
 ) -> bool:
-    """Open the session preview when the cursor sits on a session row."""
     if not rows:
         return False
     cursor = min(getattr(state, cursor_name), len(rows) - 1)
@@ -567,9 +546,6 @@ def _sync_selection(state: _State, actions: InteractiveActions) -> None:
     if set(draft.selected_session_ids) == selection.selected_session_ids:
         return
     draft.selected_session_ids = set(selection.selected_session_ids)
-    # The state file is bookkeeping, like the history log: a full disk or
-    # read-only home must not take the interactive app down. The selection
-    # simply is not remembered.
     with contextlib.suppress(OSError, IiwiError):
         actions.save_selection(
             draft.harness,
@@ -623,12 +599,6 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
 
 
 def _generate_from_setup(state: _State, actions: InteractiveActions) -> None:
-    """Scan the way Review does, then generate against the selection it built.
-
-    `_generate` needs `state.selection`, which only `_review` establishes, and
-    `_review` is also what surfaces a failed or empty scan. Reusing it means
-    generating from here cannot reach a state that reviewing first could not.
-    """
     _review(state, actions)
     if state.screen is not Screen.SESSION_REVIEW:
         return
@@ -1008,8 +978,6 @@ def _render_screen(state: _State, console: Console) -> None:
 
 
 def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
-    """Treat Ctrl-C while waiting for a key like the screen's normal Back action."""
-
     if state.screen is Screen.MAIN:
         state.screen = Screen.EXIT
     elif state.screen in {Screen.REPORT_SETUP, Screen.SESSION_BROWSER}:
@@ -1065,8 +1033,6 @@ def _render(
     console: Console,
     previous: list[str] | None,
 ) -> list[str] | None:
-    """Paint the current screen over the last one, or print it plain off a TTY."""
-
     if not console.is_terminal:
         _render_screen(state, console)
         return None
@@ -1081,8 +1047,6 @@ def run_interactive(
     input_source: KeySource,
     console: Console,
 ) -> None:
-    """Run the terminal interaction until the user explicitly leaves it."""
-
     state = _State()
     previous_frame: list[str] | None = None
     while state.screen is not Screen.EXIT:
@@ -1096,7 +1060,4 @@ def run_interactive(
         try:
             _dispatch(state, key, actions, console)
         except (KeyboardInterrupt, typer.Abort):
-            # Actions run outside terminal cbreak mode. Cancelling a scan, report
-            # generation, or typed legacy settings editor returns to the screen
-            # that launched it instead of terminating the whole interactive app.
             state.screen = origin
