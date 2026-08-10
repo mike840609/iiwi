@@ -69,11 +69,7 @@ def _period(day: int = 3) -> DateRange:
 
 
 def _activities(count: int = 5, *, at: datetime | None = None) -> list[SessionActivity]:
-    """Real scans never yield activity-less or undated sessions; keep fixtures substantive.
-
-    filter_session_to_period drops every activity without a timestamp, so a
-    dateless activity cannot survive a scan and must not stand in for one here.
-    """
+    """Real scans never yield activity-less or undated sessions; keep fixtures substantive."""
 
     moment = at or datetime(2026, 8, 5, tzinfo=TZ)
     return [
@@ -118,8 +114,6 @@ def _scan(count: int = 1, *, unsafe_labels: bool = False, excluded: int = 0) -> 
             f"ses-{index}",
             repository_name="repo [/] name" if unsafe_labels else "repo-a",
             title="add [link=x] support" if unsafe_labels and index == 0 else f"Session {index}",
-            # Descending recency, so the newest-first display order matches these indices
-            # and these tests keep asserting on windowing rather than on ordering.
             at=datetime(2026, 8, 9, tzinfo=TZ) - timedelta(minutes=index),
         )
         for index in range(count)
@@ -227,7 +221,7 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
         [
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
-            KeyPress(key=Key.ENTER),  # Change period from the empty-state screen.
+            KeyPress(key=Key.ENTER),
             char("b"),
             char("q"),
         ]
@@ -250,18 +244,11 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
 
 
 def test_browse_empty_state_says_configuration_exclusion() -> None:
-    """An empty browse whose cause is the exclusion setting must say so."""
-
     draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     console, stream = _console()
     keys = ScriptedInput(
-        [
-            KeyPress(key=Key.DOWN),
-            KeyPress(key=Key.ENTER),
-            char("b"),
-            char("q"),
-        ]
+        [KeyPress(key=Key.DOWN), KeyPress(key=Key.ENTER), char("b"), char("q")]
     )
 
     run_interactive(
@@ -327,7 +314,7 @@ def test_dry_run_result_can_preview_generated_report_content() -> None:
             char("1"),
             char("r"),
             char("g"),
-            KeyPress(key=Key.ENTER),  # Preview report.
+            KeyPress(key=Key.ENTER),
             char("b"),
             char("q"),
             char("q"),
@@ -377,7 +364,7 @@ def test_review_back_and_reenter_preserves_repository_expansion() -> None:
         [
             char("1"),
             char("r"),
-            KeyPress(key=Key.ENTER),  # expand repo-a
+            KeyPress(key=Key.ENTER),
             char("b"),
             char("r"),
             char("b"),
@@ -400,7 +387,7 @@ def test_review_back_and_reenter_preserves_repository_expansion() -> None:
     assert stream.getvalue().count("Session 0") >= 2
 
 
-def test_report_setup_footer_lists_supported_main_menu_shortcut() -> None:
+def test_report_setup_footer_keeps_navigation_but_hides_menu_alias() -> None:
     console, stream = _console()
 
     render_report_setup(
@@ -409,7 +396,9 @@ def test_report_setup_footer_lists_supported_main_menu_shortcut() -> None:
         selected=0,
     )
 
-    assert "q Menu" in stream.getvalue()
+    text = stream.getvalue()
+    assert "b Back" in text
+    assert "q Menu" not in text
 
 
 def test_selection_from_scan_copies_caller_owned_set() -> None:
