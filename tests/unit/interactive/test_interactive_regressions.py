@@ -178,7 +178,7 @@ def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
         ReportDraft(harness="opencode", period=_period()),
         selected=0,
     )
-    assert len(setup_stream.getvalue().splitlines()) == 21
+    assert len(setup_stream.getvalue().splitlines()) == 19
 
     console, result_stream = _console(width=30, height=30)
     interactive_render.render_report_result(

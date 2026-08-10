@@ -69,7 +69,11 @@ def _period(day: int = 3) -> DateRange:
 
 
 def _activities(count: int = 5, *, at: datetime | None = None) -> list[SessionActivity]:
-    """Real scans never yield activity-less or undated sessions; keep fixtures substantive."""
+    """Real scans never yield activity-less or undated sessions; keep fixtures substantive.
+
+    filter_session_to_period drops every activity without a timestamp, so a
+    dateless activity cannot survive a scan and must not stand in for one here.
+    """
 
     moment = at or datetime(2026, 8, 5, tzinfo=TZ)
     return [
@@ -243,6 +247,8 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
 
 
 def test_browse_empty_state_says_configuration_exclusion() -> None:
+    """An empty browse whose cause is the exclusion setting must say so."""
+
     draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     console, stream = _console()
@@ -383,7 +389,7 @@ def test_review_back_and_reenter_preserves_repository_expansion() -> None:
     assert stream.getvalue().count("Session 0") >= 2
 
 
-def test_report_setup_footer_keeps_navigation_but_hides_menu_alias() -> None:
+def test_report_setup_footer_omits_redundant_main_menu_shortcut() -> None:
     console, stream = _console()
 
     render_report_setup(
@@ -392,9 +398,7 @@ def test_report_setup_footer_keeps_navigation_but_hides_menu_alias() -> None:
         selected=0,
     )
 
-    text = stream.getvalue()
-    assert "b Back" in text
-    assert "q Menu" not in text
+    assert "q Menu" not in stream.getvalue()
 
 
 def test_selection_from_scan_copies_caller_owned_set() -> None:

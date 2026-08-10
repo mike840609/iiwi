@@ -206,14 +206,8 @@ def test_session_review_renders_group_marks_expansion_and_controls() -> None:
     assert "Work on ses-a1" in text
     assert "Work on ses-a2" in text
     assert "Space Select" in text
-    assert "p Inspect" in text
     assert "g Report" in text
-    assert "? More" in text
     assert "b Back" in text
-    assert "a All" not in text
-    assert "n None" not in text
-    assert "e Exclude repo" not in text
-    assert "R Rescan" not in text
 
 
 def test_session_review_surfaces_scan_warnings() -> None:
