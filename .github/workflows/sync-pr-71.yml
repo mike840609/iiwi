@@ -1,0 +1,92 @@
+name: Sync PR 71 with main
+
+on:
+  push:
+    branches:
+      - agent/collapse-advanced-settings
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/collapse-advanced-settings
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Merge latest main and resolve intentional overlap
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge -X ours origin/main --no-edit
+
+          python - <<'PY'
+          from pathlib import Path
+
+          controller = Path("src/iiwi/interactive/controller.py")
+          text = controller.read_text()
+          old = '''    if state.main_cursor == 0:\n        _new_report(state, actions)\n    elif state.main_cursor == 1:\n        _begin_browse(state, actions)\n'''
+          new = '''    if state.main_cursor == 0:\n        _begin_browse(state, actions)\n    elif state.main_cursor == 1:\n        _new_report(state, actions)\n'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          controller.write_text(text)
+
+          render = Path("src/iiwi/interactive/render.py")
+          text = render.read_text()
+          text = text.replace(
+              '_MAIN_OPTIONS = ["Generate Report", "Browse Sessions", "Check Setup", "Settings"]',
+              '_MAIN_OPTIONS = ["Review Activity", "Generate Report", "Check Setup", "Settings"]',
+              1,
+          )
+          text = text.replace(
+              '    "Generate Report": "Scan the period and produce the report",\n    "Browse Sessions": "Explore sessions by repository",',
+              '    "Review Activity": "Explore sessions by repository",\n    "Generate Report": "Configure and produce a report",',
+              1,
+          )
+          text = text.replace(
+              '_MAIN_SUBTITLE = "Turn coding-agent sessions into engineering reports"',
+              '_MAIN_SUBTITLE = "See what your agent did"',
+              1,
+          )
+          render.write_text(text)
+
+          collapsed = Path("tests/unit/interactive/test_collapsed_advanced_settings.py")
+          text = collapsed.read_text()
+          text = text.replace('            char("1"),', '            char("2"),', 1)
+          collapsed.write_text(text)
+
+          Path(".github/workflows/sync-pr-71.yml").unlink()
+          PY
+
+      - name: Verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --locked --extra dev
+          uv run pytest --cov=iiwi --cov-fail-under=80
+          uv run ruff check .
+          uv run pyright
+          uv build
+
+      - name: Push synced branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "merge: sync advanced settings PR with #69"
+          fi
+          git push origin HEAD:agent/collapse-advanced-settings
