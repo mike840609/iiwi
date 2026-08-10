@@ -21,5 +21,5 @@
 - [x] Replace `_WORDMARK` with the six-line G2 wordmark and update minimum width for its 24-cell lower rows.
 - [x] Update the fixed-screen viewport regression for the exact-width G2 gate.
 - [x] Add a G2 README hero asset and refresh both README terminal examples.
-- [ ] Run the full test, lint, type-check, and package-build matrix through CI.
-- [ ] Review the final PR diff for interactive-only runtime scope and documentation consistency.
+- [x] Run the full test, lint, type-check, and package-build matrix through CI.
+- [x] Review the final PR diff for interactive-only runtime scope and documentation consistency.
