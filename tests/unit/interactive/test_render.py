@@ -125,7 +125,7 @@ def test_main_menu_renders_navigation_and_footer() -> None:
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "╚═╝ ╚═╝  ╚══╝╚═══╝  ╚═╝" in text
+    assert "╚═╝ ╚═╝  ╚══╝  ╚══╝  ╚═╝" in text
     assert "▶ Review Activity" in text
     assert "Generate Report" in text
     assert "↑↓ jk" in text
