@@ -552,13 +552,11 @@ def render_report_setup(
         console,
         [
             "↑↓ jk",
-            "←→ hl Change",
-            "Enter Select",
+            "←→ Change",
             "r Review",
             "g Generate",
-            "? Help",
+            "? More",
             "b Back",
-            "q Menu",
         ],
     )
 
@@ -766,16 +764,11 @@ def render_session_review(
     _render_search_status(console, query, searching)
     hints = [
         "↑↓ jk",
-        "←→ hl",
-        "Space Toggle",
-        "a All",
-        "n None",
-        "g Generate",
-        "p Preview",
-        "e Exclude repo",
-        "R Rescan",
+        "Space Select",
+        "p Inspect",
         "/ Search",
-        "? Help",
+        "g Report",
+        "? More",
         "b Back",
     ]
     console.print()
@@ -901,11 +894,9 @@ def render_session_browser(
     _render_search_status(console, query, searching)
     hints = [
         "↑↓ jk",
-        "←→ hl",
-        "p Preview",
-        "R Rescan",
+        "p Inspect",
         "/ Search",
-        "? Help",
+        "? More",
         "b Back",
     ]
     console.print()
@@ -1198,6 +1189,8 @@ def render_help(console: Console) -> None:
         "↑↓ / jk        Move selection or scroll one line",
         "←→ / hl        Collapse / expand tree rows or change setup values",
         "Enter / Space  Activate / toggle",
+        "a              Select all sessions",
+        "n              Select no sessions",
         "PgUp / PgDn    Scroll error details or report preview by a page",
         "g / G          Jump to top / bottom in report preview",
         "p              Preview a session's transcript",

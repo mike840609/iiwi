@@ -389,7 +389,7 @@ def test_review_back_and_reenter_preserves_repository_expansion() -> None:
     assert stream.getvalue().count("Session 0") >= 2
 
 
-def test_report_setup_footer_lists_supported_main_menu_shortcut() -> None:
+def test_report_setup_footer_omits_redundant_main_menu_shortcut() -> None:
     console, stream = _console()
 
     render_report_setup(
@@ -398,7 +398,7 @@ def test_report_setup_footer_lists_supported_main_menu_shortcut() -> None:
         selected=0,
     )
 
-    assert "q Menu" in stream.getvalue()
+    assert "q Menu" not in stream.getvalue()
 
 
 def test_selection_from_scan_copies_caller_owned_set() -> None:

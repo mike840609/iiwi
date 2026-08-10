@@ -205,8 +205,8 @@ def test_session_review_renders_group_marks_expansion_and_controls() -> None:
     assert "○ repo-b" in text
     assert "Work on ses-a1" in text
     assert "Work on ses-a2" in text
-    assert "Space Toggle" in text
-    assert "g Generate" in text
+    assert "Space Select" in text
+    assert "g Report" in text
     assert "b Back" in text
 
 
