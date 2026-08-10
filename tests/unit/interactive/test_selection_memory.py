@@ -165,7 +165,7 @@ def test_restore_applies_a_stored_selection_to_a_fresh_scan() -> None:
     run_interactive(
         actions=recorder.actions(),
         input_source=ScriptedInput(
-            [char("1"), char("r"), char("b"), char("b"), char("q"), char("q")]
+            [char("2"), char("r"), char("b"), char("b"), char("q"), char("q")]
         ),
         console=console,
     )
@@ -184,7 +184,7 @@ def test_restore_drops_ids_the_new_scan_does_not_have() -> None:
     run_interactive(
         actions=recorder.actions(),
         input_source=ScriptedInput(
-            [char("1"), char("r"), char("b"), char("b"), char("q"), char("q")]
+            [char("2"), char("r"), char("b"), char("b"), char("q"), char("q")]
         ),
         console=console,
     )
@@ -202,7 +202,7 @@ def test_no_stored_selection_keeps_the_noise_free_default() -> None:
     run_interactive(
         actions=recorder.actions(),
         input_source=ScriptedInput(
-            [char("1"), char("r"), char("b"), char("b"), char("q"), char("q")]
+            [char("2"), char("r"), char("b"), char("b"), char("q"), char("q")]
         ),
         console=console,
     )
@@ -220,7 +220,7 @@ def test_selection_is_saved_when_it_changes_but_not_when_it_does_not() -> None:
         actions=recorder.actions(),
         input_source=ScriptedInput(
             [
-                char("1"),
+                char("2"),
                 char("r"),
                 KeyPress(key=Key.RIGHT),
                 KeyPress(key=Key.DOWN),
@@ -243,7 +243,7 @@ def test_selection_is_saved_when_it_changes_but_not_when_it_does_not() -> None:
     run_interactive(
         actions=recorder.actions(),
         input_source=ScriptedInput(
-            [char("1"), char("r"), char("b"), char("b"), char("q"), char("q")]
+            [char("2"), char("r"), char("b"), char("b"), char("q"), char("q")]
         ),
         console=console,
     )
@@ -276,7 +276,7 @@ def test_a_failing_selection_save_does_not_crash_the_tui() -> None:
         actions=recorder.actions(),
         input_source=ScriptedInput(
             [
-                char("1"),
+                char("2"),
                 char("r"),
                 KeyPress(key=Key.RIGHT),
                 KeyPress(key=Key.DOWN),
@@ -297,7 +297,7 @@ def test_exclude_key_on_a_repository_row_excludes_and_rescans() -> None:
     run_interactive(
         actions=recorder.actions(),
         input_source=ScriptedInput(
-            [char("1"), char("r"), char("e"), char("b"), char("b"), char("q"), char("q")]
+            [char("2"), char("r"), char("e"), char("b"), char("b"), char("q"), char("q")]
         ),
         console=console,
     )
@@ -315,7 +315,7 @@ def test_exclude_key_on_a_session_row_does_not_exclude() -> None:
         actions=recorder.actions(),
         input_source=ScriptedInput(
             [
-                char("1"),
+                char("2"),
                 char("r"),
                 KeyPress(key=Key.RIGHT),
                 KeyPress(key=Key.DOWN),
