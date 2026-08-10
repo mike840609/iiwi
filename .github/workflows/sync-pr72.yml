@@ -35,86 +35,58 @@ jobs:
           git checkout origin/main -- src/iiwi/interactive/render.py
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path("src/iiwi/interactive/render.py")
           text = path.read_text()
 
-          replacements = [
-              (
-                  '''    hints = [
-                      "↑↓ jk",
-                      "←→ hl",
-                      "Space Toggle",
-                      "a All",
-                      "n None",
-                      "g Generate",
-                      "p Preview",
-                      "e Exclude repo",
-                      "R Rescan",
-                      "/ Search",
-                      "? Help",
-                      "b Back",
-                  ]
-          ''',
-                  '''    hints = [
-                      "↑↓ jk",
-                      "Space Select",
-                      "p Inspect",
-                      "/ Search",
-                      "g Report",
-                      "? More",
-                      "b Back",
-                  ]
-          ''',
-              ),
-              (
-                  '''    hints = [
-                      "↑↓ jk",
-                      "←→ hl",
-                      "p Preview",
-                      "R Rescan",
-                      "/ Search",
-                      "? Help",
-                      "b Back",
-                  ]
-          ''',
-                  '''    hints = [
-                      "↑↓ jk",
-                      "p Inspect",
-                      "/ Search",
-                      "? More",
-                      "b Back",
-                  ]
-          ''',
-              ),
-              (
-                  '''        [
-                      "↑↓ jk",
-                      "←→ hl Change",
-                      "Enter Select",
-                      "r Review",
-                      "g Generate",
-                      "? Help",
-                      "b Back",
-                      "q Menu",
-                  ],
-          ''',
-                  '''        [
-                      "↑↓ jk",
-                      "←→ Change",
-                      "r Review",
-                      "g Generate",
-                      "? More",
-                      "b Back",
-                  ],
-          ''',
-              ),
-          ]
+          def replace_hint_block(required: list[str], replacement: list[str]) -> None:
+              global text
+              pattern = re.compile(r"(?P<indent>\s*)hints = \[\n(?P<body>(?:\s+\"[^\n]+\",\n)+)(?P=indent)\]", re.MULTILINE)
+              matches = []
+              for match in pattern.finditer(text):
+                  body = match.group("body")
+                  if all(f'\"{item}\"' in body for item in required):
+                      matches.append(match)
+              if len(matches) != 1:
+                  raise SystemExit(f"expected one hint block for {required}, found {len(matches)}")
+              match = matches[0]
+              indent = match.group("indent")
+              item_indent = indent + "    "
+              new = indent + "hints = [\n" + "".join(
+                  f'{item_indent}\"{item}\",\n' for item in replacement
+              ) + indent + "]"
+              text = text[:match.start()] + new + text[match.end():]
 
-          for old, new in replacements:
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected exactly one renderer block, found {text.count(old)}")
-              text = text.replace(old, new, 1)
+          replace_hint_block(
+              ["Space Toggle", "a All", "n None", "e Exclude repo", "R Rescan"],
+              ["↑↓ jk", "Space Select", "p Inspect", "/ Search", "g Report", "? More", "b Back"],
+          )
+          replace_hint_block(
+              ["p Preview", "R Rescan", "/ Search", "←→ hl"],
+              ["↑↓ jk", "p Inspect", "/ Search", "? More", "b Back"],
+          )
+
+          old_setup = [
+              "↑↓ jk", "←→ hl Change", "Enter Select", "r Review",
+              "g Generate", "? Help", "b Back", "q Menu",
+          ]
+          setup_pattern = re.compile(r"(?P<indent>\s*)\[\n(?P<body>(?:\s+\"[^\n]+\",\n)+)(?P=indent)\],", re.MULTILINE)
+          setup_matches = []
+          for match in setup_pattern.finditer(text):
+              body = match.group("body")
+              if all(f'\"{item}\"' in body for item in old_setup):
+                  setup_matches.append(match)
+          if len(setup_matches) != 1:
+              raise SystemExit(f"expected one setup hint list, found {len(setup_matches)}")
+          match = setup_matches[0]
+          indent = match.group("indent")
+          item_indent = indent + "    "
+          setup_replacement = ["↑↓ jk", "←→ Change", "r Review", "g Generate", "? More", "b Back"]
+          new = indent + "[\n" + "".join(
+              f'{item_indent}\"{item}\",\n' for item in setup_replacement
+          ) + indent + "],"
+          text = text[:match.start()] + new + text[match.end():]
 
           path.write_text(text)
           PY
