@@ -89,6 +89,11 @@ jobs:
               'assert generate.index("Configure and produce a report") == column',
               1,
           )
+          text = text.replace(
+              'assert browse.index("Explore sessions by repository") == column',
+              'assert generate.index("Configure and produce a report") == column',
+              1,
+          )
           render_test.write_text(text)
 
           Path(".github/workflows/sync-pr-71.yml").unlink()
