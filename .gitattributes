@@ -1,2 +1,0 @@
-# Archived reviewer patches preserve the original diff byte-for-byte.
-.superpowers/sdd/**/*.diff -whitespace
