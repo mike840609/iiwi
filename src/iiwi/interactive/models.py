@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from iiwi.interactive.selection import noise_reason
+from iiwi.models.report_options import DetailLevel, ReportType
 from iiwi.models.time_range import DateRange
-from iiwi.renderers.markdown import DetailLevel
 from iiwi.services.scan import ScanResult
 
 
@@ -17,6 +17,7 @@ class Screen(StrEnum):
     SESSION_REVIEW = "session_review"
     SESSION_BROWSER = "session_browser"
     SESSION_PREVIEW = "session_preview"
+    OUTCOME_REVIEW = "outcome_review"
     REPORT_RESULT = "report_result"
     REPORT_PREVIEW = "report_preview"
     RECOVERABLE_ERROR = "recoverable_error"
@@ -31,7 +32,9 @@ class ReportDraft:
     period_label: str | None = None
     include_subagents: bool = True
     sanitize: bool = False
+    report_type: ReportType = ReportType.ENGINEERING
     detail: DetailLevel = DetailLevel.FULL
+    detail_overridden: bool = False
     narrative: bool = True
     dry_run: bool = False
     scan: ScanResult | None = None
@@ -73,6 +76,16 @@ class ReportDraft:
 
     def set_detail(self, detail: DetailLevel) -> None:
         self.detail = detail
+        self.detail_overridden = True
+
+    def set_report_type(self, report_type: ReportType) -> None:
+        self.report_type = report_type
+        if not self.detail_overridden:
+            self.detail = (
+                DetailLevel.BRIEF
+                if report_type is ReportType.MANAGER
+                else DetailLevel.FULL
+            )
 
     def set_narrative(self, narrative: bool) -> None:
         self.narrative = narrative

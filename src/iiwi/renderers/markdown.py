@@ -1,17 +1,11 @@
 """Markdown rendering for worklog reports."""
 
-from enum import StrEnum
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from iiwi.models.report import WorklogReport
-
-
-class DetailLevel(StrEnum):
-    BRIEF = "brief"
-    FULL = "full"
-
+from iiwi.models.report_options import DetailLevel
 
 # The renderer is the report's only truncation point. Both summarizers now emit
 # complete lists, so the omitted-item count is always the real remainder.
