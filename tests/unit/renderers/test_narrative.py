@@ -221,6 +221,89 @@ Outcomes
     assert "Internal deployment evidence." not in output
 
 
+def test_narrative_brief_keeps_prose_that_reads_like_a_command() -> None:
+    report = narrative_report()
+    report.narrative_text = """## Outcomes
+
+- We had to make a call on pricing and go with tiered plans.
+- The team will go over the results with sales.
+- Make the migration plan concrete.
+- We make progress on the api/v2 endpoint.
+"""
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "We had to make a call on pricing and go with tiered plans." in output
+    assert "The team will go over the results with sales." in output
+    assert "Make the migration plan concrete." in output
+    assert "We make progress on the api/v2 endpoint." in output
+
+
+def test_narrative_brief_rejects_ambiguous_commands_with_arguments() -> None:
+    report = narrative_report()
+    report.narrative_text = """## Outcomes
+
+- Shipped the reviewed change.
+make -j4 build
+go test ./...
+uv run pytest -q
+$ docker compose up
+"""
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "Shipped the reviewed change." in output
+    assert "make -j4 build" not in output
+    assert "go test" not in output
+    assert "uv run pytest" not in output
+    assert "docker compose up" not in output
+
+
+def test_narrative_brief_drops_allowed_headings_left_without_content() -> None:
+    report = narrative_report()
+    report.narrative_text = """## Outcomes
+
+- Shipped the reviewed change.
+
+## Next Week
+
+- Commit deadbeef
+
+Blockers
+--------
+
+- Session: ses-secret
+"""
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "Shipped the reviewed change." in output
+    assert "## Outcomes" in output
+    assert "Next Week" not in output
+    assert "Blockers" not in output
+
+
+def test_narrative_brief_keeps_allowed_headings_that_retain_a_line() -> None:
+    report = narrative_report()
+    report.narrative_text = """## Outcomes
+
+- Commit deadbeef
+- Shipped the reviewed change.
+
+## Next Week
+
+- Complete the next reviewed change.
+"""
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "## Outcomes" in output
+    assert "Shipped the reviewed change." in output
+    assert "## Next Week" in output
+    assert "Complete the next reviewed change." in output
+    assert "deadbeef" not in output
+
+
 def test_narrative_full_keeps_usage() -> None:
     report = narrative_report()
     report.usage_text = "gpt-5 123 tokens"

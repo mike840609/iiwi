@@ -26,11 +26,16 @@ _EVIDENCE_LINE_PATTERN = re.compile(
     r"\b(?:branch|commit|command|file|path|revision)(?:\s*:|\s+)", re.IGNORECASE
 )
 _SESSION_ID_PATTERN = re.compile(r"\bses-[\w-]+\b", re.IGNORECASE)
-_COMMAND_LINE_PATTERN = re.compile(
-    r"(?:^|\s)(?:[$>#]\s*|bash\b|cargo\b|curl\b|docker\b|git\b|go\b|"
-    r"make\b|npm\b|pnpm\b|pytest\b|python\b|sh\b|uv\b|yarn\b|zsh\b)",
+# Distinctive tool names never read as English prose, so they drop a line alone.
+_COMMAND_TOOL_PATTERN = re.compile(
+    r"(?:^|\s)(?:[$>#]\s*|bash\b|cargo\b|curl\b|docker\b|git\b|npm\b|pnpm\b|"
+    r"pytest\b|yarn\b|zsh\b)",
     re.IGNORECASE,
 )
+# These double as ordinary English ("make a call", "go over the results"), so a
+# line only counts as a command when it is lowercase and carries an argument.
+_AMBIGUOUS_COMMAND_PATTERN = re.compile(r"(?:^|\s)(?:go|make|python|sh|uv)\b")
+_COMMAND_ARGUMENT_PATTERN = re.compile(r"(?:^|\s)(?:-{1,2}[A-Za-z0-9]|\.{0,2}/)")
 
 
 def _is_setext_underline(value: str) -> bool:
@@ -173,6 +178,18 @@ def _brief_narrative_body(value: str) -> str:
 
     allowed_section = not has_headings
     in_code_block = False
+    heading_start: int | None = None
+    heading_has_content = False
+
+    def _close_section() -> None:
+        """Drop the section's heading when filtering left it with no content."""
+
+        nonlocal heading_start, heading_has_content
+        if heading_start is not None and not heading_has_content:
+            del kept[heading_start:]
+        heading_start = None
+        heading_has_content = False
+
     index = 0
     while index < len(lines):
         line = lines[index]
@@ -185,9 +202,11 @@ def _brief_narrative_body(value: str) -> str:
             index += 1
             continue
         if stripped.startswith("#"):
+            _close_section()
             heading = stripped.lstrip("#").strip().casefold()
             allowed_section = heading in _BRIEF_NARRATIVE_ALLOWED_HEADINGS
             if allowed_section:
+                heading_start = len(kept)
                 kept.append(line)
             index += 1
             continue
@@ -196,8 +215,10 @@ def _brief_narrative_body(value: str) -> str:
             and index + 1 < len(lines)
             and _is_setext_underline(lines[index + 1])
         ):
+            _close_section()
             allowed_section = stripped.casefold() in _BRIEF_NARRATIVE_ALLOWED_HEADINGS
             if allowed_section:
+                heading_start = len(kept)
                 kept.extend((line, lines[index + 1]))
             index += 2
             continue
@@ -209,10 +230,17 @@ def _brief_narrative_body(value: str) -> str:
             or _SESSION_LINE_PATTERN.search(line)
             or _SESSION_ID_PATTERN.search(line)
             or _EVIDENCE_LINE_PATTERN.search(line)
-            or _COMMAND_LINE_PATTERN.search(line)
+            or _COMMAND_TOOL_PATTERN.search(line)
+            or (
+                _AMBIGUOUS_COMMAND_PATTERN.search(line)
+                and _COMMAND_ARGUMENT_PATTERN.search(line)
+            )
         ):
             index += 1
             continue
         kept.append(line)
+        if stripped:
+            heading_has_content = True
         index += 1
+    _close_section()
     return "\n".join(kept).strip()
