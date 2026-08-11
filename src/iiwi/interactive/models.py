@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import cast
 
 from iiwi.interactive.selection import noise_reason
 from iiwi.models.report_options import DetailLevel, ReportType
 from iiwi.models.time_range import DateRange
 from iiwi.services.scan import ScanResult
+
+_UNSET_DETAIL = cast(DetailLevel, object())
 
 
 class Screen(StrEnum):
@@ -33,12 +36,22 @@ class ReportDraft:
     include_subagents: bool = True
     sanitize: bool = False
     report_type: ReportType = ReportType.ENGINEERING
-    detail: DetailLevel = DetailLevel.FULL
+    detail: DetailLevel = _UNSET_DETAIL
     detail_overridden: bool = False
     narrative: bool = True
     dry_run: bool = False
     scan: ScanResult | None = None
     selected_session_ids: set[str] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        if self.detail is _UNSET_DETAIL:
+            self.detail = self.default_detail(self.report_type)
+        else:
+            self.detail_overridden = True
+
+    @staticmethod
+    def default_detail(report_type: ReportType) -> DetailLevel:
+        return DetailLevel.BRIEF if report_type is ReportType.MANAGER else DetailLevel.FULL
 
     def clear_scan(self) -> None:
         self.scan = None
@@ -81,11 +94,7 @@ class ReportDraft:
     def set_report_type(self, report_type: ReportType) -> None:
         self.report_type = report_type
         if not self.detail_overridden:
-            self.detail = (
-                DetailLevel.BRIEF
-                if report_type is ReportType.MANAGER
-                else DetailLevel.FULL
-            )
+            self.detail = self.default_detail(report_type)
 
     def set_narrative(self, narrative: bool) -> None:
         self.narrative = narrative

@@ -76,6 +76,8 @@ class OutcomeReviewDraft(BaseModel):
     def apply_type_default(self) -> OutcomeReviewDraft:
         if self.detail is None:
             self.detail = self.default_detail(self.report_type)
+        elif "detail" in self.model_fields_set:
+            self.detail_overridden = True
         self._normalize_ranks()
         return self
 
@@ -122,6 +124,8 @@ class OutcomeReviewDraft(BaseModel):
 
     def split(self, identifier: str) -> None:
         parent = self._outcome(identifier)
+        if not parent.source_groups:
+            raise ValueError("cannot split outcome without source groups")
         replacement = [
             Outcome(
                 id=f"{parent.id}:{group.id}",

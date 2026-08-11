@@ -29,6 +29,19 @@ def test_report_type_applies_default_detail_until_detail_is_explicit() -> None:
     assert draft.detail is DetailLevel.FULL
 
 
+def test_constructor_detail_remains_explicit_after_report_type_change() -> None:
+    draft = ReportDraft(
+        harness="opencode",
+        period=_period(20),
+        detail=DetailLevel.BRIEF,
+    )
+
+    draft.set_report_type(ReportType.ENGINEERING)
+
+    assert draft.detail is DetailLevel.BRIEF
+    assert draft.detail_overridden is True
+
+
 def _period(day: int) -> DateRange:
     return DateRange(
         since=datetime(2026, 7, day, tzinfo=TZ),

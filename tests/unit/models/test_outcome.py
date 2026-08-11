@@ -1,3 +1,5 @@
+import pytest
+
 from iiwi.models.outcome import (
     EvidenceRef,
     Outcome,
@@ -31,6 +33,19 @@ def test_manager_defaults_to_brief_and_explicit_detail_survives_type_change() ->
 
     draft.set_detail(DetailLevel.FULL)
     draft.set_report_type(ReportType.ENGINEERING)
+    draft.set_report_type(ReportType.MANAGER)
+
+    assert draft.detail is DetailLevel.FULL
+    assert draft.detail_overridden is True
+
+
+def test_constructor_detail_remains_explicit_after_report_type_change() -> None:
+    draft = OutcomeReviewDraft(
+        outcomes=[outcome("a", 0)],
+        report_type=ReportType.MANAGER,
+        detail=DetailLevel.FULL,
+    )
+
     draft.set_report_type(ReportType.MANAGER)
 
     assert draft.detail is DetailLevel.FULL
@@ -71,3 +86,19 @@ def test_add_user_outcome_has_no_invented_evidence() -> None:
     assert added.origin is OutcomeOrigin.USER_ADDED
     assert added.evidence_refs == []
     assert added.bucket is OutcomeBucket.PRIMARY
+
+
+def test_split_without_source_groups_preserves_parent_and_raises_value_error() -> None:
+    parent = Outcome(
+        id="ungrouped",
+        title="Ungrouped outcome",
+        status=OutcomeStatus.IN_PROGRESS,
+        rank=0,
+        origin=OutcomeOrigin.USER_ADDED,
+    )
+    draft = OutcomeReviewDraft(outcomes=[parent])
+
+    with pytest.raises(ValueError, match="cannot split outcome without source groups"):
+        draft.split("ungrouped")
+
+    assert draft.outcomes == [parent]
