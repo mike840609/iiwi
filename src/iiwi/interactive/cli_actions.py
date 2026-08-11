@@ -142,6 +142,7 @@ def _generate(
             sanitize=draft.sanitize,
             detail=draft.detail,
             progress=progress,
+            initial_warnings=([draft.generation_notice] if draft.generation_notice else None),
         )
         result = service.generate(force=force, dry_run=draft.dry_run, scan=scan)
     if not draft.dry_run:

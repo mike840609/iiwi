@@ -40,6 +40,7 @@ class ReportDraft:
     detail_overridden: bool = False
     narrative: bool = True
     dry_run: bool = False
+    generation_notice: str | None = None
     scan: ScanResult | None = None
     selected_session_ids: set[str] = field(default_factory=set)
 

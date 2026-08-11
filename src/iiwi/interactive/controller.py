@@ -13,6 +13,7 @@ from rich.console import Console
 
 from iiwi.errors import (
     IiwiError,
+    OutcomeSynthesisError,
     ReportAlreadyExistsError,
     ReportOutputError,
 )
@@ -49,6 +50,7 @@ from iiwi.renderers.markdown import DetailLevel
 from iiwi.services.scan import ScanResult
 
 _ADVANCED_ROW = "Advanced settings"
+_SESSION_FALLBACK_NOTICE = "Outcome synthesis unavailable; generated the session-based report."
 
 
 class KeySource(Protocol):
@@ -99,6 +101,7 @@ class _ErrorState:
     kind: str
     title: str
     detail: str
+    retry: str | None = None
     selected: int = 0
     detail_offset: int = 0
 
@@ -875,7 +878,17 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         return
     _sync_selection(state, actions)
     filtered_scan = state.selection.filtered_scan()
-    state.outcome_review = actions.synthesize(state.draft, filtered_scan)
+    try:
+        state.outcome_review = actions.synthesize(state.draft, filtered_scan)
+    except OutcomeSynthesisError as exc:
+        state.error = _ErrorState(
+            kind="outcome-synthesis",
+            title="Could not synthesize outcomes",
+            detail=str(exc),
+            retry="outcome-synthesis",
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
     state.outcome_cursor = 0
     state.outcome_message = None
     state.expanded_evidence = set()
@@ -905,25 +918,28 @@ def _generate_outcome_review(
         )
     except ReportAlreadyExistsError as exc:
         state.error = _ErrorState(
-            kind="report-output-conflict",
+            kind="outcome-preview" if preview else "outcome-write",
             title="Could not write report",
             detail=str(exc),
+            retry="outcome-preview" if preview else "outcome-write",
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
     except ReportOutputError as exc:
         state.error = _ErrorState(
-            kind="report-output",
-            title="Could not write report",
+            kind="outcome-preview" if preview else "outcome-write",
+            title="Could not preview report" if preview else "Could not write report",
             detail=str(exc),
+            retry="outcome-preview" if preview else None,
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
     except IiwiError as exc:
         state.error = _ErrorState(
-            kind="report-generate",
-            title="Could not generate report",
+            kind="outcome-preview" if preview else "outcome-write",
+            title="Could not preview report" if preview else "Could not write report",
             detail=str(exc),
+            retry="outcome-preview" if preview else None,
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
@@ -1085,6 +1101,14 @@ def _error_options(error: _ErrorState) -> list[str]:
         return ["Back"]
     if error.kind in {"report-empty", "browse-empty"}:
         return ["Change period", "Change harness", "Back", "Main menu"]
+    if error.kind == "outcome-synthesis":
+        return ["Retry", "Use session-based report", "Back"]
+    if error.kind == "outcome-preview":
+        return ["Retry", "Back to Quick Review", "Main menu"]
+    if error.kind == "outcome-write":
+        if error.retry == "outcome-write":
+            return ["Overwrite once", "Back to Quick Review", "Main menu"]
+        return ["Back to Quick Review", "Main menu"]
     if error.kind == "report-output-conflict":
         return ["Overwrite once", "Back", "Main menu"]
     if error.kind in {"report-output", "report-generate"}:
@@ -1097,6 +1121,10 @@ def _error_back_screen(error: _ErrorState) -> Screen:
         return Screen.REPORT_RESULT
     if error.kind in {"doctor-result", "settings-result"}:
         return Screen.MAIN
+    if error.kind == "outcome-synthesis":
+        return Screen.SESSION_REVIEW
+    if error.kind in {"outcome-preview", "outcome-write"}:
+        return Screen.OUTCOME_REVIEW
     if error.kind in {"report-output-conflict", "report-output", "report-generate"}:
         return Screen.SESSION_REVIEW
     if error.kind.startswith("report"):
@@ -1152,8 +1180,25 @@ def _error_key(
     if choice == "Back":
         state.screen = _error_back_screen(error)
         return
+    if choice == "Back to Quick Review":
+        state.screen = Screen.OUTCOME_REVIEW
+        return
+    if choice == "Retry":
+        if error.retry == "outcome-synthesis":
+            _begin_outcome_review(state, actions)
+        elif error.retry == "outcome-preview":
+            _generate_outcome_review(state, actions, preview=True)
+        return
+    if choice == "Use session-based report":
+        assert state.draft is not None
+        state.draft.generation_notice = _SESSION_FALLBACK_NOTICE
+        try:
+            _generate(state, actions, force=False)
+        finally:
+            state.draft.generation_notice = None
+        return
     if choice == "Overwrite once":
-        if state.outcome_review is not None:
+        if error.retry == "outcome-write":
             _generate_outcome_review(
                 state,
                 actions,

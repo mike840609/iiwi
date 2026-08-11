@@ -277,6 +277,7 @@ def _build_report_service(
     sanitize: bool = False,
     detail: DetailLevel = DetailLevel.FULL,
     progress: ProgressReporter | None = None,
+    initial_warnings: list[str] | None = None,
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
 
@@ -313,6 +314,7 @@ def _build_report_service(
         opencode_runner=opencode_runner,
         include_subagents=not root_only,
         sanitized=sanitize,
+        initial_warnings=initial_warnings,
     )
 
 
