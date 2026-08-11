@@ -185,6 +185,29 @@ def test_unsupported_cross_repo_merge_is_split_by_repository(signals) -> None:
     assert len(result.outcomes) == 2
 
 
+@pytest.mark.parametrize(
+    "signals",
+    [
+        [{"kind": "shared_work_id", "value": ""}],
+        [{"kind": "shared_work_id", "value": "  "}],
+        [
+            {"kind": "branch_or_issue", "value": " "},
+            {"kind": "direct_reference", "value": "same feature rollout"},
+        ],
+        [
+            {"kind": "branch_or_issue", "value": "IIWI-42"},
+            {"kind": "direct_reference", "value": "\t"},
+        ],
+    ],
+)
+def test_blank_cross_repo_linkage_signals_cannot_authorize_merge(signals) -> None:
+    result = service_for_json(
+        cross_repo_payload(confidence="high", linkage_signals=signals)
+    ).synthesize(two_repo_scan())
+
+    assert len(result.outcomes) == 2
+
+
 def test_model_cannot_attach_evidence_from_an_unknown_session() -> None:
     with pytest.raises(OutcomeSynthesisError, match="unknown session"):
         service_for_json(payload_for_sessions(["invented-session"])).synthesize(one_scan())

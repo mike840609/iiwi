@@ -166,7 +166,11 @@ class OutcomeSynthesisService:
     def _may_merge_cross_repository(proposal: _ProposedOutcome) -> bool:
         if proposal.confidence is not EvidenceConfidence.HIGH:
             return False
-        kinds = {signal.kind for signal in proposal.linkage_signals}
+        kinds = {
+            signal.kind
+            for signal in proposal.linkage_signals
+            if signal.value.strip()
+        }
         return "shared_work_id" in kinds or kinds >= _ALLOWED_LINKAGE_KINDS
 
     @staticmethod
