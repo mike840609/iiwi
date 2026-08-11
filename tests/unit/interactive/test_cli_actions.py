@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
+from typer.testing import CliRunner
 
 from iiwi import cli
 from iiwi.interactive import cli_actions
@@ -232,6 +233,22 @@ def test_edit_gap_normalizes_blank_and_none_to_none(
     monkeypatch.setattr(cli_actions.typer, "prompt", lambda *args, **kwargs: answer)
 
     assert cli_actions._edit_gap("Blockers", "Existing") is None
+
+
+def test_edit_gap_enter_clears_an_existing_value_with_the_real_prompt() -> None:
+    app = cli_actions.typer.Typer()
+
+    @app.command()
+    def edit_gap() -> None:
+        value = cli_actions._edit_gap("Blockers", "Waiting on review")
+        cli_actions.typer.echo("<none>" if value is None else value)
+
+    result = CliRunner().invoke(app, input="\n")
+
+    assert result.exit_code == 0
+    assert "Blockers" in result.stdout
+    assert "Waiting on review" in result.stdout
+    assert "<none>" in result.stdout
 
 
 def test_choose_harness_cycles_enabled_values_without_prompting(

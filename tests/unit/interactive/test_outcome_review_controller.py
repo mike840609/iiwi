@@ -263,8 +263,17 @@ def test_up_down_changes_focus_and_space_toggles_the_focused_outcome(
     assert [outcome.included for outcome in review.ordered()] == [False, False]
 
 
-def test_uppercase_k_reorders_while_lowercase_j_only_navigates(
+@pytest.mark.parametrize(
+    ("navigation", "reorder"),
+    [
+        ("jjk", "J"),
+        ("jj", "K"),
+    ],
+)
+def test_uppercase_j_and_k_reorder_while_lowercase_j_and_k_only_navigate(
     monkeypatch: pytest.MonkeyPatch,
+    navigation: str,
+    reorder: str,
 ) -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     review = _review()
@@ -276,9 +285,8 @@ def test_uppercase_k_reorders_while_lowercase_j_only_navigates(
         log,
         [
             *_open_review_keys(),
-            char("j"),
-            char("j"),
-            char("K"),
+            *(char(value) for value in navigation),
+            char(reorder),
             char("b"),
             char("q"),
             char("q"),

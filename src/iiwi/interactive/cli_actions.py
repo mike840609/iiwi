@@ -292,10 +292,11 @@ def _add_outcome() -> Outcome | None:
 
 
 def _edit_gap(label: str, current: str | None) -> str | None:
+    prompt = f"{label} [{current}]" if current else label
     answer = typer.prompt(
-        label,
-        default=current or "",
-        show_default=bool(current),
+        prompt,
+        default="",
+        show_default=False,
     ).strip()
     if not answer or answer.casefold() == "none":
         return None
