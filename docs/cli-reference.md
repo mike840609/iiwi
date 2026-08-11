@@ -88,9 +88,8 @@ review and from every future scan. The same setting can be edited with
 Interactive reports use the normal default output path. If that path already exists, the
 recovery screen offers **Overwrite once**; it does not silently replace the file. After a
 successful report, the result screen can return to the main menu, start another report
-with the same option values, or print the report path. An interactive dry run writes no
-file and instead offers **Preview report**; the preview can be scrolled with `↑/↓` or
-`j/k` and returned from with `b`. Browse Sessions is read-only in this release.
+with the same option values, or print the report path. Browse Sessions is read-only in
+this release.
 
 ## Shared options
 

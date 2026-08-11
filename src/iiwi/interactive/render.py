@@ -81,7 +81,6 @@ _SETUP_HELP = {
     "Generate report": "Scan the period and produce the report.",
 }
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
-_DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
 _ERROR_HINTS = [
     "↑↓ jk",
     "PgUp/PgDn Detail",
@@ -148,8 +147,12 @@ _PROJECT_URL = "https://github.com/mike840609/iiwi"
 _PROJECT_LABEL = "github.com/mike840609/iiwi"
 _REVIEW_SUBTITLE = "Select sessions to include in the report:"
 _BROWSE_SUBTITLE = "Select a repository to explore:"
-_MORE_CANDIDATES_SECTION = "__more_candidates__"
-_UNGROUPED_CANDIDATES_SECTION = "__ungrouped_candidates__"
+# The two disclosure rows live in the same expansion set as the per-outcome
+# evidence toggles, so they need ids no outcome can own. Defined once here and
+# imported by the controller, because the cursor and the highlight must key off
+# the same two strings.
+MORE_CANDIDATES_SECTION = "__more_candidates__"
+UNGROUPED_CANDIDATES_SECTION = "__ungrouped_candidates__"
 _OUTCOME_REVIEW_HINTS = [
     "↑↓ jk",
     "Space Include",
@@ -285,13 +288,19 @@ def outcome_review_rows(draft: OutcomeReviewDraft) -> list[OutcomeReviewRow]:
     return rows
 
 
-def _visible_outcome_review_rows(
+def visible_outcome_review_rows(
     draft: OutcomeReviewDraft,
     expanded_evidence: set[str],
 ) -> list[OutcomeReviewRow]:
+    """Return the Quick Review rows actually on screen, in cursor order.
+
+    This is the one list the cursor addresses and the highlight paints, so the
+    controller navigates it rather than deriving its own copy.
+    """
+
     outcomes = {outcome.id: outcome for outcome in draft.outcomes}
-    more_open = _MORE_CANDIDATES_SECTION in expanded_evidence
-    ungrouped_open = _UNGROUPED_CANDIDATES_SECTION in expanded_evidence
+    more_open = MORE_CANDIDATES_SECTION in expanded_evidence
+    ungrouped_open = UNGROUPED_CANDIDATES_SECTION in expanded_evidence
     visible: list[OutcomeReviewRow] = []
     for row in outcome_review_rows(draft):
         if row.kind != "outcome" or row.outcome_id is None:
@@ -462,10 +471,10 @@ def _review_control_line(
         value = f"{draft.report_type.value.title()} │ {draft.detail.value.title()}"
         text = Text.assemble((f"{cursor} Report       ", style), (value, style))
     elif row.kind == "more":
-        open_ = _MORE_CANDIDATES_SECTION in expanded_evidence
+        open_ = MORE_CANDIDATES_SECTION in expanded_evidence
         text = Text(f"{cursor} {'▾' if open_ else '▸'} More candidates", style=style)
     elif row.kind == "ungrouped":
-        open_ = _UNGROUPED_CANDIDATES_SECTION in expanded_evidence
+        open_ = UNGROUPED_CANDIDATES_SECTION in expanded_evidence
         text = Text(f"{cursor} {'▾' if open_ else '▸'} Ungrouped candidates", style=style)
     elif row.kind == "blockers":
         value = _single_line(draft.blockers or "Not set")
@@ -564,6 +573,54 @@ def _outcome_block_window(
     return cursor, cursor + 1
 
 
+def _outcome_review_body(
+    blocks: list[_OutcomeReviewBlock],
+    *,
+    start: int,
+    end: int,
+    cursor: int,
+    capacity: int,
+) -> list[Text]:
+    """Compose the printed body, clamped to ``capacity`` display lines.
+
+    ``_outcome_block_window`` fits every window it can find, but the focused
+    block can still be taller than the budget once the shrink rungs run out —
+    at 40x14 with both disclosure sections open it is. Rather than grow another
+    rung, the frame sheds here: the scroll indicators go first, then the focused
+    block's trailing detail lines. Its summary line is what says where the
+    cursor is, so that one never goes.
+    """
+
+    above = Text(f"↑ {start} more", style="dim") if start > 0 else None
+    below = Text(f"↓ {len(blocks) - end} more", style="dim") if end < len(blocks) else None
+    window = [list(block.lines) for block in blocks[start:end]]
+
+    def used() -> int:
+        return (
+            sum(len(lines) for lines in window)
+            + (above is not None)
+            + (below is not None)
+        )
+
+    if used() > capacity and above is not None:
+        above = None
+    if used() > capacity and below is not None:
+        below = None
+    focused = cursor - start
+    if used() > capacity and 0 <= focused < len(window):
+        keep = max(1, len(window[focused]) - (used() - capacity))
+        window[focused] = window[focused][:keep]
+
+    body: list[Text] = []
+    if above is not None:
+        body.append(above)
+    for lines in window:
+        body.extend(lines)
+    if below is not None:
+        body.append(below)
+    return body[:capacity]
+
+
 def render_outcome_review(
     console: Console,
     draft: OutcomeReviewDraft,
@@ -575,7 +632,7 @@ def render_outcome_review(
 ) -> None:
     """Render Quick Review inside one terminal frame using display-line budgets."""
 
-    rows = _visible_outcome_review_rows(draft, expanded_evidence)
+    rows = visible_outcome_review_rows(draft, expanded_evidence)
     cursor = min(max(0, cursor), max(0, len(rows) - 1))
     hints = _hint_lines(_OUTCOME_REVIEW_HINTS, console.size.width)
     terminal_budget = max(0, console.size.height - 1)
@@ -619,22 +676,15 @@ def render_outcome_review(
                 console.size.width,
             ),
         )
-    if start > 0:
-        _print_viewport_text(
-            console,
-            _truncated_text(Text(f"↑ {start} more", style="dim"), console.size.width),
-        )
-    for block in blocks[start:end]:
-        for line in block.lines:
-            _print_viewport_text(console, _truncated_text(line, console.size.width))
-    if end < len(blocks):
-        _print_viewport_text(
-            console,
-            _truncated_text(
-                Text(f"↓ {len(blocks) - end} more", style="dim"),
-                console.size.width,
-            ),
-        )
+    body = _outcome_review_body(
+        blocks,
+        start=start,
+        end=end,
+        cursor=cursor,
+        capacity=body_capacity,
+    )
+    for line in body:
+        _print_viewport_text(console, _truncated_text(line, console.size.width))
     console.print()
     _print_hints(console, _OUTCOME_REVIEW_HINTS)
 
@@ -799,10 +849,10 @@ def _bool_label(value: bool, enabled: str, disabled: str) -> str:
     return enabled if value else disabled
 
 
-def report_result_options(*, dry_run: bool) -> list[str]:
+def report_result_options() -> list[str]:
     """Return the actions shown on the result screen."""
 
-    return list(_DRY_RUN_RESULT_OPTIONS if dry_run else _RESULT_OPTIONS)
+    return list(_RESULT_OPTIONS)
 
 
 def report_preview_capacity(terminal_height: int) -> int:
@@ -1407,7 +1457,7 @@ def render_report_result(
     output = "Not written (dry run)" if dry_run else str(output_path)
     _print_viewport_line(console, f"Output         {output}")
     console.print()
-    for index, label in enumerate(report_result_options(dry_run=dry_run)):
+    for index, label in enumerate(report_result_options()):
         _print_option_line(console, label, index, selected)
     console.print()
     _print_hints(
@@ -1588,28 +1638,72 @@ def render_recoverable_error(
     _print_hints(console, _ERROR_HINTS)
 
 
-def render_help(console: Console) -> None:
+# Quick Review overloads four of the general keys, so those four carry a mark
+# and the section below says what they do there. Without it the general list
+# reads as authoritative on a screen where `a`, `e`, `p` and `g` all differ.
+_HELP_LINES = (
+    "↑↓ / jk        Move selection or scroll one line",
+    "←→ / hl        Collapse / expand tree rows or change setup values",
+    "Enter / Space  Activate / toggle",
+    "a *            Select all sessions",
+    "n              Select no sessions",
+    "PgUp / PgDn    Scroll error details or report preview by a page",
+    "g * / G        Jump to top / bottom in report preview",
+    "p *            Preview a session's transcript",
+    "e *            Exclude a repository from future scans (Review only)",
+    "R              Rescan sessions",
+    "/              Search repositories and session titles",
+    "?              Open this help",
+    "b / Esc        Back",
+    "q              Main menu / quit from main menu",
+    "Ctrl-C         Cancel the current operation and go back",
+    "",
+    "Quick Review   * these keys mean something else here",
+    "Space          Include or exclude the focused outcome",
+    "e              Edit the focused outcome's title, status and impact",
+    "J / K          Reorder the focused outcome within its section",
+    "v              Show or hide the focused outcome's evidence",
+    "s              Split a merged outcome into its source groups",
+    "a              Add an outcome of your own",
+    "p              Preview the report without writing it",
+    "g              Generate the report",
+)
+_HELP_HINTS = ["↑↓ jk Scroll", "b / Esc / Enter Back"]
+
+
+def help_lines() -> list[str]:
+    """Return every keyboard-reference line, in display order."""
+
+    return list(_HELP_LINES)
+
+
+def help_capacity(terminal_height: int) -> int:
+    """Reference lines available beside the help screen's own fixed chrome.
+
+    The list outgrew a short terminal once Quick Review joined it, so it scrolls
+    like the previews rather than spilling past the terminal's last row. Six
+    lines of chrome: title, rule, two blanks, one hint bar, and the row this
+    screen leaves free.
+    """
+
+    return max(0, terminal_height - 6)
+
+
+def render_help(console: Console, *, offset: int = 0) -> None:
     """Render the shared keyboard shortcut reference."""
 
     _print_header(console, "Keyboard shortcuts")
     console.print()
-    for line in (
-        "↑↓ / jk        Move selection or scroll one line",
-        "←→ / hl        Collapse / expand tree rows or change setup values",
-        "Enter / Space  Activate / toggle",
-        "a              Select all sessions",
-        "n              Select no sessions",
-        "PgUp / PgDn    Scroll error details or report preview by a page",
-        "g / G          Jump to top / bottom in report preview",
-        "p              Preview a session's transcript",
-        "e              Exclude a repository from future scans (Review only)",
-        "R              Rescan sessions",
-        "/              Search repositories and session titles",
-        "?              Open this help",
-        "b / Esc        Back",
-        "q              Main menu / quit from main menu",
-        "Ctrl-C         Cancel the current operation and go back",
-    ):
+    visible, hidden_above, hidden_below = _detail_window(
+        help_lines(),
+        offset=offset,
+        capacity=help_capacity(console.size.height),
+    )
+    if hidden_above:
+        _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
+    for line in visible:
         _print_viewport_line(console, line)
+    if hidden_below:
+        _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
     console.print()
-    _print_hints(console, ["b / Esc / Enter Back"])
+    _print_hints(console, _HELP_HINTS)

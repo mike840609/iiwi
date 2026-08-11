@@ -104,14 +104,28 @@ class OutcomeReviewDraft(BaseModel):
             outcome.bucket = OutcomeBucket.PRIMARY
 
     def move(self, identifier: str, delta: int) -> None:
-        outcomes = self.ordered()
-        index = next(index for index, outcome in enumerate(outcomes) if outcome.id == identifier)
-        target = max(0, min(index + delta, len(outcomes) - 1))
-        outcome = outcomes.pop(index)
-        outcomes.insert(target, outcome)
-        self.outcomes = outcomes
-        for rank, outcome in enumerate(self.outcomes):
-            outcome.rank = rank
+        """Reorder an outcome within its own bucket.
+
+        Quick Review lists primary, more, and ungrouped outcomes as three
+        separate sections, so moving past a neighbour from another bucket
+        changed the global rank without changing anything on screen — the key
+        read as broken. Reordering swaps ranks with the adjacent outcome in the
+        same section, and does nothing at either end of it.
+        """
+
+        outcome = self._outcome(identifier)
+        siblings = [item for item in self.ordered() if item.bucket is outcome.bucket]
+        index = next(
+            position
+            for position, item in enumerate(siblings)
+            if item.id == identifier
+        )
+        target = index + delta
+        if not 0 <= target < len(siblings):
+            return
+        neighbour = siblings[target]
+        outcome.rank, neighbour.rank = neighbour.rank, outcome.rank
+        self._normalize_ranks()
 
     def edit(
         self,

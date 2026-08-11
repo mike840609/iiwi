@@ -58,6 +58,48 @@ def test_reorder_normalizes_ranks_without_dropping_candidates() -> None:
     assert [(item.id, item.rank) for item in draft.ordered()] == [("b", 0), ("a", 1)]
 
 
+def _primary_order(draft: OutcomeReviewDraft) -> list[str]:
+    """The primary section as Quick Review lists it — the only order visible there."""
+
+    return [
+        item.id for item in draft.ordered() if item.bucket is OutcomeBucket.PRIMARY
+    ]
+
+
+def test_reorder_passes_a_rank_neighbour_hidden_in_another_bucket() -> None:
+    draft = OutcomeReviewDraft(
+        outcomes=[
+            outcome("a", 0),
+            outcome("hidden", 1, bucket=OutcomeBucket.MORE),
+            outcome("b", 2),
+        ]
+    )
+
+    draft.move("a", 1)
+
+    assert _primary_order(draft) == ["b", "a"]
+    assert [item.id for item in draft.ordered()] == ["b", "hidden", "a"]
+
+
+def test_reorder_does_nothing_at_either_end_of_its_own_bucket() -> None:
+    draft = OutcomeReviewDraft(
+        outcomes=[
+            outcome("a", 0),
+            outcome("b", 1),
+            outcome("candidate", 2, bucket=OutcomeBucket.MORE),
+        ]
+    )
+
+    draft.move("a", -1)
+    draft.move("b", 1)
+
+    assert [(item.id, item.rank) for item in draft.ordered()] == [
+        ("a", 0),
+        ("b", 1),
+        ("candidate", 2),
+    ]
+
+
 def test_split_restores_source_groups_and_preserves_evidence() -> None:
     first = EvidenceRef(session_id="ses-a", repository_id="repo-a")
     second = EvidenceRef(session_id="ses-b", repository_id="repo-b")

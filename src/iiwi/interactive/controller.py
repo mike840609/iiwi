@@ -21,9 +21,14 @@ from iiwi.errors import (
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.interactive.render import (
+    MORE_CANDIDATES_SECTION,
+    UNGROUPED_CANDIDATES_SECTION,
+    OutcomeReviewRow,
     build_filtered_rows,
     build_session_preview_lines,
     build_visible_rows,
+    help_capacity,
+    help_lines,
     main_menu_options,
     recoverable_error_detail_capacity,
     render_help,
@@ -40,9 +45,10 @@ from iiwi.interactive.render import (
     report_preview_capacity,
     report_result_options,
     report_setup_rows,
+    visible_outcome_review_rows,
 )
 from iiwi.interactive.selection import SelectionState
-from iiwi.models.outcome import Outcome, OutcomeBucket, OutcomeReviewDraft
+from iiwi.models.outcome import Outcome, OutcomeReviewDraft
 from iiwi.models.report_options import ReportType
 from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
@@ -135,6 +141,7 @@ class _State:
     search_query: str = ""
     searching: bool = False
     help_return_screen: Screen | None = None
+    help_offset: int = 0
 
     def expansions(self) -> set[str]:
         if self.expanded_repositories is None:
@@ -364,6 +371,7 @@ def _review(state: _State, actions: InteractiveActions) -> None:
 
 def _open_help(state: _State) -> None:
     state.help_return_screen = state.screen
+    state.help_offset = 0
     state.screen = Screen.HELP
 
 
@@ -804,58 +812,11 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
             )
 
 
-@dataclass(frozen=True)
-class _OutcomeReviewTarget:
-    kind: str
-    outcome_id: str | None = None
-
-
-_MORE_SECTION = "__more_candidates__"
-_UNGROUPED_SECTION = "__ungrouped_candidates__"
-
-
-def _outcome_review_targets(state: _State) -> list[_OutcomeReviewTarget]:
-    """Return Task 4's logical controls in the order Task 5 will render them."""
+def _outcome_review_rows(state: _State) -> list[OutcomeReviewRow]:
+    """Return the Quick Review rows the cursor addresses — the rendered ones."""
 
     assert state.outcome_review is not None
-    review = state.outcome_review
-    targets = [_OutcomeReviewTarget("settings")]
-    targets.extend(
-        _OutcomeReviewTarget("outcome", outcome.id)
-        for outcome in review.ordered()
-        if outcome.bucket is OutcomeBucket.PRIMARY
-    )
-    more = [
-        outcome
-        for outcome in review.ordered()
-        if outcome.bucket is OutcomeBucket.MORE
-    ]
-    if more:
-        targets.append(_OutcomeReviewTarget("more"))
-        if _MORE_SECTION in state.evidence_expansions():
-            targets.extend(
-                _OutcomeReviewTarget("outcome", outcome.id) for outcome in more
-            )
-    ungrouped = [
-        outcome
-        for outcome in review.ordered()
-        if outcome.bucket is OutcomeBucket.UNGROUPED
-    ]
-    if ungrouped:
-        targets.append(_OutcomeReviewTarget("ungrouped"))
-        if _UNGROUPED_SECTION in state.evidence_expansions():
-            targets.extend(
-                _OutcomeReviewTarget("outcome", outcome.id) for outcome in ungrouped
-            )
-    targets.extend(
-        [
-            _OutcomeReviewTarget("blockers"),
-            _OutcomeReviewTarget("next_week"),
-            _OutcomeReviewTarget("preview"),
-            _OutcomeReviewTarget("generate"),
-        ]
-    )
-    return targets
+    return visible_outcome_review_rows(state.outcome_review, state.evidence_expansions())
 
 
 def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
@@ -882,7 +843,7 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
     ):
         state.outcome_cursor = min(
             state.outcome_cursor,
-            max(0, len(_outcome_review_targets(state)) - 1),
+            max(0, len(_outcome_review_rows(state)) - 1),
         )
         state.review_message = None
         state.error = None
@@ -1006,13 +967,13 @@ def _cycle_report_type(state: _State, actions: InteractiveActions) -> None:
 
 def _move_reviewed_outcome(
     state: _State,
-    target: _OutcomeReviewTarget,
+    target: OutcomeReviewRow,
     delta: int,
 ) -> None:
     assert state.outcome_review is not None
     assert target.outcome_id is not None
     state.outcome_review.move(target.outcome_id, delta)
-    rows = _outcome_review_targets(state)
+    rows = _outcome_review_rows(state)
     state.outcome_cursor = next(
         index
         for index, row in enumerate(rows)
@@ -1026,7 +987,7 @@ def _outcome_review_key(
     actions: InteractiveActions,
 ) -> None:
     assert state.outcome_review is not None
-    rows = _outcome_review_targets(state)
+    rows = _outcome_review_rows(state)
     state.outcome_cursor = min(state.outcome_cursor, len(rows) - 1)
     target = rows[state.outcome_cursor]
 
@@ -1059,7 +1020,7 @@ def _outcome_review_key(
                 added.impact,
                 added.status,
             )
-            rows = _outcome_review_targets(state)
+            rows = _outcome_review_rows(state)
             state.outcome_cursor = next(
                 index
                 for index, row in enumerate(rows)
@@ -1073,10 +1034,10 @@ def _outcome_review_key(
             _cycle_report_type(state, actions)
         elif target.kind == "more":
             expansions = state.evidence_expansions()
-            expansions.symmetric_difference_update({_MORE_SECTION})
+            expansions.symmetric_difference_update({MORE_CANDIDATES_SECTION})
         elif target.kind == "ungrouped":
             expansions = state.evidence_expansions()
-            expansions.symmetric_difference_update({_UNGROUPED_SECTION})
+            expansions.symmetric_difference_update({UNGROUPED_CANDIDATES_SECTION})
         elif target.kind == "blockers":
             state.outcome_review.blockers = actions.edit_gap(
                 "Blockers", state.outcome_review.blockers
@@ -1119,7 +1080,7 @@ def _outcome_review_key(
             state.outcome_message = str(exc)
         state.outcome_cursor = min(
             state.outcome_cursor,
-            len(_outcome_review_targets(state)) - 1,
+            len(_outcome_review_rows(state)) - 1,
         )
 
 
@@ -1261,7 +1222,7 @@ def _error_key(
 def _result_key(state: _State, key: KeyPress) -> None:
     assert state.draft is not None
     assert state.result is not None
-    options = report_result_options(dry_run=state.draft.dry_run)
+    options = report_result_options()
     state.result_cursor = _move(state.result_cursor, key, len(options))
     if key.key is Key.ESCAPE or _char(key, "q") or _char(key, "b"):
         state.screen = Screen.MAIN
@@ -1270,11 +1231,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
         return
 
     choice = options[state.result_cursor]
-    if choice == "Preview report":
-        state.preview_offset = 0
-        state.preview_return_screen = Screen.REPORT_RESULT
-        state.screen = Screen.REPORT_PREVIEW
-    elif choice == "Back to main menu":
+    if choice == "Back to main menu":
         state.screen = Screen.MAIN
     elif choice == "Generate another report":
         state.draft.clear_scan()
@@ -1357,34 +1314,26 @@ def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None
         state.preview_offset = max_offset
 
 
-def _help_key(state: _State, key: KeyPress) -> None:
+def _help_key(state: _State, key: KeyPress, console: Console) -> None:
     if _char(key, "q"):
         state.screen = Screen.MAIN
         return
     if key.key in {Key.ESCAPE, Key.ENTER} or _char(key, "b") or _exact_char(key, "?"):
         state.screen = state.help_return_screen or Screen.MAIN
         state.help_return_screen = None
-
-
-def _render_outcome_review_hook(
-    console: Console,
-    review: OutcomeReviewDraft,
-    *,
-    period: DateRange | None,
-    cursor: int,
-    expanded_evidence: set[str],
-    message: str | None,
-) -> None:
-    """Render Task 4's state through the Rich single-frame viewport."""
-
-    render_outcome_review(
-        console,
-        review,
-        cursor=cursor,
-        expanded_evidence=expanded_evidence,
-        period=period,
-        message=message,
-    )
+        return
+    # The reference outgrew a short terminal, so it scrolls like the previews.
+    capacity = help_capacity(console.size.height)
+    max_offset = max(0, len(help_lines()) - capacity)
+    page = max(1, capacity)
+    if key.key is Key.UP or _char(key, "k"):
+        state.help_offset = max(0, state.help_offset - 1)
+    elif key.key is Key.DOWN or _char(key, "j"):
+        state.help_offset = min(max_offset, state.help_offset + 1)
+    elif key.key is Key.PAGE_UP:
+        state.help_offset = max(0, state.help_offset - page)
+    elif key.key is Key.PAGE_DOWN:
+        state.help_offset = min(max_offset, state.help_offset + page)
 
 
 def _render_screen(state: _State, console: Console) -> None:
@@ -1421,12 +1370,12 @@ def _render_screen(state: _State, console: Console) -> None:
         )
     elif state.screen is Screen.OUTCOME_REVIEW:
         assert state.outcome_review is not None
-        _render_outcome_review_hook(
+        render_outcome_review(
             console,
             state.outcome_review,
-            period=state.draft.period if state.draft is not None else None,
             cursor=state.outcome_cursor,
             expanded_evidence=state.evidence_expansions(),
+            period=state.draft.period if state.draft is not None else None,
             message=state.outcome_message,
         )
     elif state.screen is Screen.SESSION_PREVIEW:
@@ -1466,7 +1415,7 @@ def _render_screen(state: _State, console: Console) -> None:
             detail_offset=state.error.detail_offset,
         )
     elif state.screen is Screen.HELP:
-        render_help(console)
+        render_help(console, offset=state.help_offset)
 
 
 def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
@@ -1524,7 +1473,7 @@ def _dispatch(
     elif state.screen is Screen.RECOVERABLE_ERROR:
         _error_key(state, key, actions, console)
     elif state.screen is Screen.HELP:
-        _help_key(state, key)
+        _help_key(state, key, console)
 
 
 def _render(

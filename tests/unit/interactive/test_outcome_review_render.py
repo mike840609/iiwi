@@ -284,6 +284,47 @@ def test_user_added_and_ungrouped_outcomes_are_visibly_labelled() -> None:
     assert "Investigated an unmatched session" in text and "Ungrouped" in text
 
 
+def test_reordering_past_a_hidden_candidate_changes_the_rows_on_screen() -> None:
+    """The rank neighbour can sit in a collapsed section; the move must still show."""
+
+    review = OutcomeReviewDraft(
+        report_type=ReportType.MANAGER,
+        outcomes=[
+            _outcome("primary-a", "First primary", 0),
+            _outcome("candidate", "Hidden candidate", 1, bucket=OutcomeBucket.MORE),
+            _outcome("primary-b", "Second primary", 2),
+        ],
+    )
+
+    review.move("primary-a", 1)
+
+    rows = render.visible_outcome_review_rows(review, set())
+    assert [row.outcome_id for row in rows if row.kind == "outcome"] == [
+        "primary-b",
+        "primary-a",
+    ]
+
+
+def test_controller_navigates_exactly_the_rows_the_renderer_paints() -> None:
+    """One row list, so the cursor index and the highlight can never drift apart."""
+
+    review = _review()
+    for expansions in (
+        set(),
+        {"primary-a"},
+        {render.MORE_CANDIDATES_SECTION, render.UNGROUPED_CANDIDATES_SECTION},
+    ):
+        state = controller._State(
+            screen=Screen.OUTCOME_REVIEW,
+            outcome_review=review,
+            expanded_evidence=set(expansions),
+        )
+
+        assert controller._outcome_review_rows(state) == render.visible_outcome_review_rows(
+            review, expansions
+        ), sorted(expansions)
+
+
 def test_controller_outcome_review_state_renders_quick_review_with_focus() -> None:
     console, stream = _console()
     state = controller._State(

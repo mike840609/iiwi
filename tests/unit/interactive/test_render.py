@@ -814,8 +814,9 @@ def test_setup_leaves_previewing_to_quick_review() -> None:
     rows = report_setup_rows()
     assert rows[0] == report_generate_row()
     assert "Preview report" not in rows
-    # The report result screen keeps its own preview option, a different control.
-    assert "Preview report" in report_result_options(dry_run=True)
+    # Quick Review owns previewing outright: the result screen has already
+    # written the file, so it never offers one.
+    assert "Preview report" not in report_result_options()
 
 
 def test_report_setup_describes_the_row_under_the_cursor() -> None:
