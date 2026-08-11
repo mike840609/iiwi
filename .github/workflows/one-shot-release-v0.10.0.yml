@@ -26,47 +26,18 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
-      - name: Make version-width regression test version-independent
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("tests/unit/interactive/test_render.py")
-          text = path.read_text()
-          old = '''def test_main_menu_fits_the_version_at_exactly_eleven_cells() -> None:
-              import iiwi
-              from iiwi.interactive.render import render_main_menu
-              console, stream = _console(width=11)
-              render_main_menu(console, selected=0)
-              title_line = _row(stream.getvalue(), "Iiwi")
-              assert f"v{iiwi.__version__}" in title_line
-          '''
-          new = '''def test_main_menu_fits_the_version_at_exact_width() -> None:
-              import iiwi
-              from iiwi.interactive.render import render_main_menu
-              width = cell_len("Iiwi") + 1 + cell_len(f"v{iiwi.__version__}")
-              console, stream = _console(width=width)
-              render_main_menu(console, selected=0)
-              title_line = _row(stream.getvalue(), "Iiwi")
-              assert f"v{iiwi.__version__}" in title_line
-          '''
-          if old not in text:
-              raise SystemExit("expected brittle version-width test not found")
-          path.write_text(text.replace(old, new, 1))
-          PY
-
       - name: Refresh lockfile
         run: uv lock
 
-      - name: Commit preparation updates
+      - name: Commit lockfile
         run: |
-          git add uv.lock tests/unit/interactive/test_render.py
-          if git diff --cached --quiet; then
+          if git diff --quiet -- uv.lock; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test: make version width assertion version-independent"
+          git add uv.lock
+          git commit -m "chore: refresh lock for v0.10.0"
           git push origin HEAD:release/v0.10.0
 
   release:
