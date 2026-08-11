@@ -204,22 +204,32 @@ def _long_outcome_review() -> OutcomeReviewDraft:
     outcomes = [
         Outcome(
             id=f"outcome-{index}",
-            title=f"Outcome {index} " + "very-long-title-" * 10,
+            title=f"Outcome {index}\n\n\n" + "very-long-title-" * 10,
             status=OutcomeStatus.IN_PROGRESS,
-            impact="A long impact explanation " + "continues-across-rendered-lines-" * 12,
+            impact=(
+                "A long impact explanation\n"
+                + "continues-across-rendered-lines-" * 12
+            ),
             rank=index,
             evidence_refs=[
                 EvidenceRef(
                     session_id=f"session-{index}-" + "long-session-id-" * 6,
-                    repository_id="repository-" + "long-repository-name-" * 8,
+                    repository_id="repository-\n" + "long-repository-name-" * 8,
                     commit="deadbeef" * 8,
-                    file="src/" + "deeply-nested-directory/" * 8 + "renderer.py",
+                    file=(
+                        "src/\n" + "deeply-nested-directory/" * 8 + "renderer.py"
+                    ),
                 )
             ],
         )
         for index in range(12)
     ]
-    return OutcomeReviewDraft(outcomes=outcomes, report_type=ReportType.MANAGER)
+    return OutcomeReviewDraft(
+        outcomes=outcomes,
+        report_type=ReportType.MANAGER,
+        blockers="Blocked by\n\n\n" + "long-blocker-detail-" * 12,
+        next_week="Next week\n\n\n" + "long-plan-detail-" * 12,
+    )
 
 
 def test_outcome_review_fits_width_height_and_focus_matrix() -> None:
@@ -227,7 +237,7 @@ def test_outcome_review_fits_width_height_and_focus_matrix() -> None:
     rows = render.outcome_review_rows(review)
     focuses = (0, len(rows) // 2, len(rows) - 1)
     expanded = {outcome.id for outcome in review.outcomes}
-    error = "Could not refresh review: " + "long-error-detail-" * 20
+    error = "Could not refresh review:\n\n\n" + "long-error-detail-" * 20
 
     for width in (40, 60, 80, 100, 140):
         for height in (20, 24, 30):

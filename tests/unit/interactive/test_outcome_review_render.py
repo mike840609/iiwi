@@ -4,7 +4,8 @@ from io import StringIO
 
 from rich.console import Console
 
-from iiwi.interactive import render
+from iiwi.interactive import controller, render
+from iiwi.interactive.models import Screen
 from iiwi.models.outcome import (
     EvidenceRef,
     Outcome,
@@ -210,3 +211,20 @@ def test_user_added_and_ungrouped_outcomes_are_visibly_labelled() -> None:
     text = stream.getvalue()
     assert "Added release context" in text and "User-added" in text
     assert "Investigated an unmatched session" in text and "Ungrouped" in text
+
+
+def test_controller_outcome_review_state_renders_quick_review_with_focus() -> None:
+    console, stream = _console()
+    state = controller._State(
+        screen=Screen.OUTCOME_REVIEW,
+        outcome_review=_review(),
+        outcome_cursor=1,
+        expanded_evidence=set(),
+    )
+
+    controller._render_screen(state, console)
+
+    text = stream.getvalue()
+    assert "Quick Review" in text
+    assert "▶" in text
+    assert "Shipped the evidence-first review" in text

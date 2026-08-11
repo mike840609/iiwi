@@ -321,6 +321,12 @@ class _OutcomeReviewBlock:
     lines: list[Text]
 
 
+def _single_line(value: str) -> str:
+    """Collapse hard line breaks in fields whose viewport contract is one row."""
+
+    return " ".join(value.splitlines())
+
+
 def _truncated_text(text: Text, width: int) -> Text:
     fitted = text.copy()
     fitted.truncate(max(1, width), overflow="ellipsis")
@@ -371,7 +377,7 @@ def _outcome_summary(outcome: Outcome, *, focused: bool, width: int) -> Text:
         summary.append("User-added ", style="magenta")
     if outcome.bucket is OutcomeBucket.UNGROUPED:
         summary.append("Ungrouped ", style="yellow")
-    summary.append(outcome.title, style=style)
+    summary.append(_single_line(outcome.title), style=style)
     return _truncated_text(summary, width)
 
 
@@ -468,9 +474,11 @@ def _review_control_line(
         open_ = _UNGROUPED_CANDIDATES_SECTION in expanded_evidence
         text = Text(f"{cursor} {'▾' if open_ else '▸'} Ungrouped candidates", style=style)
     elif row.kind == "blockers":
-        text = Text(f"{cursor} Blockers    {draft.blockers or 'Not set'}", style=style)
+        value = _single_line(draft.blockers or "Not set")
+        text = Text(f"{cursor} Blockers    {value}", style=style)
     elif row.kind == "next_week":
-        text = Text(f"{cursor} Next week   {draft.next_week or 'Not set'}", style=style)
+        value = _single_line(draft.next_week or "Not set")
+        text = Text(f"{cursor} Next week   {value}", style=style)
     elif row.kind == "preview":
         text = Text(f"{cursor} Preview report", style=style or _ACTION_STYLE)
     elif row.kind == "generate":
@@ -606,7 +614,10 @@ def render_outcome_review(
     if message is not None:
         _print_viewport_text(
             console,
-            _truncated_text(Text(message, style="yellow"), console.size.width),
+            _truncated_text(
+                Text(_single_line(message), style="yellow"),
+                console.size.width,
+            ),
         )
     if start > 0:
         _print_viewport_text(
