@@ -15,7 +15,12 @@ from iiwi.interactive.controller import (
 )
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft
-from iiwi.models.outcome import OutcomeReviewDraft
+from iiwi.models.outcome import (
+    EvidenceRef,
+    Outcome,
+    OutcomeReviewDraft,
+    OutcomeStatus,
+)
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -26,6 +31,20 @@ from iiwi.models.time_range import DateRange
 from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
+
+
+def _synthesized_outcomes() -> list[Outcome]:
+    """Quick Review declines to generate with nothing included, so stub one outcome."""
+    return [
+        Outcome(
+            id="outcome-1",
+            title="Outcome 1",
+            status=OutcomeStatus.IN_PROGRESS,
+            impact="Impact",
+            rank=0,
+            evidence_refs=[EvidenceRef(session_id="ses-0", repository_id="repo-a")],
+        )
+    ]
 
 
 class ScriptedInput:
@@ -122,7 +141,7 @@ def _actions(counters: dict[str, int]) -> InteractiveActions:
         scan=scan,
         generate=generate,
         synthesize=lambda draft, scan: OutcomeReviewDraft(
-            outcomes=[], report_type=draft.report_type
+            outcomes=_synthesized_outcomes(), report_type=draft.report_type
         ),
         generate_reviewed=lambda draft, scan, review, force: generate(
             draft, scan, force

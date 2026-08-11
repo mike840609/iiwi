@@ -496,7 +496,7 @@ def test_preview_error_back_restores_the_complete_in_memory_review() -> None:
 def test_preview_retry_uses_the_same_review_draft_and_succeeds() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     log = ActionLog()
-    review = _review(_outcome("a", 0, included=False))
+    review = _review(_outcome("a", 0, included=False), _outcome("b", 1))
     attempts = 0
 
     def preview_once(

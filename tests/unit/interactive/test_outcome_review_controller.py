@@ -242,10 +242,10 @@ def test_g_synthesizes_selected_scan_once_and_opens_outcome_review(
     "setup_keys",
     [
         [char("g")],
-        [KeyPress(key=Key.DOWN), KeyPress(key=Key.ENTER)],
+        [KeyPress(key=Key.ENTER)],
     ],
 )
-def test_setup_generate_and_preview_enter_quick_review_before_rendering_output(
+def test_setup_generate_enters_quick_review_before_rendering_output(
     monkeypatch: pytest.MonkeyPatch,
     setup_keys: list[KeyPress],
 ) -> None:
@@ -318,7 +318,7 @@ def test_report_type_default_change_preserves_review_when_reentering(
         period=_period(),
         report_type=ReportType.MANAGER,
     )
-    original = _review(_outcome("edited", 0))
+    original = _review(_outcome("edited", 0), _outcome("kept", 1))
     replacement = _review(_outcome("replacement", 0))
     syntheses = iter([original, replacement])
     log = ActionLog(original)
@@ -718,7 +718,7 @@ def test_preview_and_write_use_the_same_review_draft_and_back_restores_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     draft = ReportDraft(harness="opencode", period=_period())
-    review = _review(_outcome("a", 0))
+    review = _review(_outcome("a", 0), _outcome("b", 1))
     log = ActionLog(review)
 
     screens = _run(
@@ -742,4 +742,114 @@ def test_preview_and_write_use_the_same_review_draft_and_back_restores_it(
     assert review.outcomes[0].included is False
     assert Screen.REPORT_PREVIEW in screens
     assert screens.count(Screen.OUTCOME_REVIEW) >= 2
+    assert Screen.REPORT_RESULT in screens
+
+
+def test_narrative_off_writes_the_session_report_without_synthesizing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = ReportDraft(harness="opencode", period=_period(), narrative=False)
+    log = ActionLog(_review())
+    session_calls: list[ReportDraft] = []
+
+    def generate(
+        current_draft: ReportDraft,
+        selected_scan: ScanResult,
+        force: bool,
+    ) -> InteractiveReportResult:
+        session_calls.append(current_draft)
+        return InteractiveReportResult(
+            output_path=Path("reports/session.md"),
+            content="session-content",
+            repository_count=len(selected_scan.sessions_by_repository),
+            session_count=selected_scan.loaded_session_count,
+        )
+
+    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+        pytest.fail("Narrative off must not spend a synthesis run")
+
+    actions = replace(_actions(draft, log), generate=generate, synthesize=synthesize)
+    screens: list[Screen] = []
+    monkeypatch.setattr(
+        controller,
+        "_render_screen",
+        lambda state, console: screens.append(state.screen),
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput([*_open_review_keys(), char("q"), char("q")]),
+        console=Console(file=StringIO(), color_system=None, force_terminal=False),
+    )
+
+    assert len(session_calls) == 1
+    assert Screen.REPORT_RESULT in screens
+    assert Screen.OUTCOME_REVIEW not in screens
+
+
+def test_narrative_on_still_routes_generate_into_quick_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = ReportDraft(harness="opencode", period=_period(), narrative=True)
+    log = ActionLog(_review())
+
+    screens = _run(
+        monkeypatch,
+        draft,
+        log,
+        [*_open_review_keys(), char("b"), char("q"), char("q")],
+    )
+
+    assert len(log.synthesis_scans) == 1
+    assert Screen.OUTCOME_REVIEW in screens
+
+
+@pytest.mark.parametrize("action", ["g", "p"])
+def test_excluding_every_outcome_blocks_generation_with_a_message(
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+) -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    review = _review(_outcome("a", 0))
+    review.outcomes[0].included = False
+    log = ActionLog(review)
+    frames: list[tuple[Screen, str | None]] = []
+    monkeypatch.setattr(
+        controller,
+        "_render_screen",
+        lambda state, console: frames.append((state.screen, state.outcome_message)),
+    )
+
+    run_interactive(
+        actions=_actions(draft, log),
+        input_source=ScriptedInput(
+            [*_open_review_keys(), char(action), char("q"), char("q")]
+        ),
+        console=Console(file=StringIO(), color_system=None, force_terminal=False),
+    )
+
+    assert log.reviewed_calls == []
+    screen, message = frames[-2]
+    assert screen is Screen.OUTCOME_REVIEW
+    assert message is not None and "outcome" in message.lower()
+    assert Screen.REPORT_PREVIEW not in [item for item, _ in frames]
+    assert Screen.REPORT_RESULT not in [item for item, _ in frames]
+
+
+def test_one_included_outcome_is_enough_to_generate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    review = _review(_outcome("a", 0), _outcome("b", 1))
+    review.outcomes[0].included = False
+    log = ActionLog(review)
+
+    screens = _run(
+        monkeypatch,
+        draft,
+        log,
+        [*_open_review_keys(), char("g"), char("q"), char("q")],
+    )
+
+    assert len(log.reviewed_calls) == 1
     assert Screen.REPORT_RESULT in screens

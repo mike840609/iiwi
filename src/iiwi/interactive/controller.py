@@ -38,7 +38,6 @@ from iiwi.interactive.render import (
     render_session_review,
     report_generate_row,
     report_preview_capacity,
-    report_preview_row,
     report_result_options,
     report_setup_rows,
 )
@@ -457,18 +456,14 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         _review(state, actions)
         return
     if _char(key, "g"):
-        _generate_from_setup(state, actions, preview=False)
+        _generate_from_setup(state, actions)
         return
     row = rows[state.setup_cursor]
-    if row in {report_generate_row(), report_preview_row()}:
+    if row == report_generate_row():
         # Actions answer to Enter alone. Left/right remains reserved for changing
         # settings, so scrolling across an action can never execute it by accident.
         if key.key is Key.ENTER:
-            _generate_from_setup(
-                state,
-                actions,
-                preview=row == report_preview_row(),
-            )
+            _generate_from_setup(state, actions)
         return
     horizontal_edit = key.key in {Key.LEFT, Key.RIGHT} or _char(key, "h") or _char(key, "l")
     if key.key is not Key.ENTER and not horizontal_edit:
@@ -690,14 +685,8 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
     state.screen = Screen.REPORT_RESULT
 
 
-def _generate_from_setup(
-    state: _State,
-    actions: InteractiveActions,
-    *,
-    preview: bool,
-) -> None:
-    """Route setup actions to Quick Review before previewing or writing output."""
-    del preview
+def _generate_from_setup(state: _State, actions: InteractiveActions) -> None:
+    """Route the setup action to Quick Review before writing output."""
     assert state.draft is not None
     state.review_from_main = False
     _review(state, actions)
@@ -876,6 +865,11 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         state.review_message = "Select at least one session before generating."
         state.screen = Screen.SESSION_REVIEW
         return
+    # Quick Review is the LLM path, so the Narrative toggle is what opts out of
+    # it. Turning it off must not still spend a synthesis run.
+    if not state.draft.narrative:
+        _generate(state, actions, force=False)
+        return
     _sync_selection(state, actions)
     filtered_scan = state.selection.filtered_scan()
     selection_key = (
@@ -924,6 +918,11 @@ def _generate_outcome_review(
     assert state.draft is not None
     assert state.selection is not None
     assert state.outcome_review is not None
+    # A report with every outcome excluded is a header and nothing else, so say
+    # so here rather than writing the empty file.
+    if not any(outcome.included for outcome in state.outcome_review.outcomes):
+        state.outcome_message = "Include at least one outcome before generating."
+        return
     draft = state.draft
     draft.set_dry_run(preview)
     try:

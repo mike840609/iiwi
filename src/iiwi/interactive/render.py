@@ -62,12 +62,10 @@ _MAIN_DESCRIPTIONS = {
 _PRIMARY_SETUP_FIELDS = ["Harness", "Period"]
 _ADVANCED_SETUP_FIELDS = ["Detail", "Subagents", "Narrative", "Sanitize"]
 _ADVANCED_ROW = "Advanced settings"
-# Report setup begins with two terminal actions. Preview uses the same report
-# pipeline in dry-run mode, but dry-run is an execution choice rather than a
-# persistent setting the user has to toggle and then remember to undo.
+# Report setup begins with its one terminal action. Previewing lives on Quick
+# Review, one screen later, where the outcomes it would render are on screen.
 _GENERATE_ROW = "Generate report"
-_PREVIEW_ROW = "Preview report"
-_ACTION_ROWS = [_GENERATE_ROW, _PREVIEW_ROW]
+_ACTION_ROWS = [_GENERATE_ROW]
 _SETTINGS_LABEL = "Settings"
 _SETUP_LABEL_CELLS = 18
 # Each row's name and value say what it is set to, never what it does. One line
@@ -81,7 +79,6 @@ _SETUP_HELP = {
     "Narrative": "Write the prose review with the local opencode run, or emit structure only.",
     "Sanitize": "Ask OpenCode to redact session content on export.",
     "Generate report": "Scan the period and produce the report.",
-    "Preview report": "Preview the report without writing a file.",
 }
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
 _DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
@@ -187,12 +184,6 @@ def report_generate_row() -> str:
     """Return the write-to-disk action label."""
 
     return _GENERATE_ROW
-
-
-def report_preview_row() -> str:
-    """Return the no-write preview action label."""
-
-    return _PREVIEW_ROW
 
 
 def _option(label: str, index: int, selected: int) -> str:
