@@ -4,16 +4,16 @@ on:
   push:
     branches:
       - main
+      - release/v0.10.0
 
 permissions:
   contents: write
   id-token: write
 
 jobs:
-  release:
-    if: github.event.head_commit.message == 'chore: prepare v0.10.0'
+  prepare-lock:
+    if: github.ref == 'refs/heads/release/v0.10.0'
     runs-on: ubuntu-latest
-    environment: pypi
 
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +29,42 @@ jobs:
       - name: Refresh lockfile
         run: uv lock
 
-      - name: Verify release
+      - name: Commit lockfile
+        run: |
+          if git diff --quiet -- uv.lock; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "chore: refresh lock for v0.10.0"
+          git push origin HEAD:release/v0.10.0
+
+  release:
+    if: github.ref == 'refs/heads/main' && github.event.head_commit.message == 'chore: prepare v0.10.0'
+    runs-on: ubuntu-latest
+    environment: pypi
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Verify versions and lockfile
+        run: |
+          project_version="$(python -c 'from pathlib import Path; import tomllib; print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])')"
+          package_version="$(python -c 'from pathlib import Path; ns={}; exec(Path("src/iiwi/__init__.py").read_text(), ns); print(ns["__version__"])')"
+          test "${project_version}" = "0.10.0"
+          test "${package_version}" = "0.10.0"
+          uv lock --check
+
+      - name: Verify package
         run: |
           uv sync --locked --extra dev
           uv run pytest --cov=iiwi --cov-fail-under=80
@@ -38,15 +73,12 @@ jobs:
           uv build
           uv tool run twine check dist/*
 
-      - name: Finalize release commit and tag
+      - name: Tag release
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/one-shot-release-v0.10.0.yml
-          git add uv.lock
-          git commit -m "chore: release v0.10.0"
+          test "${GITHUB_SHA}" = "$(git rev-parse HEAD)"
           git tag v0.10.0
-          git push origin HEAD:main
           git push origin v0.10.0
 
       - name: Publish to PyPI
