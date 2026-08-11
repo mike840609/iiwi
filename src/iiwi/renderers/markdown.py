@@ -1,5 +1,6 @@
 """Markdown rendering for worklog reports."""
 
+import re
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
@@ -13,6 +14,19 @@ _SECTION_LIMITS = {
     DetailLevel.FULL: 20,
     DetailLevel.BRIEF: 5,
 }
+_BRIEF_NARRATIVE_BLOCKED_HEADINGS = (
+    "usage",
+    "related sessions",
+    "sessions",
+    "key files",
+    "files",
+    "directories",
+    "branches",
+    "commands",
+    "verification",
+)
+_FILE_PATH_PATTERN = re.compile(r"\b[\w.-]+/[\w./-]+\.[A-Za-z0-9]{1,12}\b")
+_SESSION_LINE_PATTERN = re.compile(r"\bsession(?: id)?:\s*\S+", re.IGNORECASE)
 
 
 class MarkdownRenderer:
@@ -94,6 +108,9 @@ def render_narrative(
     """
 
     detail = DetailLevel(detail)
+    narrative_text = report.narrative_text or ""
+    if detail is DetailLevel.BRIEF:
+        narrative_text = _brief_narrative_body(narrative_text)
     lines = [
         "# Engineering Worklog",
         "",
@@ -103,7 +120,7 @@ def render_narrative(
         f"**Timezone:** {timezone}",
         f"**Generated:** {report.generated_at.strftime('%Y-%m-%d %H:%M')}",
         "",
-        report.narrative_text or "",
+        narrative_text,
     ]
     if detail is DetailLevel.FULL and report.usage_text:
         lines += ["", "## Usage"]
@@ -120,3 +137,25 @@ def render_narrative(
         lines += ["", "## Warnings"]
         lines += [f"- {warning}" for warning in report.warnings]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _brief_narrative_body(value: str) -> str:
+    """Remove full-depth narrative sections that a brief report must not leak."""
+
+    kept: list[str] = []
+    skipping = False
+    for line in value.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            heading = stripped.lstrip("#").strip().casefold()
+            skipping = any(
+                blocked in heading for blocked in _BRIEF_NARRATIVE_BLOCKED_HEADINGS
+            )
+            if skipping:
+                continue
+        if skipping:
+            continue
+        if _FILE_PATH_PATTERN.search(line) or _SESSION_LINE_PATTERN.search(line):
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()

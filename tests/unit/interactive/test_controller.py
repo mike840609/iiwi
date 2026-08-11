@@ -280,7 +280,7 @@ def test_zero_sessions_is_recoverable_by_changing_period() -> None:
     assert counters["choose_period"] == 1
 
 
-def test_setup_g_generates_without_visiting_review() -> None:
+def test_setup_g_enters_quick_review_then_generate_writes() -> None:
     counters: dict[str, int] = {}
 
     def populated_scan(draft: ReportDraft) -> ScanResult:
@@ -317,7 +317,7 @@ def test_setup_g_generates_without_visiting_review() -> None:
             sessions_by_repository={"repo-a": sessions},
         )
 
-    input_source = ScriptedInput([char("2"), char("g"), char("q"), char("q")])
+    input_source = ScriptedInput([char("2"), char("g"), char("g"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=populated_scan, counters=counters),
@@ -431,10 +431,10 @@ def _setup_populated_scan(draft: ReportDraft) -> ScanResult:
     )
 
 
-def test_setup_enter_on_the_action_row_generates() -> None:
+def test_setup_enter_on_the_action_row_enters_quick_review_then_generate_writes() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("2"), KeyPress(key=Key.ENTER), char("q"), char("q")]
+        [char("2"), KeyPress(key=Key.ENTER), char("g"), char("q"), char("q")]
     )
 
     run_interactive(

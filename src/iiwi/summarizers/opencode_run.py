@@ -13,6 +13,7 @@ from typing import Protocol
 
 from iiwi.models.report_options import DetailLevel
 from iiwi.process import CommandResult
+from iiwi.security.secure_files import secure_temporary_directory
 
 _TEMPLATE = """Create a concise software engineering weekly report from the attached
 OpenCode session transcript and usage statistics.
@@ -187,33 +188,56 @@ class OpenCodeRunner:
         `OpenCodeRunError`.
         """
 
-        workdir = self._workdir or Path(self._mkdtemp())
-        transcript_path = workdir / "transcript.md"
-        transcript_path.write_text(transcript, encoding="utf-8")
-        output_path = workdir / "summary.md"
-        args = [
-            self._executable,
-            "run",
-            prompt,
-            "--title",
-            title,
-            "--file",
-            str(transcript_path),
-            "--print-logs",
-        ]
-        if self._model:
-            args += ["--model", self._model]
-        result = self._runner.run(args, stdout_path=output_path)
-        if result.returncode != 0:
-            raise OpenCodeRunError(result.stderr.strip() or "opencode run failed")
-        if not output_path.exists():
-            raise OpenCodeRunError("opencode run produced no output")
-        narrative = output_path.read_text(encoding="utf-8").strip()
+        if self._workdir is not None:
+            return self._run_in_workdir(
+                self._workdir,
+                transcript=transcript,
+                prompt=prompt,
+                title=title,
+            )
+        try:
+            with secure_temporary_directory() as workdir:
+                return self._run_in_workdir(
+                    workdir,
+                    transcript=transcript,
+                    prompt=prompt,
+                    title=title,
+                )
+        except OSError as exc:
+            raise OpenCodeRunError(str(exc)) from exc
+
+    def _run_in_workdir(
+        self,
+        workdir: Path,
+        *,
+        transcript: str,
+        prompt: str,
+        title: str,
+    ) -> str:
+        try:
+            transcript_path = workdir / "transcript.md"
+            transcript_path.write_text(transcript, encoding="utf-8")
+            output_path = workdir / "summary.md"
+            args = [
+                self._executable,
+                "run",
+                prompt,
+                "--title",
+                title,
+                "--file",
+                str(transcript_path),
+                "--print-logs",
+            ]
+            if self._model:
+                args += ["--model", self._model]
+            result = self._runner.run(args, stdout_path=output_path)
+            if result.returncode != 0:
+                raise OpenCodeRunError(result.stderr.strip() or "opencode run failed")
+            if not output_path.exists():
+                raise OpenCodeRunError("opencode run produced no output")
+            narrative = output_path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise OpenCodeRunError(str(exc)) from exc
         if not narrative:
             raise OpenCodeRunError("opencode run produced no output")
         return narrative
-
-    def _mkdtemp(self) -> str:
-        import tempfile
-
-        return tempfile.mkdtemp(prefix="iiwi-report-")

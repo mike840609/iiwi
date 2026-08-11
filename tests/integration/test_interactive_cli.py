@@ -73,7 +73,10 @@ def _period() -> DateRange:
     )
 
 
-def _scan(*session_ids: str) -> ScanResult:
+def _scan(
+    *session_ids: str,
+    activity_content_by_session: dict[str, list[SessionActivity]] | None = None,
+) -> ScanResult:
     session_ids = session_ids or ("ses-1",)
     repository = RepositoryIdentity(
         repository_id="repo-a",
@@ -89,7 +92,10 @@ def _scan(*session_ids: str) -> ScanResult:
                 session_id=session_id,
                 title=f"Session {session_id}",
                 working_directory="/tmp/repo-a",
-                activities=[
+                activities=activity_content_by_session.get(session_id)
+                if activity_content_by_session
+                and activity_content_by_session.get(session_id) is not None
+                else [
                     SessionActivity(
                         activity_id=f"{session_id}-act-{i}",
                         activity_type=ActivityType.USER_MESSAGE,
@@ -369,7 +375,33 @@ def test_quick_review_writes_the_exact_reviewed_draft(tmp_path: Path) -> None:
         period=_period(),
         report_type=ReportType.ENGINEERING,
     )
-    scan = _scan("ses-1", "ses-2", "ses-3")
+    scan = _scan(
+        "ses-1",
+        "ses-2",
+        "ses-3",
+        activity_content_by_session={
+            "ses-3": [
+                SessionActivity(
+                    activity_id="ses-3-goal",
+                    activity_type=ActivityType.USER_MESSAGE,
+                    content="Stable delivery",
+                ),
+                SessionActivity(
+                    activity_id="ses-3-verification",
+                    activity_type=ActivityType.COMMAND,
+                    content="pytest tests/unit/test_stable_delivery.py",
+                    metadata={"exit_code": 0},
+                ),
+                *[
+                    SessionActivity(
+                        activity_id=f"ses-3-filler-{index}",
+                        activity_type=ActivityType.USER_MESSAGE,
+                    )
+                    for index in range(4)
+                ],
+            ]
+        },
+    )
     review_calls: list[tuple[OutcomeReviewDraft, bool]] = []
     edited = Outcome(
         id="callback-id",
@@ -450,7 +482,7 @@ def test_quick_review_writes_the_exact_reviewed_draft(tmp_path: Path) -> None:
     assert "Session: `ses-3`" in content
     assert "Excluded candidate" not in content
     assert "Unsupported impact to omit" not in content
-    assert "- Stable delivery\n  - Impact:" not in content
+    assert "Impact: Unsupported by extracted evidence" in content
     assert [dry_run for _, dry_run in review_calls] == [True, False]
     assert review_calls[0][0] is review_calls[1][0]
 
@@ -473,10 +505,17 @@ def test_quick_review_splits_a_real_cross_repository_merge(tmp_path: Path) -> No
                 title=f"Session {suffix}",
                 activities=[
                     SessionActivity(
-                        activity_id=f"ses-{suffix}-act-{index}",
+                        activity_id=f"ses-{suffix}-linkage",
                         activity_type=ActivityType.USER_MESSAGE,
-                    )
-                    for index in range(5)
+                        content="IIWI-42 same rollout",
+                    ),
+                    *[
+                        SessionActivity(
+                            activity_id=f"ses-{suffix}-act-{index}",
+                            activity_type=ActivityType.USER_MESSAGE,
+                        )
+                        for index in range(5)
+                    ],
                 ],
             ),
             repository=repository,

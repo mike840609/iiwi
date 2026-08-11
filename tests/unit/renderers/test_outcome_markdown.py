@@ -81,7 +81,22 @@ def test_report_type_controls_heading_and_sections(
     assert "## In Progress" in output
     assert "## Blockers" in output
     assert "## Next Week" in output
-    assert "Finish parity coverage\n  - Impact" not in output
+
+
+def test_report_type_changes_audience_text_beyond_the_heading() -> None:
+    manager = render(report_type=ReportType.MANAGER, detail=DetailLevel.BRIEF)
+    engineering = render(report_type=ReportType.ENGINEERING, detail=DetailLevel.BRIEF)
+
+    assert "**Audience:** Manager update" in manager
+    assert "**Audience:** Engineering worklog" in engineering
+    assert manager != engineering
+
+
+def test_empty_impact_is_marked_as_unsupported() -> None:
+    output = render(report_type=ReportType.MANAGER, detail=DetailLevel.BRIEF)
+
+    assert "Finish parity coverage" in output
+    assert "Impact: Unsupported by extracted evidence" in output
 
 
 def test_brief_hides_session_file_and_commit_evidence() -> None:

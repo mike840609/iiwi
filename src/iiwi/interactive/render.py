@@ -355,7 +355,10 @@ def _labelled_wrapped_lines(
         )
     ) or [Text("")]
     if limit is not None:
+        truncated = len(wrapped) > limit
         wrapped = wrapped[:limit]
+        if truncated and wrapped:
+            wrapped[-1].append("…", style=style)
     lines: list[Text] = []
     for index, value_line in enumerate(wrapped):
         lead = prefix if index == 0 else " " * cell_len(prefix)
@@ -427,16 +430,16 @@ def _outcome_block(
         )
     )
     impact = outcome.impact.strip()
-    if impact:
-        lines.extend(
-            _labelled_wrapped_lines(
-                console,
-                indent="    ",
-                label="Impact",
-                value=impact,
-                limit=impact_line_limit,
-            )
+    lines.extend(
+        _labelled_wrapped_lines(
+            console,
+            indent="    ",
+            label="Impact",
+            value=impact or "Unsupported by extracted evidence",
+            style="" if impact else "dim",
+            limit=impact_line_limit,
         )
+    )
     reference_count = len(outcome.evidence_refs)
     evidence = f"{reference_count} reference{'s' if reference_count != 1 else ''}"
     lines.extend(
@@ -576,6 +579,7 @@ def render_outcome_review(
     *,
     cursor: int,
     expanded_evidence: set[str],
+    period: DateRange | None = None,
     message: str | None = None,
 ) -> None:
     """Render Quick Review inside one terminal frame using display-line budgets."""
@@ -599,10 +603,15 @@ def render_outcome_review(
     start, end = _outcome_block_window(blocks, cursor=cursor, capacity=body_capacity)
 
     selected = sum(outcome.included for outcome in draft.outcomes)
+    period_suffix = f"  {_period_label(period)}" if period is not None else ""
     _print_viewport_text(
         console,
         _truncated_text(
-            Text.assemble(("Quick Review", "bold"), (f"  {selected} selected", "dim")),
+            Text.assemble(
+                ("Quick Review", "bold"),
+                (period_suffix, "dim"),
+                (f"  {selected} selected", "dim"),
+            ),
             console.size.width,
         ),
     )

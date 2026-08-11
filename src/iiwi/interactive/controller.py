@@ -128,6 +128,7 @@ class _State:
     review_message: str | None = None
     review_from_main: bool = False
     outcome_review: OutcomeReviewDraft | None = None
+    outcome_review_selection_key: tuple[str, ...] | None = None
     outcome_cursor: int = 0
     outcome_message: str | None = None
     expanded_evidence: set[str] | None = None
@@ -226,6 +227,7 @@ def _reset_search(state: _State) -> None:
 
 def _clear_outcome_review(state: _State) -> None:
     state.outcome_review = None
+    state.outcome_review_selection_key = None
     state.outcome_cursor = 0
     state.outcome_message = None
     state.expanded_evidence = set()
@@ -693,16 +695,13 @@ def _generate_from_setup(
     *,
     preview: bool,
 ) -> None:
-    """Keep setup actions one-step while routing them through reviewed output."""
+    """Route setup actions to Quick Review before previewing or writing output."""
+    del preview
     assert state.draft is not None
     state.review_from_main = False
     _review(state, actions)
     if state.screen is Screen.SESSION_REVIEW:
         _begin_outcome_review(state, actions)
-    if state.screen is Screen.OUTCOME_REVIEW:
-        _generate_outcome_review(state, actions, preview=preview)
-    if preview and state.screen is Screen.REPORT_PREVIEW:
-        state.preview_return_screen = Screen.REPORT_SETUP
 
 
 def _rescan_review(state: _State, actions: InteractiveActions) -> None:
@@ -878,6 +877,21 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         return
     _sync_selection(state, actions)
     filtered_scan = state.selection.filtered_scan()
+    selection_key = tuple(
+        sorted(item.session.session_id for item in filtered_scan.resolved_sessions)
+    )
+    if (
+        state.outcome_review is not None
+        and state.outcome_review_selection_key == selection_key
+    ):
+        state.outcome_cursor = min(
+            state.outcome_cursor,
+            max(0, len(_outcome_review_targets(state)) - 1),
+        )
+        state.review_message = None
+        state.error = None
+        state.screen = Screen.OUTCOME_REVIEW
+        return
     try:
         state.outcome_review = actions.synthesize(state.draft, filtered_scan)
     except OutcomeSynthesisError as exc:
@@ -889,6 +903,7 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
+    state.outcome_review_selection_key = selection_key
     state.outcome_cursor = 0
     state.outcome_message = None
     state.expanded_evidence = set()
@@ -1192,9 +1207,8 @@ def _error_key(
     if choice == "Use session-based report":
         assert state.draft is not None
         state.draft.generation_notice = _SESSION_FALLBACK_NOTICE
-        try:
-            _generate(state, actions, force=False)
-        finally:
+        _generate(state, actions, force=False)
+        if state.screen is not Screen.RECOVERABLE_ERROR:
             state.draft.generation_notice = None
         return
     if choice == "Overwrite once":
@@ -1207,6 +1221,12 @@ def _error_key(
             )
         else:
             _generate(state, actions, force=True)
+            if (
+                state.draft is not None
+                and state.draft.generation_notice is not None
+                and state.screen is not Screen.RECOVERABLE_ERROR
+            ):
+                state.draft.generation_notice = None
         return
     assert state.draft is not None
     if choice == "Change harness":
@@ -1336,6 +1356,7 @@ def _render_outcome_review_hook(
     console: Console,
     review: OutcomeReviewDraft,
     *,
+    period: DateRange | None,
     cursor: int,
     expanded_evidence: set[str],
     message: str | None,
@@ -1347,6 +1368,7 @@ def _render_outcome_review_hook(
         review,
         cursor=cursor,
         expanded_evidence=expanded_evidence,
+        period=period,
         message=message,
     )
 
@@ -1388,6 +1410,7 @@ def _render_screen(state: _State, console: Console) -> None:
         _render_outcome_review_hook(
             console,
             state.outcome_review,
+            period=state.draft.period if state.draft is not None else None,
             cursor=state.outcome_cursor,
             expanded_evidence=state.evidence_expansions(),
             message=state.outcome_message,

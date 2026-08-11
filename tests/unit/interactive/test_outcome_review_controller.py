@@ -236,6 +236,96 @@ def test_g_synthesizes_selected_scan_once_and_opens_outcome_review(
     assert Screen.OUTCOME_REVIEW in screens
 
 
+@pytest.mark.parametrize(
+    "setup_keys",
+    [
+        [char("g")],
+        [KeyPress(key=Key.DOWN), KeyPress(key=Key.ENTER)],
+    ],
+)
+def test_setup_generate_and_preview_enter_quick_review_before_rendering_output(
+    monkeypatch: pytest.MonkeyPatch,
+    setup_keys: list[KeyPress],
+) -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    log = ActionLog(_review())
+
+    screens = _run(
+        monkeypatch,
+        draft,
+        log,
+        [char("2"), *setup_keys, char("b"), char("q"), char("q")],
+    )
+
+    assert Screen.OUTCOME_REVIEW in screens
+    assert log.reviewed_calls == []
+
+
+def test_reentering_quick_review_with_unchanged_selection_preserves_existing_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    original = _review(_outcome("first", 0), _outcome("second", 1))
+    replacement = _review(_outcome("replacement", 0))
+    syntheses = iter([original, replacement])
+    log = ActionLog(original)
+
+    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+        log.synthesis_scans.append(selected_scan)
+        return next(syntheses)
+
+    actions = _actions(draft, log)
+    actions = InteractiveActions(
+        new_draft=actions.new_draft,
+        choose_harness=actions.choose_harness,
+        choose_period=actions.choose_period,
+        scan=actions.scan,
+        generate=actions.generate,
+        synthesize=synthesize,
+        generate_reviewed=actions.generate_reviewed,
+        edit_outcome=actions.edit_outcome,
+        add_outcome=actions.add_outcome,
+        edit_gap=actions.edit_gap,
+        save_report_type=actions.save_report_type,
+        doctor=actions.doctor,
+        edit_settings=actions.edit_settings,
+        restore_selection=actions.restore_selection,
+        save_selection=actions.save_selection,
+        exclude_repository=actions.exclude_repository,
+    )
+    screens: list[Screen] = []
+    monkeypatch.setattr(
+        controller,
+        "_render_screen",
+        lambda state, console: screens.append(state.screen),
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput(
+            [
+                *_open_review_keys(),
+                char("j"),
+                KeyPress(key=Key.SPACE),
+                char("b"),
+                char("g"),
+                char("g"),
+                char("q"),
+                char("q"),
+            ]
+        ),
+        console=Console(file=StringIO(), color_system=None, force_terminal=False),
+    )
+
+    assert len(log.synthesis_scans) == 1
+    assert [item.id for item in log.reviewed_calls[0][2].ordered()] == [
+        "first",
+        "second",
+    ]
+    assert log.reviewed_calls[0][2].outcomes[0].included is False
+    assert Screen.OUTCOME_REVIEW in screens
+
+
 def test_up_down_changes_focus_and_space_toggles_the_focused_outcome(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

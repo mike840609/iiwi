@@ -186,7 +186,7 @@ def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
     )
     try:
         result = OutcomeSynthesisService(runner).synthesize(scan)
-    except OpenCodeRunError as exc:
+    except (OpenCodeRunError, OSError) as exc:
         raise OutcomeSynthesisError(str(exc)) from exc
     arguments: dict[str, object] = {
         "outcomes": result.outcomes,

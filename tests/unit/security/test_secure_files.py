@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from iiwi.errors import ReportOutputError
+from iiwi.errors import ReportAlreadyExistsError, ReportOutputError
 from iiwi.security.secure_files import atomic_secure_write, secure_temporary_directory
 
 
@@ -15,6 +15,26 @@ def test_atomic_write_rejects_existing_file_without_force(tmp_path: Path) -> Non
         atomic_secure_write(path, "new")
 
     assert path.read_text() == "old"
+
+
+def test_atomic_write_rejects_file_created_after_initial_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "report.md"
+    real_fsync = os.fsync
+
+    def create_racing_destination(descriptor: int) -> None:
+        if not path.exists():
+            path.write_text("racing writer", encoding="utf-8")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", create_racing_destination)
+
+    with pytest.raises(ReportAlreadyExistsError, match="already exists"):
+        atomic_secure_write(path, "new content", force=False)
+
+    assert path.read_text(encoding="utf-8") == "racing writer"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX mode semantics")

@@ -36,6 +36,8 @@ class EvidenceRef(BaseModel):
 class OutcomeSourceGroup(BaseModel):
     id: str
     title: str = ""
+    impact: str = ""
+    status: OutcomeStatus | None = None
     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
 
 
@@ -98,6 +100,8 @@ class OutcomeReviewDraft(BaseModel):
     def toggle_included(self, identifier: str) -> None:
         outcome = self._outcome(identifier)
         outcome.included = not outcome.included
+        if outcome.included and outcome.bucket is OutcomeBucket.MORE:
+            outcome.bucket = OutcomeBucket.PRIMARY
 
     def move(self, identifier: str, delta: int) -> None:
         outcomes = self.ordered()
@@ -130,8 +134,8 @@ class OutcomeReviewDraft(BaseModel):
             Outcome(
                 id=f"{parent.id}:{group.id}",
                 title=group.title,
-                status=parent.status,
-                impact=parent.impact,
+                status=group.status or parent.status,
+                impact=group.impact,
                 included=parent.included,
                 rank=parent.rank + offset,
                 origin=parent.origin,

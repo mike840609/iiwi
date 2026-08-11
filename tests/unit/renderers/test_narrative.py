@@ -68,6 +68,33 @@ def test_narrative_brief_omits_usage() -> None:
     )
 
 
+def test_narrative_brief_filters_full_depth_sections_from_model_body() -> None:
+    report = narrative_report()
+    report.narrative_text = """## Outcomes
+
+- Shipped supported work.
+
+#### Related Sessions
+
+- Session: ses-secret
+
+## Key Files
+
+- src/iiwi/services/report.py
+
+## Usage
+
+gpt-5 123 tokens
+"""
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "Shipped supported work." in output
+    assert "ses-secret" not in output
+    assert "src/iiwi/services/report.py" not in output
+    assert "gpt-5 123 tokens" not in output
+
+
 def test_narrative_full_keeps_usage() -> None:
     report = narrative_report()
     report.usage_text = "gpt-5 123 tokens"

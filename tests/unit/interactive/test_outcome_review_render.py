@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from io import StringIO
+from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
@@ -15,6 +17,16 @@ from iiwi.models.outcome import (
     OutcomeStatus,
 )
 from iiwi.models.report_options import ReportType
+from iiwi.models.time_range import DateRange
+
+TZ = ZoneInfo("Asia/Taipei")
+
+
+def _period() -> DateRange:
+    return DateRange(
+        since=datetime(2026, 8, 3, tzinfo=TZ),
+        until=datetime(2026, 8, 10, tzinfo=TZ),
+    )
 
 
 def _console(*, width: int = 100, height: int = 40) -> tuple[Console, StringIO]:
@@ -153,6 +165,21 @@ def test_outcome_review_renders_visual_hierarchy_and_controls() -> None:
     assert "p Preview" in text and "g Generate" in text
 
 
+def test_outcome_review_header_includes_the_reporting_period() -> None:
+    console, stream = _console(height=50)
+
+    render.render_outcome_review(
+        console,
+        _review(),
+        cursor=1,
+        expanded_evidence=set(),
+        period=_period(),
+    )
+
+    assert "Aug 03" in stream.getvalue()
+    assert "Aug 10" in stream.getvalue()
+
+
 def test_only_the_focused_outcome_expands_beyond_one_display_line() -> None:
     console, stream = _console()
 
@@ -170,6 +197,50 @@ def test_only_the_focused_outcome_expands_beyond_one_display_line() -> None:
     assert "Impact" in stream.getvalue()
     assert "Managers can verify progress before publishing." in stream.getvalue()
     assert "Evidence" in stream.getvalue() and "1 reference" in stream.getvalue()
+
+
+def test_empty_impact_is_explicitly_marked_unsupported_in_quick_review() -> None:
+    console, stream = _console()
+    review = OutcomeReviewDraft(
+        report_type=ReportType.MANAGER,
+        outcomes=[_outcome("empty", "Outcome without impact", 0, impact="")],
+    )
+
+    render.render_outcome_review(
+        console,
+        review,
+        cursor=1,
+        expanded_evidence=set(),
+    )
+
+    text = stream.getvalue()
+    assert "Impact" in text
+    assert "Unsupported" in text
+
+
+def test_truncated_impact_keeps_a_continuation_indicator() -> None:
+    review = OutcomeReviewDraft(
+        report_type=ReportType.MANAGER,
+        outcomes=[
+            _outcome(
+                "long",
+                "Long impact outcome",
+                0,
+                impact=" ".join(f"impact-fragment-{index}" for index in range(40)),
+            )
+        ],
+    )
+    console, stream = _console(width=42, height=12)
+
+    render.render_outcome_review(
+        console,
+        review,
+        cursor=1,
+        expanded_evidence=set(),
+    )
+
+    assert "Impact" in stream.getvalue()
+    assert "…" in stream.getvalue()
 
 
 def test_expanded_focused_evidence_adds_repository_session_and_file_rows() -> None:

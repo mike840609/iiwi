@@ -225,7 +225,7 @@ def test_enter_on_advanced_settings_expands_instead_of_editing_detail() -> None:
     assert draft.detail.value == "full"
 
 
-def test_preview_report_runs_as_dry_run_and_returns_to_setup() -> None:
+def test_preview_report_runs_as_dry_run_from_quick_review() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     generation_modes: list[bool] = []
     console, stream = _console()
@@ -234,8 +234,9 @@ def test_preview_report_runs_as_dry_run_and_returns_to_setup() -> None:
             char("2"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
+            char("p"),
             char("b"),
-            KeyPress(key=Key.ENTER),
+            char("b"),
             char("b"),
             char("q"),
             char("q"),
@@ -248,7 +249,7 @@ def test_preview_report_runs_as_dry_run_and_returns_to_setup() -> None:
         console=console,
     )
 
-    assert generation_modes == [True, True]
+    assert generation_modes == [True]
     assert draft.dry_run is False
     assert "preview-content" in stream.getvalue()
 
@@ -261,6 +262,7 @@ def test_generate_report_forces_real_output_mode() -> None:
         [
             char("2"),
             KeyPress(key=Key.ENTER),
+            char("g"),
             char("q"),
             char("q"),
         ]

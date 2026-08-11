@@ -348,6 +348,7 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
             char("2"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
+            char("p"),
             KeyPress(key=page_down),
             char("G"),
             char("g"),

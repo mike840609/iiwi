@@ -207,6 +207,47 @@ def test_synthesize_translates_real_opencode_failure_for_controller_recovery(
         )
 
 
+def test_synthesize_translates_temp_io_failure_for_controller_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = SimpleNamespace(
+        harnesses=SimpleNamespace(
+            opencode=SimpleNamespace(
+                cli=SimpleNamespace(
+                    executable="opencode",
+                    model="",
+                    run_timeout_seconds=1.0,
+                )
+            )
+        )
+    )
+
+    class BrokenSynthesisService:
+        def __init__(self, runner: object) -> None:
+            del runner
+
+        def synthesize(self, scan: ScanResult) -> object:
+            del scan
+            raise OSError("cannot write synthesis transcript")
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli_actions,
+        "OutcomeSynthesisService",
+        BrokenSynthesisService,
+        raising=False,
+    )
+
+    with pytest.raises(
+        OutcomeSynthesisError,
+        match="cannot write synthesis transcript",
+    ):
+        cli_actions._synthesize(
+            ReportDraft(harness="codex", period=_period()),
+            _scan(),
+        )
+
+
 def test_generate_reviewed_passes_the_same_review_object_to_report_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -328,6 +328,8 @@ def test_preview_action_can_preview_generated_report_content() -> None:
             char("2"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
+            char("p"),
+            char("b"),
             char("b"),
             char("q"),
             char("q"),

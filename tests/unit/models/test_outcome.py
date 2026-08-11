@@ -80,6 +80,40 @@ def test_split_restores_source_groups_and_preserves_evidence() -> None:
     assert [item.evidence_refs for item in draft.ordered()] == [[first], [second]]
 
 
+def test_split_children_do_not_inherit_unsupported_parent_impact() -> None:
+    first = EvidenceRef(session_id="ses-a", repository_id="repo-a")
+    second = EvidenceRef(session_id="ses-b", repository_id="repo-a")
+    merged = Outcome(
+        id="merged",
+        title="Combined claim",
+        status=OutcomeStatus.COMPLETED,
+        impact="Aggregate impact only supported by the merge",
+        rank=0,
+        evidence_refs=[first, second],
+        source_groups=[
+            OutcomeSourceGroup(id="a", title="API", evidence_refs=[first]),
+            OutcomeSourceGroup(id="b", title="UI", evidence_refs=[second]),
+        ],
+    )
+    draft = OutcomeReviewDraft(outcomes=[merged])
+
+    draft.split("merged")
+
+    assert [item.impact for item in draft.ordered()] == ["", ""]
+
+
+def test_including_more_candidate_promotes_it_to_primary_review_order() -> None:
+    more = outcome("more", 1, bucket=OutcomeBucket.MORE)
+    more.included = False
+    draft = OutcomeReviewDraft(outcomes=[outcome("primary", 0), more])
+
+    draft.toggle_included("more")
+
+    promoted = next(item for item in draft.outcomes if item.id == "more")
+    assert promoted.included is True
+    assert promoted.bucket is OutcomeBucket.PRIMARY
+
+
 def test_add_user_outcome_has_no_invented_evidence() -> None:
     draft = OutcomeReviewDraft(outcomes=[])
     added = draft.add_user_outcome("Reviewed launch design", "Reduced ambiguity")

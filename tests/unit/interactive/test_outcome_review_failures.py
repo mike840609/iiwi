@@ -147,6 +147,8 @@ def _actions(
     log: ActionLog,
     *,
     synthesize: Callable[[ReportDraft, ScanResult], OutcomeReviewDraft],
+    generate_session: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
+    | None = None,
     generate_reviewed: Callable[
         [ReportDraft, ScanResult, OutcomeReviewDraft, bool], InteractiveReportResult
     ]
@@ -163,6 +165,8 @@ def _actions(
         selected_scan: ScanResult,
         force: bool,
     ) -> InteractiveReportResult:
+        if generate_session is not None:
+            return generate_session(current, selected_scan, force)
         notice = current.generation_notice
         log.session_calls.append((current, selected_scan, force, notice))
         result = InteractiveReportResult(
@@ -218,6 +222,8 @@ def _run(
     keys: list[KeyPress],
     *,
     synthesize: Callable[[ReportDraft, ScanResult], OutcomeReviewDraft],
+    generate_session: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
+    | None = None,
     generate_reviewed: Callable[
         [ReportDraft, ScanResult, OutcomeReviewDraft, bool], InteractiveReportResult
     ]
@@ -238,6 +244,7 @@ def _run(
                 draft,
                 log,
                 synthesize=synthesize,
+                generate_session=generate_session,
                 generate_reviewed=generate_reviewed,
             ),
             input_source=ScriptedInput(keys),
@@ -310,6 +317,53 @@ def test_complete_synthesis_failure_can_generate_labeled_session_fallback() -> N
     assert "Use session-based report" in output
     assert len(log.session_calls) == 1
     assert log.session_calls[0][3] == FALLBACK_NOTICE
+    assert FALLBACK_NOTICE in log.session_results[0].content
+    assert draft.generation_notice is None
+
+
+def test_session_fallback_notice_survives_output_conflict_overwrite() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    log = ActionLog()
+
+    def fail_synthesis(current: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+        raise OutcomeSynthesisError("synthesis unavailable")
+
+    def conflict_once(
+        current: ReportDraft,
+        selected_scan: ScanResult,
+        force: bool,
+    ) -> InteractiveReportResult:
+        notice = current.generation_notice
+        log.session_calls.append((current, selected_scan, force, notice))
+        if not force:
+            raise ReportAlreadyExistsError("session fallback exists")
+        result = InteractiveReportResult(
+            output_path=Path("reports/session-based.md"),
+            content=f"## Warnings\n\n- {notice}",
+            repository_count=1,
+            session_count=selected_scan.loaded_session_count,
+        )
+        log.session_results.append(result)
+        return result
+
+    _, output = _run(
+        draft,
+        log,
+        [
+            *_open_review_keys(),
+            KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.ENTER),
+            KeyPress(key=Key.ENTER),
+            char("q"),
+            char("q"),
+        ],
+        synthesize=fail_synthesis,
+        generate_session=conflict_once,
+    )
+
+    assert "Overwrite once" in output
+    assert [call[2] for call in log.session_calls] == [False, True]
+    assert [call[3] for call in log.session_calls] == [FALLBACK_NOTICE, FALLBACK_NOTICE]
     assert FALLBACK_NOTICE in log.session_results[0].content
     assert draft.generation_notice is None
 

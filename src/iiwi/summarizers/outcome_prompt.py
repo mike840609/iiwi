@@ -1,6 +1,6 @@
 """Prompt contract for evidence-backed outcome synthesis."""
 
-_OUTCOME_PROMPT = """Synthesize evidence-backed engineering outcomes from the attached
+_OUTCOME_PROMPT = """Synthesize evidence-backed work outcomes from the attached
 redacted session evidence. Return JSON only; do not wrap it in prose.
 
 Aim for 3–5 ranked outcomes when the evidence supports that many. You may emit

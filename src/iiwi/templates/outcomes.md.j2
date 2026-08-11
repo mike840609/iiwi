@@ -3,6 +3,7 @@
 **Period:** {{ report.period.since.strftime("%Y-%m-%d %H:%M") }} – {{ report.period.until.strftime("%Y-%m-%d %H:%M") }}
 **Timezone:** {{ timezone }}
 **Generated:** {{ report.generated_at.strftime("%Y-%m-%d %H:%M") }}
+**Audience:** {{ "Manager update" if report_type.value == "manager" else "Engineering worklog" }}
 
 {% set completed = report.outcomes | selectattr("included") | selectattr("status", "equalto", "completed") | list %}
 {% if completed %}
@@ -11,7 +12,10 @@
 - {{ outcome.title }}{% if outcome.origin.value == "user_added" %} _(User added)_{% endif %}
 {% if outcome.impact %}
   - Impact: {{ outcome.impact }}
+{% else %}
+  - Impact: Unsupported by extracted evidence
 {% endif %}
+
 {% endfor %}
 {% endif %}
 {% set in_progress = report.outcomes | selectattr("included") | selectattr("status", "equalto", "in_progress") | list %}
@@ -21,7 +25,10 @@
 - {{ outcome.title }}{% if outcome.origin.value == "user_added" %} _(User added)_{% endif %}
 {% if outcome.impact %}
   - Impact: {{ outcome.impact }}
+{% else %}
+  - Impact: Unsupported by extracted evidence
 {% endif %}
+
 {% endfor %}
 {% endif %}
 {% if report.blockers %}
@@ -37,9 +44,10 @@
 {% if full and evidence_by_repository %}
 ### Evidence
 {% for repository_id, references in evidence_by_repository | dictsort %}
+
 #### {{ repository_id }}
 {% for reference in references %}
-- Session: `{{ reference.session_id }}`{% if reference.commit %} · Commit: `{{ reference.commit }}`{% endif %}{% if reference.file %} · File: `{{ reference.file }}`{% endif %}
+- Session: `{{ reference.session_id }}`{% if reference.commit %} · Commit: `{{ reference.commit }}`{% endif %}{% if reference.file %} · File: `{{ reference.file }}`{% endif %}{{ "\n" }}
 {% endfor %}
 {% endfor %}
 {% endif %}
