@@ -1,0 +1,64 @@
+name: One-shot release v0.10.0
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    if: github.event.head_commit.message == 'chore: prepare v0.10.0'
+    runs-on: ubuntu-latest
+    environment: pypi
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Refresh lockfile
+        run: uv lock
+
+      - name: Verify release
+        run: |
+          uv sync --locked --extra dev
+          uv run pytest --cov=iiwi --cov-fail-under=80
+          uv run ruff check .
+          uv run pyright
+          uv build
+          uv tool run twine check dist/*
+
+      - name: Finalize release commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-shot-release-v0.10.0.yml
+          git add uv.lock
+          git commit -m "chore: release v0.10.0"
+          git tag v0.10.0
+          git push origin HEAD:main
+          git push origin v0.10.0
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.10.0 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title v0.10.0 \
+            --generate-notes \
+            --verify-tag \
+            dist/*
