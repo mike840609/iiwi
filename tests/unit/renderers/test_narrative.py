@@ -150,12 +150,14 @@ def test_narrative_brief_rejects_whitespace_delimited_session_evidence() -> None
 
 - Session ses_abc
 - Safe reader-facing summary.
+- The planning session clarified priorities.
 - Session ID arbitrary-id
 """
 
     output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
 
     assert "Safe reader-facing summary." in output
+    assert "The planning session clarified priorities." in output
     assert "Session ses_abc" not in output
     assert "Session ID arbitrary-id" not in output
 
