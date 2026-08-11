@@ -204,7 +204,11 @@ class ReportService:
             ),
         )
         self._progress.advance(1)
-        usage_text = self._collect_usage(scan, warnings)
+        usage_text = (
+            self._collect_usage(scan, warnings)
+            if self._detail is DetailLevel.FULL
+            else None
+        )
         return WorklogReport(
             generated_at=self._now_factory(),
             period=self._period,

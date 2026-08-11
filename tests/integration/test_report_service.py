@@ -502,12 +502,17 @@ def test_narrative_mode_render_usage_and_warnings(tmp_path: Path) -> None:
 
 def test_narrative_brief_detail_changes_the_prompt_and_wrapper(tmp_path: Path) -> None:
     runner = FakeOpenCodeRunner()
+    usage_calls: list[ScanResult] = []
+
+    def usage_provider(scan: ScanResult) -> str:
+        usage_calls.append(scan)
+        return "gpt-5-mini  1234 tokens"
 
     result = narrative_service(
         FakeSource(),
         tmp_path / "report.md",
         runner=runner,
-        usage_provider=lambda _scan: "gpt-5-mini  1234 tokens",
+        usage_provider=usage_provider,
         detail=DetailLevel.BRIEF,
     ).generate()
 
@@ -516,6 +521,8 @@ def test_narrative_brief_detail_changes_the_prompt_and_wrapper(tmp_path: Path) -
         in runner.calls[0]["prompt"]
     )
     assert "## Usage" not in result.content
+    assert result.report.usage_text is None
+    assert usage_calls == []
 
 
 def test_narrative_mode_is_off_by_default(tmp_path: Path) -> None:
