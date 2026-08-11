@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
+from iiwi.interactive import render
 from iiwi.interactive.render import (
     build_visible_rows,
     render_report_preview,
@@ -13,6 +14,8 @@ from iiwi.interactive.render import (
     render_session_review,
 )
 from iiwi.interactive.selection import SelectionState
+from iiwi.models.outcome import EvidenceRef, Outcome, OutcomeReviewDraft, OutcomeStatus
+from iiwi.models.report_options import ReportType
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -195,3 +198,53 @@ def test_interactive_screens_fit_every_reasonable_terminal_size() -> None:
                 lines = _display_lines(stream)
                 assert len(lines) <= height - 1, (width, height, cursor)
                 assert any("▶" in line for line in lines), (width, height, cursor)
+
+
+def _long_outcome_review() -> OutcomeReviewDraft:
+    outcomes = [
+        Outcome(
+            id=f"outcome-{index}",
+            title=f"Outcome {index} " + "very-long-title-" * 10,
+            status=OutcomeStatus.IN_PROGRESS,
+            impact="A long impact explanation " + "continues-across-rendered-lines-" * 12,
+            rank=index,
+            evidence_refs=[
+                EvidenceRef(
+                    session_id=f"session-{index}-" + "long-session-id-" * 6,
+                    repository_id="repository-" + "long-repository-name-" * 8,
+                    commit="deadbeef" * 8,
+                    file="src/" + "deeply-nested-directory/" * 8 + "renderer.py",
+                )
+            ],
+        )
+        for index in range(12)
+    ]
+    return OutcomeReviewDraft(outcomes=outcomes, report_type=ReportType.MANAGER)
+
+
+def test_outcome_review_fits_width_height_and_focus_matrix() -> None:
+    review = _long_outcome_review()
+    rows = render.outcome_review_rows(review)
+    focuses = (0, len(rows) // 2, len(rows) - 1)
+    expanded = {outcome.id for outcome in review.outcomes}
+    error = "Could not refresh review: " + "long-error-detail-" * 20
+
+    for width in (40, 60, 80, 100, 140):
+        for height in (20, 24, 30):
+            for cursor in focuses:
+                console, stream = _console(width=width, height=height)
+                render.render_outcome_review(
+                    console,
+                    review,
+                    cursor=cursor,
+                    expanded_evidence=expanded,
+                    message=error,
+                )
+
+                lines = stream.getvalue().splitlines()
+                assert len(lines) <= height - 1, (width, height, cursor)
+                assert any("Quick Review" in line for line in lines), (width, height, cursor)
+                assert any("▶" in line for line in lines), (width, height, cursor)
+                assert any(
+                    "p Preview" in line or "g Generate" in line for line in lines
+                ), (width, height, cursor)

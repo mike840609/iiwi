@@ -26,6 +26,7 @@ from iiwi.interactive.render import (
     recoverable_error_detail_capacity,
     render_help,
     render_main_menu,
+    render_outcome_review,
     render_recoverable_error,
     render_report_preview,
     render_report_result,
@@ -1294,9 +1295,15 @@ def _render_outcome_review_hook(
     expanded_evidence: set[str],
     message: str | None,
 ) -> None:
-    """Task 4 screen hook; Task 5 supplies the rendered-line-aware viewport."""
+    """Render Task 4's state through the Rich single-frame viewport."""
 
-    _ = (console, review, cursor, expanded_evidence, message)
+    render_outcome_review(
+        console,
+        review,
+        cursor=cursor,
+        expanded_evidence=expanded_evidence,
+        message=message,
+    )
 
 
 def _render_screen(state: _State, console: Console) -> None:
