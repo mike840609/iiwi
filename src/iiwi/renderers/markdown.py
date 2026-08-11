@@ -155,7 +155,7 @@ def _brief_narrative_body(value: str) -> str:
     in_code_block = False
     for index, line in enumerate(lines):
         stripped = line.strip()
-        if stripped.startswith("```"):
+        if stripped.startswith(("```", "~~~")):
             in_code_block = not in_code_block
             continue
         if in_code_block:
@@ -174,7 +174,7 @@ def _brief_narrative_body(value: str) -> str:
     while index < len(lines):
         line = lines[index]
         stripped = line.strip()
-        if stripped.startswith("```"):
+        if stripped.startswith(("```", "~~~")):
             in_code_block = not in_code_block
             index += 1
             continue

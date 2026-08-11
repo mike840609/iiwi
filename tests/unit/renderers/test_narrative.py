@@ -179,6 +179,23 @@ In Progress
     assert "Commit deadbeef" in full_output
 
 
+def test_narrative_brief_rejects_setext_headings_inside_tilde_fences() -> None:
+    report = narrative_report()
+    report.narrative_text = """~~~markdown
+Outcomes
+========
+
+- Internal deployment evidence.
+~~~
+"""
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "Outcomes" not in output
+    assert "========" not in output
+    assert "Internal deployment evidence." not in output
+
+
 def test_narrative_full_keeps_usage() -> None:
     report = narrative_report()
     report.usage_text = "gpt-5 123 tokens"
