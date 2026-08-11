@@ -9,7 +9,11 @@ from __future__ import annotations
 import contextlib
 import os
 from datetime import datetime
+from uuid import uuid4
 
+import typer
+
+from iiwi import config_store
 from iiwi.history import HistoryEntry, append_history
 from iiwi.interactive.controller import (
     InteractiveActions,
@@ -17,10 +21,19 @@ from iiwi.interactive.controller import (
 )
 from iiwi.interactive.models import ReportDraft
 from iiwi.logging import ConsoleReporter
+from iiwi.models.outcome import (
+    Outcome,
+    OutcomeOrigin,
+    OutcomeReviewDraft,
+    OutcomeStatus,
+)
+from iiwi.models.report_options import ReportType
 from iiwi.models.time_range import DateRange
 from iiwi.process import CommandRunner
 from iiwi.security.redactor import redact_text
+from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.scan import ScanResult
+from iiwi.summarizers.opencode_run import OpenCodeRunner
 
 
 def _new_draft() -> ReportDraft:
@@ -31,7 +44,12 @@ def _new_draft() -> ReportDraft:
     enabled = cli._enabled_harnesses(settings)
     harness = cli.Harness.OPENCODE if cli.Harness.OPENCODE in enabled else enabled[0]
     label, period = _named_periods(now)[0]
-    return ReportDraft(harness=harness.value, period=period, period_label=label)
+    return ReportDraft(
+        harness=harness.value,
+        period=period,
+        period_label=label,
+        report_type=settings.report.quick_review_report_type,
+    )
 
 
 def _choose_harness(current: str) -> str:
@@ -152,6 +170,145 @@ def _generate(
     )
 
 
+def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
+    """Synthesize the already-filtered review selection into an editable draft."""
+
+    from iiwi import cli
+
+    settings = cli._load_settings()
+    cli_settings = settings.harnesses.opencode.cli
+    runner = OpenCodeRunner(
+        runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
+        executable=cli_settings.executable,
+        model=cli_settings.model,
+    )
+    result = OutcomeSynthesisService(runner).synthesize(scan)
+    arguments: dict[str, object] = {
+        "outcomes": result.outcomes,
+        "report_type": draft.report_type,
+    }
+    if draft.detail_overridden:
+        arguments["detail"] = draft.detail
+    return OutcomeReviewDraft.model_validate(arguments)
+
+
+def _generate_reviewed(
+    draft: ReportDraft,
+    scan: ScanResult,
+    review: OutcomeReviewDraft,
+    force: bool,
+) -> InteractiveReportResult:
+    """Render the exact in-memory review through the existing report builder."""
+
+    from iiwi import cli
+
+    settings = cli._load_settings()
+    now = cli._now_in_timezone(settings.report.timezone)
+    harness = cli.Harness(draft.harness)
+    output_path = cli._default_output_path(settings, draft.period)
+    assert review.detail is not None
+    reporter = ConsoleReporter()
+    with reporter.progress() as progress:
+        service = cli._build_report_service(
+            settings,
+            draft.period,
+            output_path,
+            no_llm=True,
+            root_only=not draft.include_subagents,
+            now=now,
+            harness=harness,
+            sanitize=draft.sanitize,
+            detail=review.detail,
+            progress=progress,
+        )
+        result = service.generate_reviewed(
+            review,
+            scan=scan,
+            force=force,
+            dry_run=draft.dry_run,
+        )
+    if not draft.dry_run:
+        with contextlib.suppress(OSError):
+            append_history(
+                HistoryEntry(
+                    generated_at=now,
+                    harness=harness.value,
+                    since=draft.period.since,
+                    until=draft.period.until,
+                    output_path=result.output_path,
+                    repository_count=len(scan.sessions_by_repository),
+                    session_count=scan.loaded_session_count,
+                    narrative=False,
+                    detail=review.detail.value,
+                )
+            )
+    return InteractiveReportResult(
+        output_path=None if draft.dry_run else result.output_path,
+        content=result.content,
+        repository_count=len(scan.sessions_by_repository),
+        session_count=scan.loaded_session_count,
+    )
+
+
+def _prompt_status(current: OutcomeStatus) -> OutcomeStatus:
+    choices = "/".join(status.value for status in OutcomeStatus)
+    while True:
+        answer = typer.prompt(
+            f"Status ({choices})",
+            default=current.value,
+        )
+        try:
+            return OutcomeStatus(answer.strip().casefold())
+        except ValueError:
+            typer.echo(f"  choose one of: {choices}")
+
+
+def _edit_outcome(outcome: Outcome) -> Outcome:
+    """Prompt for editable prose while leaving traceability fields untouched."""
+
+    title = typer.prompt("Title", default=outcome.title).strip()
+    impact = typer.prompt("Impact", default=outcome.impact).strip()
+    status = _prompt_status(outcome.status)
+    return outcome.model_copy(
+        update={"title": title, "impact": impact, "status": status},
+        deep=True,
+    )
+
+
+def _add_outcome() -> Outcome | None:
+    title = typer.prompt("Title", default="", show_default=False).strip()
+    if not title:
+        return None
+    impact = typer.prompt("Impact", default="", show_default=False).strip()
+    status = _prompt_status(OutcomeStatus.IN_PROGRESS)
+    return Outcome(
+        id=uuid4().hex,
+        title=title,
+        status=status,
+        impact=impact,
+        rank=0,
+        origin=OutcomeOrigin.USER_ADDED,
+    )
+
+
+def _edit_gap(label: str, current: str | None) -> str | None:
+    answer = typer.prompt(
+        label,
+        default=current or "",
+        show_default=bool(current),
+    ).strip()
+    if not answer or answer.casefold() == "none":
+        return None
+    return answer
+
+
+def _save_report_type(report_type: ReportType) -> None:
+    config_store.set_value(
+        "report.quick_review_report_type",
+        report_type.value,
+    )
+
+
 def _doctor(harness_name: str) -> list[str]:
     from iiwi import cli
 
@@ -249,6 +406,12 @@ def build_interactive_actions() -> InteractiveActions:
         choose_period=_choose_period,
         scan=_scan,
         generate=_generate,
+        synthesize=_synthesize,
+        generate_reviewed=_generate_reviewed,
+        edit_outcome=_edit_outcome,
+        add_outcome=_add_outcome,
+        edit_gap=_edit_gap,
+        save_report_type=_save_report_type,
         doctor=_doctor,
         edit_settings=_edit_settings,
         restore_selection=_restore_selection,

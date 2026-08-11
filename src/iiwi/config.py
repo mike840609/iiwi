@@ -5,6 +5,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from iiwi.models.report_options import ReportType
+
 
 class OpenCodeCliSettings(BaseModel):
     """OpenCode executable invocation settings."""
@@ -63,6 +65,7 @@ class ReportSettings(BaseModel):
     # A comma-separated string, not `list[str]`: a list cannot be validated or
     # round-tripped by `config set`, which writes and rereads strings.
     exclude_repositories: str = ""
+    quick_review_report_type: ReportType = ReportType.MANAGER
 
     def excluded_repository_ids(self) -> tuple[str, ...]:
         """Normalise the string setting into the repository ids it names.

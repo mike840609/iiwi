@@ -15,6 +15,7 @@ from iiwi.interactive.controller import (
 )
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft
+from iiwi.models.outcome import OutcomeReviewDraft
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -107,6 +108,19 @@ def _actions() -> InteractiveActions:
             repository_count=1,
             session_count=1,
         ),
+        synthesize=lambda draft, scan: OutcomeReviewDraft(
+            outcomes=[], report_type=draft.report_type
+        ),
+        generate_reviewed=lambda draft, scan, review, force: InteractiveReportResult(
+            output_path=None if draft.dry_run else Path("reports/worklog.md"),
+            content="report",
+            repository_count=1,
+            session_count=1,
+        ),
+        edit_outcome=lambda outcome: outcome,
+        add_outcome=lambda: None,
+        edit_gap=lambda label, current: current,
+        save_report_type=lambda report_type: None,
         doctor=lambda harness: ["OK opencode version: 1.0", "OK git: git version 2.0"],
         edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
@@ -153,6 +167,7 @@ def test_print_report_path_opens_a_persistent_path_screen() -> None:
             [
                 char("2"),
                 char("r"),
+                char("g"),
                 char("g"),
                 KeyPress(key=Key.DOWN),
                 KeyPress(key=Key.DOWN),

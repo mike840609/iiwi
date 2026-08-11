@@ -16,6 +16,7 @@ from iiwi.interactive.controller import (
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.render import render_report_setup, report_setup_rows
+from iiwi.models.outcome import OutcomeReviewDraft
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -127,6 +128,16 @@ def _actions(
         choose_period=lambda current: ("Last 7 days", _period()),
         scan=lambda draft_value: scan,
         generate=generate,
+        synthesize=lambda draft, scan: OutcomeReviewDraft(
+            outcomes=[], report_type=draft.report_type
+        ),
+        generate_reviewed=lambda draft, scan, review, force: generate(
+            draft, scan, force
+        ),
+        edit_outcome=lambda outcome: outcome,
+        add_outcome=lambda: None,
+        edit_gap=lambda label, current: current,
+        save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
         edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: {"ses-1"},
@@ -224,6 +235,8 @@ def test_preview_report_runs_as_dry_run_and_returns_to_setup() -> None:
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("b"),
+            KeyPress(key=Key.ENTER),
+            char("b"),
             char("q"),
             char("q"),
         ]
@@ -235,7 +248,7 @@ def test_preview_report_runs_as_dry_run_and_returns_to_setup() -> None:
         console=console,
     )
 
-    assert generation_modes == [True]
+    assert generation_modes == [True, True]
     assert draft.dry_run is False
     assert "preview-content" in stream.getvalue()
 

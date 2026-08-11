@@ -17,6 +17,7 @@ from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.render import render_report_setup, render_session_review
 from iiwi.interactive.selection import SelectionState
+from iiwi.models.outcome import OutcomeReviewDraft
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -167,6 +168,16 @@ def _actions(
         choose_period=choose_period,
         scan=do_scan,
         generate=generate,
+        synthesize=lambda draft, scan: OutcomeReviewDraft(
+            outcomes=[], report_type=draft.report_type
+        ),
+        generate_reviewed=lambda draft, scan, review, force: generate(
+            draft, scan, force
+        ),
+        edit_outcome=lambda outcome: outcome,
+        add_outcome=lambda: None,
+        edit_gap=lambda label, current: current,
+        save_report_type=lambda report_type: None,
         doctor=lambda harness: [],
         edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,

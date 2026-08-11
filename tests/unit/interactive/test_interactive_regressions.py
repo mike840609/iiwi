@@ -22,6 +22,7 @@ from iiwi.interactive.controller import (
 )
 from iiwi.interactive.input import Key, KeyPress, normalize_posix_sequence
 from iiwi.interactive.models import ReportDraft
+from iiwi.models.outcome import OutcomeReviewDraft
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -128,6 +129,19 @@ def _actions(
             repository_count=1,
             session_count=scan.loaded_session_count,
         ),
+        synthesize=lambda draft, scan: OutcomeReviewDraft(
+            outcomes=[], report_type=draft.report_type
+        ),
+        generate_reviewed=lambda draft, scan, review, force: InteractiveReportResult(
+            output_path=None if draft.dry_run else Path("reports/worklog.md"),
+            content="\n".join(f"line {index}" for index in range(60)),
+            repository_count=1,
+            session_count=scan.loaded_session_count,
+        ),
+        edit_outcome=lambda outcome: outcome,
+        add_outcome=lambda: None,
+        edit_gap=lambda label, current: current,
+        save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
         edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
