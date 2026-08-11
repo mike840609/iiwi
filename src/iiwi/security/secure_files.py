@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from iiwi.errors import ReportAlreadyExistsError, ReportOutputError
@@ -59,7 +59,17 @@ def atomic_secure_write(path: Path, content: str, *, force: bool = False) -> Non
                 raise ReportAlreadyExistsError(
                     f"report already exists: {destination}"
                 ) from exc
-            temporary_path.unlink()
+            except OSError:
+                # ponytail: FAT/exFAT and some network mounts reject os.link
+                # (EPERM/EOPNOTSUPP/EXDEV); os.replace still works there.
+                if destination.exists():
+                    raise ReportAlreadyExistsError(
+                        f"report already exists: {destination}"
+                    ) from None
+                os.replace(temporary_path, destination)
+            else:
+                with suppress(OSError):
+                    temporary_path.unlink()
         temporary_path = None
         if os.name == "posix":
             destination.chmod(0o600)
