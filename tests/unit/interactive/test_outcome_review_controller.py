@@ -326,6 +326,64 @@ def test_reentering_quick_review_with_unchanged_selection_preserves_existing_dra
     assert Screen.OUTCOME_REVIEW in screens
 
 
+def test_changing_detail_in_setup_regenerates_quick_review_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    original = _review(_outcome("full-detail", 0))
+    replacement = _review(_outcome("brief-detail", 0))
+    syntheses = iter([original, replacement])
+    log = ActionLog(original)
+
+    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+        log.synthesis_scans.append(selected_scan)
+        return next(syntheses)
+
+    actions = _actions(draft, log)
+    actions = InteractiveActions(
+        new_draft=actions.new_draft,
+        choose_harness=actions.choose_harness,
+        choose_period=actions.choose_period,
+        scan=actions.scan,
+        generate=actions.generate,
+        synthesize=synthesize,
+        generate_reviewed=actions.generate_reviewed,
+        edit_outcome=actions.edit_outcome,
+        add_outcome=actions.add_outcome,
+        edit_gap=actions.edit_gap,
+        save_report_type=actions.save_report_type,
+        doctor=actions.doctor,
+        edit_settings=actions.edit_settings,
+        restore_selection=actions.restore_selection,
+        save_selection=actions.save_selection,
+        exclude_repository=actions.exclude_repository,
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput(
+            [
+                *_open_review_keys(),
+                char("b"),
+                char("b"),
+                *[KeyPress(key=Key.DOWN) for _ in range(4)],
+                KeyPress(key=Key.ENTER),
+                KeyPress(key=Key.DOWN),
+                KeyPress(key=Key.ENTER),
+                char("g"),
+                char("g"),
+                char("q"),
+                char("q"),
+            ]
+        ),
+        console=Console(file=StringIO(), color_system=None, force_terminal=False),
+    )
+
+    assert draft.detail is DetailLevel.BRIEF
+    assert len(log.synthesis_scans) == 2
+    assert log.reviewed_calls[0][2].ordered()[0].id == "brief-detail"
+
+
 def test_up_down_changes_focus_and_space_toggles_the_focused_outcome(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -74,4 +74,3 @@ and exposes failures as **Ungrouped candidates**.
 - **No manual merge.** Reviewers can split a synthesized merge but cannot create a
   new merged outcome by hand.
 - There is no separate outcome editor outside the terminal Quick Review flow.
-

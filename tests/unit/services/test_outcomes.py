@@ -255,6 +255,35 @@ def test_evidence_refs_include_locally_extracted_file_references() -> None:
     ]
 
 
+def test_arbitrary_hex_identifier_is_not_commit_evidence() -> None:
+    result = service_for_json(payload_for_sessions(["ses-a"])).synthesize(
+        scan_with([resolved("ses-a", title="Tracked identifier 8badf00d")])
+    )
+
+    assert result.outcomes[0].evidence_refs[0].commit is None
+
+
+def test_contextual_revision_is_commit_evidence() -> None:
+    result = service_for_json(payload_for_sessions(["ses-a"])).synthesize(
+        scan_with(
+            [
+                resolved(
+                    "ses-a",
+                    activities=[
+                        activity(
+                            "revision",
+                            ActivityType.USER_MESSAGE,
+                            "Revision: 1a2b3c4 completed the reviewed change.",
+                        )
+                    ],
+                )
+            ]
+        )
+    )
+
+    assert result.outcomes[0].evidence_refs[0].commit == "1a2b3c4"
+
+
 def test_model_omission_preserves_extracted_session_as_ungrouped_candidate() -> None:
     result = service_for_json(payload_for_sessions(["ses-a"])).synthesize(two_session_scan())
 
@@ -308,6 +337,37 @@ def test_high_confidence_cross_repo_merge_requires_two_independent_signals() -> 
         "repo-a",
         "repo-b",
     }
+
+
+def test_cross_repo_merge_requires_each_linkage_signal_in_each_repository() -> None:
+    result = service_for_json(
+        cross_repo_payload(
+            confidence="high",
+            linkage_signals=[
+                {"kind": "branch_or_issue", "value": "IIWI-42"},
+                {"kind": "direct_reference", "value": "same feature rollout"},
+            ],
+        )
+    ).synthesize(
+        scan_with(
+            [
+                resolved("ses-a", "repo-a", branch="IIWI-42"),
+                resolved(
+                    "ses-b",
+                    "repo-b",
+                    activities=[
+                        activity(
+                            "b-user",
+                            ActivityType.USER_MESSAGE,
+                            "Implement same feature rollout for the UI.",
+                        )
+                    ],
+                ),
+            ]
+        )
+    )
+
+    assert len(result.outcomes) == 2
 
 
 def test_linkage_signal_values_must_be_observed_in_local_evidence() -> None:

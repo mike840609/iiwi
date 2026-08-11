@@ -92,6 +92,14 @@ def test_report_type_changes_audience_text_beyond_the_heading() -> None:
     assert manager != engineering
 
 
+def test_report_type_renders_audience_specific_status_view() -> None:
+    manager = render(report_type=ReportType.MANAGER, detail=DetailLevel.BRIEF)
+    engineering = render(report_type=ReportType.ENGINEERING, detail=DetailLevel.BRIEF)
+
+    assert "**Status view:** Decisions, blockers, and next steps" in manager
+    assert "**Status view:** Implementation progress and verification" in engineering
+
+
 def test_empty_impact_is_marked_as_unsupported() -> None:
     output = render(report_type=ReportType.MANAGER, detail=DetailLevel.BRIEF)
 

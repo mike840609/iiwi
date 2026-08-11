@@ -68,6 +68,15 @@ def test_narrative_brief_omits_usage() -> None:
     )
 
 
+def test_narrative_brief_retains_plain_safe_model_summary() -> None:
+    report = narrative_report()
+    report.narrative_text = "Shipped the reviewed change."
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "Shipped the reviewed change." in output
+
+
 def test_narrative_brief_filters_full_depth_sections_from_model_body() -> None:
     report = narrative_report()
     report.narrative_text = """## Outcomes
@@ -92,6 +101,46 @@ gpt-5 123 tokens
     assert "Shipped supported work." in output
     assert "ses-secret" not in output
     assert "src/iiwi/services/report.py" not in output
+    assert "gpt-5 123 tokens" not in output
+
+
+def test_narrative_brief_rejects_adversarial_technical_evidence() -> None:
+    report = narrative_report()
+    report.narrative_text = """## Outcomes
+
+- Shipped the reviewed change.
+- Session: ses-secret
+- File: src/iiwi/services/private.py
+- Branch: feature/internal-rollout
+- Commit: deadbeef
+- Ran uv run deploy --target production
+```sh
+uv run deploy --target production
+```
+
+## Deployment Trace
+
+- Internal deployment evidence.
+
+## In Progress
+
+- Complete the next reviewed change.
+
+## Usage
+
+gpt-5 123 tokens
+"""
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "Shipped the reviewed change." in output
+    assert "Complete the next reviewed change." in output
+    assert "ses-secret" not in output
+    assert "src/iiwi/services/private.py" not in output
+    assert "feature/internal-rollout" not in output
+    assert "deadbeef" not in output
+    assert "uv run deploy" not in output
+    assert "Internal deployment evidence." not in output
     assert "gpt-5 123 tokens" not in output
 
 

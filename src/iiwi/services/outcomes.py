@@ -60,7 +60,10 @@ class _EvidencePayload(BaseModel):
 
 
 _ALLOWED_LINKAGE_KINDS = frozenset({"branch_or_issue", "direct_reference"})
-_COMMIT_PATTERN = re.compile(r"\b[0-9a-f]{7,40}\b", re.IGNORECASE)
+_COMMIT_PATTERN = re.compile(
+    r"\b(?:commit|revision|rev)\b\s*(?:[:=]\s*)?(?P<commit>[0-9a-f]{7,40})\b",
+    re.IGNORECASE,
+)
 
 
 class OutcomeSynthesisService:
@@ -229,13 +232,28 @@ class OutcomeSynthesisService:
     ) -> bool:
         if proposal.confidence is not EvidenceConfidence.HIGH:
             return False
-        kinds = {
-            signal.kind
+
+        def observed_by_repository(value: str) -> bool:
+            return _value_is_observed_in_every_repository(
+                value, selected, local_texts_by_session
+            )
+
+        if any(
+            signal.kind == "shared_work_id"
+            and signal.value.strip()
+            and observed_by_repository(signal.value)
             for signal in proposal.linkage_signals
-            if signal.value.strip()
-            and _value_is_observed(signal.value, selected, local_texts_by_session)
-        }
-        return "shared_work_id" in kinds or kinds >= _ALLOWED_LINKAGE_KINDS
+        ):
+            return True
+        return all(
+            any(
+                signal.kind == kind
+                and signal.value.strip()
+                and observed_by_repository(signal.value)
+                for signal in proposal.linkage_signals
+            )
+            for kind in _ALLOWED_LINKAGE_KINDS
+        )
 
     @staticmethod
     def _outcome(
@@ -395,7 +413,7 @@ def _commit_from_evidence(evidence: SessionEvidence) -> str | None:
     for value in _local_texts(evidence):
         match = _COMMIT_PATTERN.search(value)
         if match:
-            return match.group(0)
+            return match.group("commit")
     return None
 
 
@@ -444,6 +462,20 @@ def _value_is_observed(
     if not normalized:
         return False
     return normalized in _corpus(selected, local_texts_by_session)
+
+
+def _value_is_observed_in_every_repository(
+    value: str,
+    selected: list[SessionEvidence],
+    local_texts_by_session: dict[str, list[str]],
+) -> bool:
+    evidence_by_repository: dict[str, list[SessionEvidence]] = {}
+    for evidence in selected:
+        evidence_by_repository.setdefault(evidence.repository_id, []).append(evidence)
+    return all(
+        _value_is_observed(value, repository_evidence, local_texts_by_session)
+        for repository_evidence in evidence_by_repository.values()
+    )
 
 
 def _supported_title(

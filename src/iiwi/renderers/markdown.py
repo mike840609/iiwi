@@ -14,19 +14,20 @@ _SECTION_LIMITS = {
     DetailLevel.FULL: 20,
     DetailLevel.BRIEF: 5,
 }
-_BRIEF_NARRATIVE_BLOCKED_HEADINGS = (
-    "usage",
-    "related sessions",
-    "sessions",
-    "key files",
-    "files",
-    "directories",
-    "branches",
-    "commands",
-    "verification",
+_BRIEF_NARRATIVE_ALLOWED_HEADINGS = frozenset(
+    {"outcomes", "in progress", "blockers", "next week", "warnings"}
 )
 _FILE_PATH_PATTERN = re.compile(r"\b[\w.-]+/[\w./-]+\.[A-Za-z0-9]{1,12}\b")
 _SESSION_LINE_PATTERN = re.compile(r"\bsession(?: id)?:\s*\S+", re.IGNORECASE)
+_EVIDENCE_LINE_PATTERN = re.compile(
+    r"\b(?:branch|commit|command|file|path|revision)\s*:", re.IGNORECASE
+)
+_SESSION_ID_PATTERN = re.compile(r"\bses-[\w-]+\b", re.IGNORECASE)
+_COMMAND_LINE_PATTERN = re.compile(
+    r"(?:^|\s)(?:[$>#]\s*|bash\b|cargo\b|curl\b|docker\b|git\b|go\b|"
+    r"make\b|npm\b|pnpm\b|pytest\b|python\b|sh\b|uv\b|yarn\b|zsh\b)",
+    re.IGNORECASE,
+)
 
 
 class MarkdownRenderer:
@@ -140,22 +141,34 @@ def render_narrative(
 
 
 def _brief_narrative_body(value: str) -> str:
-    """Remove full-depth narrative sections that a brief report must not leak."""
+    """Keep only reader-facing sections without technical evidence details."""
 
     kept: list[str] = []
-    skipping = False
+    has_headings = any(line.strip().startswith("#") for line in value.splitlines())
+    allowed_section = not has_headings
+    in_code_block = False
     for line in value.splitlines():
         stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
         if stripped.startswith("#"):
             heading = stripped.lstrip("#").strip().casefold()
-            skipping = any(
-                blocked in heading for blocked in _BRIEF_NARRATIVE_BLOCKED_HEADINGS
-            )
-            if skipping:
-                continue
-        if skipping:
+            allowed_section = heading in _BRIEF_NARRATIVE_ALLOWED_HEADINGS
+            if allowed_section:
+                kept.append(line)
             continue
-        if _FILE_PATH_PATTERN.search(line) or _SESSION_LINE_PATTERN.search(line):
+        if not allowed_section:
+            continue
+        if (
+            _FILE_PATH_PATTERN.search(line)
+            or _SESSION_LINE_PATTERN.search(line)
+            or _SESSION_ID_PATTERN.search(line)
+            or _EVIDENCE_LINE_PATTERN.search(line)
+            or _COMMAND_LINE_PATTERN.search(line)
+        ):
             continue
         kept.append(line)
     return "\n".join(kept).strip()

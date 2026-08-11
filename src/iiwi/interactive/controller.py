@@ -128,7 +128,7 @@ class _State:
     review_message: str | None = None
     review_from_main: bool = False
     outcome_review: OutcomeReviewDraft | None = None
-    outcome_review_selection_key: tuple[str, ...] | None = None
+    outcome_review_selection_key: tuple[tuple[str, ...], DetailLevel] | None = None
     outcome_cursor: int = 0
     outcome_message: str | None = None
     expanded_evidence: set[str] | None = None
@@ -877,8 +877,9 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         return
     _sync_selection(state, actions)
     filtered_scan = state.selection.filtered_scan()
-    selection_key = tuple(
-        sorted(item.session.session_id for item in filtered_scan.resolved_sessions)
+    selection_key = (
+        tuple(sorted(item.session.session_id for item in filtered_scan.resolved_sessions)),
+        state.draft.detail,
     )
     if (
         state.outcome_review is not None

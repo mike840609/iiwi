@@ -4,6 +4,7 @@
 **Timezone:** {{ timezone }}
 **Generated:** {{ report.generated_at.strftime("%Y-%m-%d %H:%M") }}
 **Audience:** {{ "Manager update" if report_type.value == "manager" else "Engineering worklog" }}
+**Status view:** {{ "Decisions, blockers, and next steps" if report_type.value == "manager" else "Implementation progress and verification" }}
 
 {% set completed = report.outcomes | selectattr("included") | selectattr("status", "equalto", "completed") | list %}
 {% if completed %}
