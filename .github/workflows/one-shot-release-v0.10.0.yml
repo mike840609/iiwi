@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   prepare-lock:
-    if: github.ref == 'refs/heads/release/v0.10.0'
+    if: "github.ref == 'refs/heads/release/v0.10.0'"
     runs-on: ubuntu-latest
 
     steps:
@@ -41,7 +41,7 @@ jobs:
           git push origin HEAD:release/v0.10.0
 
   release:
-    if: github.ref == 'refs/heads/main' && github.event.head_commit.message == 'chore: prepare v0.10.0'
+    if: "github.ref == 'refs/heads/main' && github.event.head_commit.message == 'chore: prepare v0.10.0'"
     runs-on: ubuntu-latest
     environment: pypi
 
