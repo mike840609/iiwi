@@ -1,0 +1,3075 @@
+# Review package: f38ebee..ab9be51
+
+## Commits
+ab9be51 fix: harden evidence-first quick review
+
+## Files changed
+ .../final-fix-report.md                            | 177 +++++++++++
+ src/iiwi/interactive/cli_actions.py                |   2 +-
+ src/iiwi/interactive/controller.py                 |  39 ++-
+ src/iiwi/interactive/render.py                     |  29 +-
+ src/iiwi/models/outcome.py                         |   8 +-
+ src/iiwi/renderers/markdown.py                     |  41 ++-
+ src/iiwi/security/secure_files.py                  |  15 +-
+ src/iiwi/services/outcomes.py                      | 345 +++++++++++++++++----
+ src/iiwi/summarizers/opencode_run.py               |  78 +++--
+ src/iiwi/summarizers/outcome_prompt.py             |   2 +-
+ src/iiwi/templates/outcomes.md.j2                  |  10 +-
+ tests/integration/test_interactive_cli.py          |  53 +++-
+ tests/unit/interactive/test_cli_actions.py         |  41 +++
+ .../test_collapsed_advanced_settings.py            |   8 +-
+ tests/unit/interactive/test_controller.py          |   8 +-
+ .../interactive/test_interactive_regressions.py    |   1 +
+ .../interactive/test_outcome_review_controller.py  |  90 ++++++
+ .../interactive/test_outcome_review_failures.py    |  54 ++++
+ .../unit/interactive/test_outcome_review_render.py |  71 +++++
+ tests/unit/interactive/test_review_regressions.py  |   2 +
+ .../interactive/test_unified_activity_review.py    |   1 +
+ tests/unit/models/test_outcome.py                  |  34 ++
+ tests/unit/renderers/test_narrative.py             |  27 ++
+ tests/unit/renderers/test_outcome_markdown.py      |  17 +-
+ tests/unit/security/test_secure_files.py           |  22 +-
+ tests/unit/services/test_outcomes.py               | 200 +++++++++++-
+ tests/unit/summarizers/test_opencode_run.py        |  47 +++
+ tests/unit/summarizers/test_outcome_prompt.py      |   7 +
+ 28 files changed, 1301 insertions(+), 128 deletions(-)
+
+## Diff
+diff --git a/.superpowers/sdd/2026-08-10-evidence-first-quick-review/final-fix-report.md b/.superpowers/sdd/2026-08-10-evidence-first-quick-review/final-fix-report.md
+new file mode 100644
+index 0000000..b41f16d
+--- /dev/null
++++ b/.superpowers/sdd/2026-08-10-evidence-first-quick-review/final-fix-report.md
+@@ -0,0 +1,177 @@
++# Final fix wave report
++
++Branch: `feat/evidence-first-quick-review`
++Base reviewed commit: `f38ebee`
++Final fix commit: pending at report-write time
++Date: 2026-08-11
++
++## Outcome
++
++All Important final-review findings were addressed in one coherent fix wave. The fixes keep the approved design intact: Quick Review still synthesizes an editable outcome draft from selected sessions, but model output is now treated as a proposal and all rendered evidence, supported Impact, completion status, source refs, split children, and merge authorization are reconstructed from local extracted evidence.
++
++No Important finding was blocked by or contradicted the approved spec.
++
++## TDD evidence
++
++### Initial RED
++
++Command:
++
++```bash
++UV_CACHE_DIR=/tmp/iiwi-uv-cache uv run pytest tests/unit/services/test_outcomes.py tests/unit/models/test_outcome.py tests/unit/interactive/test_outcome_review_controller.py tests/unit/interactive/test_outcome_review_failures.py tests/unit/interactive/test_cli_actions.py tests/unit/interactive/test_outcome_review_render.py tests/unit/renderers/test_outcome_markdown.py tests/unit/renderers/test_narrative.py tests/unit/summarizers/test_outcome_prompt.py tests/unit/summarizers/test_opencode_run.py tests/unit/security/test_secure_files.py -q
++```
++
++Result before implementation: exited non-zero with 24 intended focused failures after one test-fixture correction. The failures covered unsupported model claims, local file refs, omitted extracted sessions, duplicate ids, unobserved linkage values, child evidence/Impact leakage, setup bypass, unchanged re-entry, fallback notice loss, Quick Review period/Impact continuation, Manager/Engineering parity, Brief narrative leakage, temp cleanup, temp I/O translation, and atomic no-overwrite conflicts.
++
++Late minor RED:
++
++```bash
++UV_CACHE_DIR=/tmp/iiwi-uv-cache uv run pytest tests/unit/services/test_outcomes.py::test_ungrouped_failed_session_references_are_redacted -q
++```
++
++Result before fix:
++
++```text
++1 failed
++AssertionError: assert 'secret-session' not in 'token=secret-session'
++```
++
++### Final GREEN / verification
++
++Focused suite:
++
++```bash
++UV_CACHE_DIR=/tmp/iiwi-uv-cache uv run pytest tests/unit/services/test_outcomes.py tests/unit/models/test_outcome.py tests/unit/interactive/test_outcome_review_controller.py tests/unit/interactive/test_outcome_review_failures.py tests/unit/interactive/test_cli_actions.py tests/unit/interactive/test_outcome_review_render.py tests/unit/renderers/test_outcome_markdown.py tests/unit/renderers/test_narrative.py tests/unit/summarizers/test_outcome_prompt.py tests/unit/summarizers/test_opencode_run.py tests/unit/security/test_secure_files.py -q
++```
++
++Result:
++
++```text
++112 passed in 0.49s
++```
++
++Integration report/CLI:
++
++```bash
++UV_CACHE_DIR=/tmp/iiwi-uv-cache uv run pytest tests/integration/test_report_service.py tests/integration/test_cli.py -q
++```
++
++Result:
++
++```text
++82 passed, 2 skipped in 1.02s
++```
++
++Interactive CLI integration:
++
++```bash
++UV_CACHE_DIR=/tmp/iiwi-uv-cache uv run pytest tests/integration/test_interactive_cli.py -q
++```
++
++Result:
++
++```text
++9 passed in 0.31s
++```
++
++Documentation/config:
++
++```bash
++UV_CACHE_DIR=/tmp/iiwi-uv-cache uv run pytest tests/unit/test_documentation.py tests/unit/test_interactive_documentation.py tests/unit/test_config.py -q
++```
++
++Result:
++
++```text
++47 passed in 0.26s
++```
++
++Ruff:
++
++```bash
++UV_CACHE_DIR=/tmp/iiwi-uv-cache uv run ruff check .
++```
++
++Result:
++
++```text
++All checks passed!
++```
++
++Pyright:
++
++```bash
++UV_CACHE_DIR=/tmp/iiwi-uv-cache uv run pyright
++```
++
++Result:
++
++```text
++0 errors, 0 warnings, 0 informations
++```
++
++Diff whitespace:
++
++```bash
++git diff --check
++```
++
++Result: no output, exit 0.
++
++Full pytest:
++
++```bash
++UV_CACHE_DIR=/tmp/iiwi-uv-cache uv run pytest -q
++```
++
++Result:
++
++```text
++5 failed, 772 passed, 4 skipped in 3.47s
++```
++
++The five failures are the exact known baseline failures documented at `f38ebee`:
++
++- `tests/unit/interactive/test_render.py::test_session_review_gives_the_three_repository_glyphs_three_styles`
++- `tests/unit/interactive/test_render.py::test_session_review_colors_selection_markers_by_state`
++- `tests/unit/interactive/test_render.py::test_session_browser_separates_the_cursor_from_the_expansion_glyph`
++- `tests/unit/interactive/test_render.py::test_report_setup_gives_the_generate_action_its_own_colour`
++- `tests/unit/test_logging.py::test_settings_table_shows_values_sources_and_defaults`
++
++## Per-finding mapping
++
++| Finding | Fix summary | Main tests |
++| --- | --- | --- |
++| 1. Evidence trust boundary accepts ungrounded claims and merge authorization | `OutcomeSynthesisService` now extracts and redacts local `SessionEvidence` first, sends only extracted evidence to the runner, and reconstructs output from local evidence. Unsupported model Impact remains blank. Completed status requires high-confidence completed evidence. Evidence refs are rebuilt locally, including files and commit-looking values. Cross-repo merges require observed signal values, not just model JSON. | `test_unsupported_model_claims_are_not_copied_from_activity_free_session`, `test_evidence_refs_include_locally_extracted_file_references`, `test_linkage_signal_values_must_be_observed_in_local_evidence`, `test_high_confidence_cross_repo_merge_requires_two_independent_signals` |
++| 2. Candidate IDs and split recovery are unreliable | Synthesized ids now include a stable discriminator, so duplicate proposals with the same title/session set remain uniquely targetable. Source groups are built for supported cross-repo merges and same-repo multi-session merges. Split children get their own refs, child-supported Impact, and child-supported status instead of copying unsupported parent claims. | `test_duplicate_model_proposals_keep_stable_unique_candidate_ids`, `test_real_cross_repo_merge_splits_into_named_repository_outcomes`, `test_split_children_do_not_inherit_unsupported_parent_impact` |
++| 3. Setup Generate/Preview bypasses Quick Review and re-entry discards edits | Setup `g`, Enter, and preview routing now stop at `OUTCOME_REVIEW`; the user must explicitly preview or generate from Quick Review. Controller stores a selected-session key and reuses the in-memory review draft when the selection is unchanged. | `test_setup_generate_enters_quick_review_before_output`, `test_setup_preview_enters_quick_review_before_output`, `test_reentering_quick_review_with_unchanged_selection_preserves_existing_draft`, updated legacy flow tests |
++| 4. More candidates cannot visibly become/reorder among primary outcomes | Including a `MORE` outcome now promotes it to `PRIMARY`, so visible Quick Review order and generated order stay aligned. | `test_including_more_candidate_promotes_it_to_primary_review_order`, `test_twenty_line_quick_review_expands_more_evidence_and_recovers_preview` |
++| 5. Complete failure and fallback recovery are incomplete | All extraction failure raises `OutcomeSynthesisError` and reaches controller recovery instead of producing an Ungrouped-only success. Temp/file I/O errors from synthesis are translated for recovery. The session-fallback notice now survives an output conflict and is cleared only after a successful fallback write. | `test_all_extraction_failures_raise_complete_synthesis_error`, `test_synthesize_translates_temp_io_failure_for_controller_recovery`, `test_session_fallback_notice_survives_output_conflict_overwrite` |
++| 6. Report type and Detail parity are incomplete | Outcome Markdown now has deterministic Manager vs Engineering differences beyond the heading via audience text, and existing report-type defaults continue to select Brief for Manager and Full for Engineering unless the user overrides Detail. Brief narrative rendering now filters full-depth sections, session ids, file paths, command/evidence-oriented sections, and Usage even if the model body contains them. The synthesis prompt is audience-neutral. | `test_report_type_changes_audience_text_beyond_the_heading`, `test_narrative_brief_filters_full_depth_sections_from_model_body`, `test_outcome_prompt_is_audience_neutral`, existing detail/default tests |
++| 7. Quick Review omits required reporting period | `render_outcome_review` accepts the period and the controller passes the draft period into the header. | `test_outcome_review_header_includes_the_reporting_period` |
++| 8. Sensitive synthesis data persists indefinitely | `OpenCodeRunner.run()` now owns a secure temporary directory when no caller workdir is supplied and deletes it on both success and failure. Caller-supplied workdirs remain caller-owned. Tempfile setup/read/write `OSError`s are converted to `OpenCodeRunError`. | `test_run_removes_owned_tempdir_on_success_and_failure`, `test_run_translates_tempfile_io_failures` |
++| 9. Reviewed no-overwrite guarantee is race-prone | `atomic_secure_write(force=False)` now writes to a temp file and finalizes with `os.link(temp, destination)`, so a destination created after the precheck raises `ReportAlreadyExistsError` instead of being overwritten. `force=True` still uses `os.replace`. | `test_atomic_write_rejects_file_created_after_initial_check`, existing write/conflict tests |
++
++## Minor findings addressed
++
++- Empty Impact is now rendered explicitly as `Unsupported by extracted evidence` in Quick Review and reviewed Markdown, while the model field remains blank when unsupported.
++- Truncated focused Impact/evidence lines now end with an ellipsis continuation marker.
++- Failed-session ungrouped titles and fallback evidence refs are redacted before rendering.
++- `git diff --check` is clean.
++
++Live terminal resize coverage was not expanded in this final wave because the existing viewport tests already cover width/height combinations and the final review marked live SIGWINCH as a baseline unverified environment item, not an Important blocker.
++
++## Design decisions
++
++- The model may choose grouping and propose wording, but local extraction owns authorization. Title text is accepted only when its significant words appear in the local extracted corpus; otherwise the fallback title is derived from session/repository facts. Impact is stricter: it must appear as an exact normalized local text substring or it remains blank.
++- Completion status is not accepted from the model alone. A proposed completed outcome becomes completed only when at least one selected session has a high-confidence completed evidence item, currently from observed successful verification evidence.
++- Linkage signal kinds and values are both checked. Unsupported kinds, blank values, and values not present in the local corpus cannot authorize a cross-repository merge.
++- Omitted extracted sessions are not treated as errors because a model can legitimately rank only the strongest outcomes, but they are preserved as excluded Ungrouped candidates so the reviewer can recover them.
++- Source-group split children intentionally preserve only child evidence refs plus child-supported Impact/status. Unsupported parent Impact is not copied to children.
++- Setup actions intentionally changed from one-step output to two-step review: setup `g`/preview enters Quick Review, then Quick Review `g`/`p` writes/previews.
++- The no-overwrite race fix uses POSIX hard-link finalization for `force=False`, keeping the existing replace behavior only for `force=True`.
++
++## Residual concerns
++
++- The only failing tests are the exact five known baseline failures from `f38ebee`.
++- Physical TTY behavior, live SIGWINCH resize, Windows/non-root chmod behavior, real model quality, and a real concurrent writer process were not newly verified in this wave; they remain the same baseline environmental gaps called out in the final review.
+diff --git a/src/iiwi/interactive/cli_actions.py b/src/iiwi/interactive/cli_actions.py
+index b954197..39d2be9 100644
+--- a/src/iiwi/interactive/cli_actions.py
++++ b/src/iiwi/interactive/cli_actions.py
+@@ -179,21 +179,21 @@ def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
+ 
+     settings = cli._load_settings()
+     cli_settings = settings.harnesses.opencode.cli
+     runner = OpenCodeRunner(
+         runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
+         executable=cli_settings.executable,
+         model=cli_settings.model,
+     )
+     try:
+         result = OutcomeSynthesisService(runner).synthesize(scan)
+-    except OpenCodeRunError as exc:
++    except (OpenCodeRunError, OSError) as exc:
+         raise OutcomeSynthesisError(str(exc)) from exc
+     arguments: dict[str, object] = {
+         "outcomes": result.outcomes,
+         "report_type": draft.report_type,
+     }
+     if draft.detail_overridden:
+         arguments["detail"] = draft.detail
+     return OutcomeReviewDraft.model_validate(arguments)
+ 
+ 
+diff --git a/src/iiwi/interactive/controller.py b/src/iiwi/interactive/controller.py
+index 55abb57..ae75de9 100644
+--- a/src/iiwi/interactive/controller.py
++++ b/src/iiwi/interactive/controller.py
+@@ -121,20 +121,21 @@ class _State:
+     selection: SelectionState | None = None
+     result: InteractiveReportResult | None = None
+     expanded_repositories: set[str] | None = None
+     preview_session: AgentSession | None = None
+     preview_offset: int = 0
+     preview_return_screen: Screen | None = None
+     error: _ErrorState | None = None
+     review_message: str | None = None
+     review_from_main: bool = False
+     outcome_review: OutcomeReviewDraft | None = None
++    outcome_review_selection_key: tuple[str, ...] | None = None
+     outcome_cursor: int = 0
+     outcome_message: str | None = None
+     expanded_evidence: set[str] | None = None
+     search_query: str = ""
+     searching: bool = False
+     help_return_screen: Screen | None = None
+ 
+     def expansions(self) -> set[str]:
+         if self.expanded_repositories is None:
+             self.expanded_repositories = set()
+@@ -219,20 +220,21 @@ def _paint(console: Console, frame: str, previous: list[str] | None) -> list[str
+     return lines
+ 
+ 
+ def _reset_search(state: _State) -> None:
+     state.search_query = ""
+     state.searching = False
+ 
+ 
+ def _clear_outcome_review(state: _State) -> None:
+     state.outcome_review = None
++    state.outcome_review_selection_key = None
+     state.outcome_cursor = 0
+     state.outcome_message = None
+     state.expanded_evidence = set()
+ 
+ 
+ def _new_report(state: _State, actions: InteractiveActions) -> None:
+     state.draft = actions.new_draft()
+     state.setup_cursor = 0
+     state.setup_advanced = False
+     state.selection = None
+@@ -686,30 +688,27 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
+     state.error = None
+     state.screen = Screen.REPORT_RESULT
+ 
+ 
+ def _generate_from_setup(
+     state: _State,
+     actions: InteractiveActions,
+     *,
+     preview: bool,
+ ) -> None:
+-    """Keep setup actions one-step while routing them through reviewed output."""
++    """Route setup actions to Quick Review before previewing or writing output."""
++    del preview
+     assert state.draft is not None
+     state.review_from_main = False
+     _review(state, actions)
+     if state.screen is Screen.SESSION_REVIEW:
+         _begin_outcome_review(state, actions)
+-    if state.screen is Screen.OUTCOME_REVIEW:
+-        _generate_outcome_review(state, actions, preview=preview)
+-    if preview and state.screen is Screen.REPORT_PREVIEW:
+-        state.preview_return_screen = Screen.REPORT_SETUP
+ 
+ 
+ def _rescan_review(state: _State, actions: InteractiveActions) -> None:
+     assert state.draft is not None
+     assert state.selection is not None
+     selected = set(state.selection.selected_session_ids)
+     state.draft.scan = None
+     _clear_outcome_review(state)
+     _review(state, actions)
+     if state.screen is not Screen.SESSION_REVIEW or state.selection is None:
+@@ -871,31 +870,47 @@ def _outcome_review_targets(state: _State) -> list[_OutcomeReviewTarget]:
+ 
+ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
+     assert state.draft is not None
+     assert state.selection is not None
+     if state.selection.selected_count == 0:
+         state.review_message = "Select at least one session before generating."
+         state.screen = Screen.SESSION_REVIEW
+         return
+     _sync_selection(state, actions)
+     filtered_scan = state.selection.filtered_scan()
++    selection_key = tuple(
++        sorted(item.session.session_id for item in filtered_scan.resolved_sessions)
++    )
++    if (
++        state.outcome_review is not None
++        and state.outcome_review_selection_key == selection_key
++    ):
++        state.outcome_cursor = min(
++            state.outcome_cursor,
++            max(0, len(_outcome_review_targets(state)) - 1),
++        )
++        state.review_message = None
++        state.error = None
++        state.screen = Screen.OUTCOME_REVIEW
++        return
+     try:
+         state.outcome_review = actions.synthesize(state.draft, filtered_scan)
+     except OutcomeSynthesisError as exc:
+         state.error = _ErrorState(
+             kind="outcome-synthesis",
+             title="Could not synthesize outcomes",
+             detail=str(exc),
+             retry="outcome-synthesis",
+         )
+         state.screen = Screen.RECOVERABLE_ERROR
+         return
++    state.outcome_review_selection_key = selection_key
+     state.outcome_cursor = 0
+     state.outcome_message = None
+     state.expanded_evidence = set()
+     state.review_message = None
+     state.error = None
+     state.screen = Screen.OUTCOME_REVIEW
+ 
+ 
+ def _generate_outcome_review(
+     state: _State,
+@@ -1185,35 +1200,40 @@ def _error_key(
+         return
+     if choice == "Retry":
+         if error.retry == "outcome-synthesis":
+             _begin_outcome_review(state, actions)
+         elif error.retry == "outcome-preview":
+             _generate_outcome_review(state, actions, preview=True)
+         return
+     if choice == "Use session-based report":
+         assert state.draft is not None
+         state.draft.generation_notice = _SESSION_FALLBACK_NOTICE
+-        try:
+-            _generate(state, actions, force=False)
+-        finally:
++        _generate(state, actions, force=False)
++        if state.screen is not Screen.RECOVERABLE_ERROR:
+             state.draft.generation_notice = None
+         return
+     if choice == "Overwrite once":
+         if error.retry == "outcome-write":
+             _generate_outcome_review(
+                 state,
+                 actions,
+                 preview=False,
+                 force=True,
+             )
+         else:
+             _generate(state, actions, force=True)
++            if (
++                state.draft is not None
++                and state.draft.generation_notice is not None
++                and state.screen is not Screen.RECOVERABLE_ERROR
++            ):
++                state.draft.generation_notice = None
+         return
+     assert state.draft is not None
+     if choice == "Change harness":
+         state.draft.set_harness(actions.choose_harness(state.draft.harness))
+         if state.draft.harness != "opencode":
+             state.draft.set_sanitize(False)
+     else:
+         state.draft.set_period(*actions.choose_period(state.draft.period_label))
+     state.selection = None
+     if error.kind.startswith("browse"):
+@@ -1329,31 +1349,33 @@ def _help_key(state: _State, key: KeyPress) -> None:
+         return
+     if key.key in {Key.ESCAPE, Key.ENTER} or _char(key, "b") or _exact_char(key, "?"):
+         state.screen = state.help_return_screen or Screen.MAIN
+         state.help_return_screen = None
+ 
+ 
+ def _render_outcome_review_hook(
+     console: Console,
+     review: OutcomeReviewDraft,
+     *,
++    period: DateRange | None,
+     cursor: int,
+     expanded_evidence: set[str],
+     message: str | None,
+ ) -> None:
+     """Render Task 4's state through the Rich single-frame viewport."""
+ 
+     render_outcome_review(
+         console,
+         review,
+         cursor=cursor,
+         expanded_evidence=expanded_evidence,
++        period=period,
+         message=message,
+     )
+ 
+ 
+ def _render_screen(state: _State, console: Console) -> None:
+     if state.screen is Screen.MAIN:
+         render_main_menu(console, selected=state.main_cursor)
+     elif state.screen is Screen.REPORT_SETUP:
+         assert state.draft is not None
+         render_report_setup(
+@@ -1381,20 +1403,21 @@ def _render_screen(state: _State, console: Console) -> None:
+             cursor=state.review_cursor,
+             message=state.review_message,
+             query=state.search_query,
+             searching=state.searching,
+         )
+     elif state.screen is Screen.OUTCOME_REVIEW:
+         assert state.outcome_review is not None
+         _render_outcome_review_hook(
+             console,
+             state.outcome_review,
++            period=state.draft.period if state.draft is not None else None,
+             cursor=state.outcome_cursor,
+             expanded_evidence=state.evidence_expansions(),
+             message=state.outcome_message,
+         )
+     elif state.screen is Screen.SESSION_PREVIEW:
+         assert state.preview_session is not None
+         render_session_preview(
+             console,
+             state.preview_session,
+             offset=state.preview_offset,
+diff --git a/src/iiwi/interactive/render.py b/src/iiwi/interactive/render.py
+index ea30062..a6b32c3 100644
+--- a/src/iiwi/interactive/render.py
++++ b/src/iiwi/interactive/render.py
+@@ -348,21 +348,24 @@ def _labelled_wrapped_lines(
+     available = max(1, console.size.width - cell_len(prefix))
+     wrapped = list(
+         Text(value, style=style).wrap(
+             console,
+             available,
+             overflow="fold",
+             no_wrap=False,
+         )
+     ) or [Text("")]
+     if limit is not None:
++        truncated = len(wrapped) > limit
+         wrapped = wrapped[:limit]
++        if truncated and wrapped:
++            wrapped[-1].append("…", style=style)
+     lines: list[Text] = []
+     for index, value_line in enumerate(wrapped):
+         lead = prefix if index == 0 else " " * cell_len(prefix)
+         lines.append(
+             _truncated_text(Text.assemble((lead, "dim"), value_line), console.size.width)
+         )
+     return lines
+ 
+ 
+ def _outcome_summary(outcome: Outcome, *, focused: bool, width: int) -> Text:
+@@ -420,30 +423,30 @@ def _outcome_block(
+     lines.extend(
+         _labelled_wrapped_lines(
+             console,
+             indent="    ",
+             label="Status",
+             value=status,
+             limit=1,
+         )
+     )
+     impact = outcome.impact.strip()
+-    if impact:
+-        lines.extend(
+-            _labelled_wrapped_lines(
+-                console,
+-                indent="    ",
+-                label="Impact",
+-                value=impact,
+-                limit=impact_line_limit,
+-            )
++    lines.extend(
++        _labelled_wrapped_lines(
++            console,
++            indent="    ",
++            label="Impact",
++            value=impact or "Unsupported by extracted evidence",
++            style="" if impact else "dim",
++            limit=impact_line_limit,
+         )
++    )
+     reference_count = len(outcome.evidence_refs)
+     evidence = f"{reference_count} reference{'s' if reference_count != 1 else ''}"
+     lines.extend(
+         _labelled_wrapped_lines(
+             console,
+             indent="    ",
+             label="Evidence",
+             value=evidence,
+             limit=1,
+         )
+@@ -569,20 +572,21 @@ def _outcome_block_window(
+         return best
+     return cursor, cursor + 1
+ 
+ 
+ def render_outcome_review(
+     console: Console,
+     draft: OutcomeReviewDraft,
+     *,
+     cursor: int,
+     expanded_evidence: set[str],
++    period: DateRange | None = None,
+     message: str | None = None,
+ ) -> None:
+     """Render Quick Review inside one terminal frame using display-line budgets."""
+ 
+     rows = _visible_outcome_review_rows(draft, expanded_evidence)
+     cursor = min(max(0, cursor), max(0, len(rows) - 1))
+     hints = _hint_lines(_OUTCOME_REVIEW_HINTS, console.size.width)
+     terminal_budget = max(0, console.size.height - 1)
+     fixed_lines = 2 + 2 + len(hints) + int(message is not None)
+     body_capacity = max(1, terminal_budget - fixed_lines)
+@@ -592,24 +596,29 @@ def render_outcome_review(
+         console,
+         draft,
+         rows,
+         cursor=cursor,
+         expanded_evidence=expanded_evidence,
+         focused_capacity=focused_capacity,
+     )
+     start, end = _outcome_block_window(blocks, cursor=cursor, capacity=body_capacity)
+ 
+     selected = sum(outcome.included for outcome in draft.outcomes)
++    period_suffix = f"  {_period_label(period)}" if period is not None else ""
+     _print_viewport_text(
+         console,
+         _truncated_text(
+-            Text.assemble(("Quick Review", "bold"), (f"  {selected} selected", "dim")),
++            Text.assemble(
++                ("Quick Review", "bold"),
++                (period_suffix, "dim"),
++                (f"  {selected} selected", "dim"),
++            ),
+             console.size.width,
+         ),
+     )
+     _print_viewport_text(
+         console,
+         _truncated_text(Text(_RULE_CHAR * console.size.width, style="dim"), console.size.width),
+     )
+     console.print()
+     if message is not None:
+         _print_viewport_text(
+diff --git a/src/iiwi/models/outcome.py b/src/iiwi/models/outcome.py
+index 39aa5b5..91a6af0 100644
+--- a/src/iiwi/models/outcome.py
++++ b/src/iiwi/models/outcome.py
+@@ -29,20 +29,22 @@ class OutcomeBucket(StrEnum):
+ class EvidenceRef(BaseModel):
+     session_id: str
+     repository_id: str
+     commit: str | None = None
+     file: str | None = None
+ 
+ 
+ class OutcomeSourceGroup(BaseModel):
+     id: str
+     title: str = ""
++    impact: str = ""
++    status: OutcomeStatus | None = None
+     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+ 
+ 
+ class Outcome(BaseModel):
+     id: str
+     title: str
+     status: OutcomeStatus
+     impact: str = ""
+     included: bool = True
+     rank: int
+@@ -91,20 +93,22 @@ class OutcomeReviewDraft(BaseModel):
+     def _normalize_ranks(self) -> None:
+         for rank, outcome in enumerate(self.ordered()):
+             outcome.rank = rank
+ 
+     def _outcome(self, identifier: str) -> Outcome:
+         return next(outcome for outcome in self.outcomes if outcome.id == identifier)
+ 
+     def toggle_included(self, identifier: str) -> None:
+         outcome = self._outcome(identifier)
+         outcome.included = not outcome.included
++        if outcome.included and outcome.bucket is OutcomeBucket.MORE:
++            outcome.bucket = OutcomeBucket.PRIMARY
+ 
+     def move(self, identifier: str, delta: int) -> None:
+         outcomes = self.ordered()
+         index = next(index for index, outcome in enumerate(outcomes) if outcome.id == identifier)
+         target = max(0, min(index + delta, len(outcomes) - 1))
+         outcome = outcomes.pop(index)
+         outcomes.insert(target, outcome)
+         self.outcomes = outcomes
+         for rank, outcome in enumerate(self.outcomes):
+             outcome.rank = rank
+@@ -123,22 +127,22 @@ class OutcomeReviewDraft(BaseModel):
+         outcome.impact = impact
+ 
+     def split(self, identifier: str) -> None:
+         parent = self._outcome(identifier)
+         if not parent.source_groups:
+             raise ValueError("cannot split outcome without source groups")
+         replacement = [
+             Outcome(
+                 id=f"{parent.id}:{group.id}",
+                 title=group.title,
+-                status=parent.status,
+-                impact=parent.impact,
++                status=group.status or parent.status,
++                impact=group.impact,
+                 included=parent.included,
+                 rank=parent.rank + offset,
+                 origin=parent.origin,
+                 bucket=parent.bucket,
+                 evidence_refs=group.evidence_refs,
+             )
+             for offset, group in enumerate(parent.source_groups)
+         ]
+         index = self.outcomes.index(parent)
+         self.outcomes[index : index + 1] = replacement
+diff --git a/src/iiwi/renderers/markdown.py b/src/iiwi/renderers/markdown.py
+index e7f1f9a..930b4d2 100644
+--- a/src/iiwi/renderers/markdown.py
++++ b/src/iiwi/renderers/markdown.py
+@@ -1,25 +1,39 @@
+ """Markdown rendering for worklog reports."""
+ 
++import re
+ from pathlib import Path
+ 
+ from jinja2 import Environment, FileSystemLoader, StrictUndefined
+ 
+ from iiwi.models.report import WorklogReport
+ from iiwi.models.report_options import DetailLevel, ReportType
+ 
+ # The renderer is the report's only truncation point. Both summarizers now emit
+ # complete lists, so the omitted-item count is always the real remainder.
+ _SECTION_LIMITS = {
+     DetailLevel.FULL: 20,
+     DetailLevel.BRIEF: 5,
+ }
++_BRIEF_NARRATIVE_BLOCKED_HEADINGS = (
++    "usage",
++    "related sessions",
++    "sessions",
++    "key files",
++    "files",
++    "directories",
++    "branches",
++    "commands",
++    "verification",
++)
++_FILE_PATH_PATTERN = re.compile(r"\b[\w.-]+/[\w./-]+\.[A-Za-z0-9]{1,12}\b")
++_SESSION_LINE_PATTERN = re.compile(r"\bsession(?: id)?:\s*\S+", re.IGNORECASE)
+ 
+ 
+ class MarkdownRenderer:
+     """Render a WorklogReport using the bundled safe summary template."""
+ 
+     def __init__(self) -> None:
+         template_directory = Path(__file__).parents[1] / "templates"
+         environment = Environment(
+             loader=FileSystemLoader(template_directory),
+             undefined=StrictUndefined,
+@@ -87,36 +101,61 @@ def render_narrative(
+     detail: DetailLevel = DetailLevel.FULL,
+ ) -> str:
+     """Wrap a narrative body under the standard worklog header.
+ 
+     The narrative prose from `opencode run` is rendered verbatim below the
+     shared header so a narrative report and a structured report read as the same
+     artifact; usage and warnings render in the same positions as the template.
+     """
+ 
+     detail = DetailLevel(detail)
++    narrative_text = report.narrative_text or ""
++    if detail is DetailLevel.BRIEF:
++        narrative_text = _brief_narrative_body(narrative_text)
+     lines = [
+         "# Engineering Worklog",
+         "",
+         "**Period:** "
+         f"{report.period.since.strftime('%Y-%m-%d %H:%M')} – "
+         f"{report.period.until.strftime('%Y-%m-%d %H:%M')}",
+         f"**Timezone:** {timezone}",
+         f"**Generated:** {report.generated_at.strftime('%Y-%m-%d %H:%M')}",
+         "",
+-        report.narrative_text or "",
++        narrative_text,
+     ]
+     if detail is DetailLevel.FULL and report.usage_text:
+         lines += ["", "## Usage"]
+         if report.usage_days:
+             lines += [
+                 "",
+                 "Window: the last "
+                 f"{report.usage_days} days ending at generation time. It contains "
+                 "the report period but does not match it exactly, because OpenCode "
+                 "reports usage only for a window ending now.",
+             ]
+         lines += ["", "```text", report.usage_text, "```"]
+     if report.warnings:
+         lines += ["", "## Warnings"]
+         lines += [f"- {warning}" for warning in report.warnings]
+     return "\n".join(lines).rstrip() + "\n"
++
++
++def _brief_narrative_body(value: str) -> str:
++    """Remove full-depth narrative sections that a brief report must not leak."""
++
++    kept: list[str] = []
++    skipping = False
++    for line in value.splitlines():
++        stripped = line.strip()
++        if stripped.startswith("#"):
++            heading = stripped.lstrip("#").strip().casefold()
++            skipping = any(
++                blocked in heading for blocked in _BRIEF_NARRATIVE_BLOCKED_HEADINGS
++            )
++            if skipping:
++                continue
++        if skipping:
++            continue
++        if _FILE_PATH_PATTERN.search(line) or _SESSION_LINE_PATTERN.search(line):
++            continue
++        kept.append(line)
++    return "\n".join(kept).strip()
+diff --git a/src/iiwi/security/secure_files.py b/src/iiwi/security/secure_files.py
+index f1f7cf1..ad3a346 100644
+--- a/src/iiwi/security/secure_files.py
++++ b/src/iiwi/security/secure_files.py
+@@ -2,62 +2,71 @@
+ 
+ from __future__ import annotations
+ 
+ import os
+ import shutil
+ import tempfile
+ from collections.abc import Iterator
+ from contextlib import contextmanager
+ from pathlib import Path
+ 
+-from iiwi.errors import ReportOutputError
++from iiwi.errors import ReportAlreadyExistsError, ReportOutputError
+ 
+ 
+ @contextmanager
+ def secure_temporary_directory() -> Iterator[Path]:
+     """Create a mode-0700 temporary directory and remove it on exit."""
+ 
+     directory = Path(tempfile.mkdtemp(prefix="iiwi-"))
+     try:
+         if os.name == "posix":
+             directory.chmod(0o700)
+         yield directory
+     finally:
+         shutil.rmtree(directory, ignore_errors=True)
+ 
+ 
+ def atomic_secure_write(path: Path, content: str, *, force: bool = False) -> None:
+     """Atomically write UTF-8 text, refusing overwrite unless explicitly allowed."""
+ 
+     destination = path.expanduser()
+     if destination.exists() and not force:
+-        raise ReportOutputError(f"report already exists: {destination}")
++        raise ReportAlreadyExistsError(f"report already exists: {destination}")
+     destination.parent.mkdir(parents=True, exist_ok=True)
+ 
+     descriptor: int | None = None
+     temporary_path: Path | None = None
+     try:
+         descriptor, temporary_name = tempfile.mkstemp(
+             prefix=f".{destination.name}.",
+             suffix=".tmp",
+             dir=destination.parent,
+             text=True,
+         )
+         temporary_path = Path(temporary_name)
+         if os.name == "posix":
+             os.fchmod(descriptor, 0o600)
+         with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+             descriptor = None
+             handle.write(content)
+             handle.flush()
+             os.fsync(handle.fileno())
+-        os.replace(temporary_path, destination)
++        if force:
++            os.replace(temporary_path, destination)
++        else:
++            try:
++                os.link(temporary_path, destination)
++            except FileExistsError as exc:
++                raise ReportAlreadyExistsError(
++                    f"report already exists: {destination}"
++                ) from exc
++            temporary_path.unlink()
+         temporary_path = None
+         if os.name == "posix":
+             destination.chmod(0o600)
+     except OSError as exc:
+         raise ReportOutputError(f"failed to write report: {destination}") from exc
+     finally:
+         if descriptor is not None:
+             os.close(descriptor)
+         if temporary_path is not None:
+             temporary_path.unlink(missing_ok=True)
+diff --git a/src/iiwi/services/outcomes.py b/src/iiwi/services/outcomes.py
+index e7bf605..3dca0c0 100644
+--- a/src/iiwi/services/outcomes.py
++++ b/src/iiwi/services/outcomes.py
+@@ -1,31 +1,32 @@
+ """Deterministic boundary between model proposals and extracted evidence."""
+ 
+ from __future__ import annotations
+ 
++import re
+ from hashlib import sha256
+ from typing import Literal
+ 
+ from pydantic import BaseModel, ConfigDict, Field, ValidationError
+ 
+ from iiwi.errors import OutcomeSynthesisError
+ from iiwi.extraction.pipeline import extract_evidence
+ from iiwi.models import (
+     EvidenceRef,
+     Outcome,
+     OutcomeBucket,
+     OutcomeSourceGroup,
+     OutcomeStatus,
+     OutcomeSynthesisResult,
+ )
+-from iiwi.models.evidence import EvidenceConfidence, SessionEvidence
+-from iiwi.security.redactor import redact_value
++from iiwi.models.evidence import EvidenceConfidence, EvidenceStatus, SessionEvidence
++from iiwi.security.redactor import redact_text, redact_value
+ from iiwi.services.scan import ScanResult
+ from iiwi.summarizers.opencode_run import OpenCodeRunner
+ from iiwi.summarizers.outcome_prompt import build_outcome_prompt
+ 
+ 
+ class _LinkSignal(BaseModel):
+     model_config = ConfigDict(extra="forbid")
+ 
+     kind: Literal[
+         "shared_work_id",
+@@ -52,66 +53,98 @@ class _SynthesisPayload(BaseModel):
+     model_config = ConfigDict(extra="forbid")
+ 
+     outcomes: list[_ProposedOutcome]
+ 
+ 
+ class _EvidencePayload(BaseModel):
+     sessions: list[SessionEvidence]
+ 
+ 
+ _ALLOWED_LINKAGE_KINDS = frozenset({"branch_or_issue", "direct_reference"})
++_COMMIT_PATTERN = re.compile(r"\b[0-9a-f]{7,40}\b", re.IGNORECASE)
+ 
+ 
+ class OutcomeSynthesisService:
+     """Turn model-selected session ids into traceable, deterministic outcomes."""
+ 
+     def __init__(self, runner: OpenCodeRunner) -> None:
+         self._runner = runner
+ 
+     def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
+         evidence_by_session: dict[str, SessionEvidence] = {}
++        local_texts_by_session: dict[str, list[str]] = {}
+         failed_sessions = []
+         for resolved in scan.resolved_sessions:
+             try:
+                 extracted = extract_evidence(resolved)
+                 redacted = redact_value(extracted.model_dump(mode="json"))
+-                evidence_by_session[extracted.session_id] = SessionEvidence.model_validate(
+-                    redacted
++                evidence = SessionEvidence.model_validate(redacted)
++                evidence_by_session[extracted.session_id] = evidence
++                local_texts_by_session[evidence.session_id] = _local_texts(
++                    evidence,
++                    extra_values=[
++                        resolved.session.branch,
++                        resolved.repository.branch,
++                        resolved.repository.repository_id,
++                        resolved.repository.display_name,
++                    ],
+                 )
+             except Exception:  # Extraction failures remain visible candidates.
+                 failed_sessions.append(resolved)
+ 
+         if not evidence_by_session:
+-            return OutcomeSynthesisResult(
+-                outcomes=self._ungrouped_outcomes(failed_sessions),
+-                failed_session_ids=[item.session.session_id for item in failed_sessions],
++            raise OutcomeSynthesisError(
++                "could not extract evidence from any selected session"
+             )
+ 
+-        output = self._runner.run(
+-            transcript=_EvidencePayload(
+-                sessions=list(evidence_by_session.values())
+-            ).model_dump_json(indent=2),
+-            prompt=build_outcome_prompt(),
+-            title="Iiwi outcome synthesis",
+-        )
++        try:
++            output = self._runner.run(
++                transcript=_EvidencePayload(
++                    sessions=list(evidence_by_session.values())
++                ).model_dump_json(indent=2),
++                prompt=build_outcome_prompt(),
++                title="Iiwi outcome synthesis",
++            )
++        except OSError as exc:
++            raise OutcomeSynthesisError(str(exc)) from exc
+         payload = self._parse_payload(output)
+         outcomes: list[Outcome] = []
+-        for proposal in payload.outcomes:
++        used_session_ids: set[str] = set()
++        for proposal_index, proposal in enumerate(payload.outcomes):
+             selected = self._selected_evidence(proposal, evidence_by_session)
+-            outcomes.extend(self._outcomes_for_proposal(proposal, selected))
++            used_session_ids.update(item.session_id for item in selected)
++            outcomes.extend(
++                self._outcomes_for_proposal(
++                    proposal,
++                    selected,
++                    local_texts_by_session,
++                    proposal_index=proposal_index,
++                )
++            )
+ 
+         for rank, outcome in enumerate(outcomes):
+             outcome.rank = rank
+             outcome.bucket = OutcomeBucket.PRIMARY if rank < 5 else OutcomeBucket.MORE
+             outcome.included = rank < 5
+ 
+-        ungrouped = self._ungrouped_outcomes(failed_sessions, rank_start=len(outcomes))
++        omitted = [
++            evidence
++            for session_id, evidence in evidence_by_session.items()
++            if session_id not in used_session_ids
++        ]
++        ungrouped = [
++            *self._ungrouped_evidence_outcomes(omitted, rank_start=len(outcomes)),
++            *self._ungrouped_failed_outcomes(
++                failed_sessions,
++                rank_start=len(outcomes) + len(omitted),
++            ),
++        ]
+         return OutcomeSynthesisResult(
+             outcomes=[*outcomes, *ungrouped],
+             failed_session_ids=[item.session.session_id for item in failed_sessions],
+         )
+ 
+     @staticmethod
+     def _parse_payload(output: str) -> _SynthesisPayload:
+         raw = _strip_json_fence(output)
+         if not raw:
+             raise OutcomeSynthesisError("model did not return valid outcome JSON")
+@@ -136,124 +169,330 @@ class OutcomeSynthesisService:
+             if evidence is None:
+                 raise OutcomeSynthesisError(f"unknown session: {session_id}")
+             if evidence not in selected:
+                 selected.append(evidence)
+         return selected
+ 
+     def _outcomes_for_proposal(
+         self,
+         proposal: _ProposedOutcome,
+         selected: list[SessionEvidence],
++        local_texts_by_session: dict[str, list[str]],
++        *,
++        proposal_index: int,
+     ) -> list[Outcome]:
+         by_repository: dict[str, list[SessionEvidence]] = {}
+         for evidence in selected:
+             by_repository.setdefault(evidence.repository_id, []).append(evidence)
+ 
+-        if len(by_repository) == 1 or self._may_merge_cross_repository(proposal):
++        if len(by_repository) == 1 or self._may_merge_cross_repository(
++            proposal, selected, local_texts_by_session
++        ):
+             return [
+                 self._outcome(
+                     proposal,
+                     selected,
+-                    source_groups=self._source_groups(by_repository)
+-                    if len(by_repository) > 1
++                    local_texts_by_session,
++                    source_groups=self._source_groups(
++                        proposal,
++                        selected,
++                        local_texts_by_session,
++                        group_by_repository=len(by_repository) > 1,
++                    )
++                    if len(selected) > 1
+                     else [],
++                    discriminator=str(proposal_index),
+                 )
+             ]
+         return [
+-            self._outcome(proposal, repository_evidence)
+-            for repository_evidence in by_repository.values()
++            self._outcome(
++                proposal,
++                repository_evidence,
++                local_texts_by_session,
++                source_groups=self._source_groups(
++                    proposal,
++                    repository_evidence,
++                    local_texts_by_session,
++                    group_by_repository=False,
++                )
++                if len(repository_evidence) > 1
++                else [],
++                discriminator=f"{proposal_index}:{repository_id}",
++            )
++            for repository_id, repository_evidence in by_repository.items()
+         ]
+ 
+     @staticmethod
+-    def _may_merge_cross_repository(proposal: _ProposedOutcome) -> bool:
++    def _may_merge_cross_repository(
++        proposal: _ProposedOutcome,
++        selected: list[SessionEvidence],
++        local_texts_by_session: dict[str, list[str]],
++    ) -> bool:
+         if proposal.confidence is not EvidenceConfidence.HIGH:
+             return False
+         kinds = {
+             signal.kind
+             for signal in proposal.linkage_signals
+             if signal.value.strip()
++            and _value_is_observed(signal.value, selected, local_texts_by_session)
+         }
+         return "shared_work_id" in kinds or kinds >= _ALLOWED_LINKAGE_KINDS
+ 
+     @staticmethod
+     def _outcome(
+         proposal: _ProposedOutcome,
+         selected: list[SessionEvidence],
++        local_texts_by_session: dict[str, list[str]],
+         *,
+         source_groups: list[OutcomeSourceGroup] | None = None,
++        discriminator: str,
+     ) -> Outcome:
+         session_ids = [item.session_id for item in selected]
++        title = _supported_title(proposal.title, selected, local_texts_by_session)
++        status = _supported_status(proposal.status, selected)
++        impact = _supported_impact(proposal.impact, selected, local_texts_by_session)
+         return Outcome(
+-            id=_synthesized_id(proposal.title, session_ids),
+-            title=proposal.title,
+-            status=proposal.status,
+-            impact=proposal.impact,
++            id=_synthesized_id(title, session_ids, discriminator=discriminator),
++            title=title,
++            status=status,
++            impact=impact,
+             rank=0,
+             evidence_refs=[
+-                EvidenceRef(
+-                    session_id=item.session_id,
+-                    repository_id=item.repository_id,
+-                )
+-                for item in selected
++                reference for item in selected for reference in _evidence_refs(item)
+             ],
+             source_groups=source_groups or [],
+         )
+ 
+     @staticmethod
+     def _source_groups(
+-        by_repository: dict[str, list[SessionEvidence]],
++        proposal: _ProposedOutcome,
++        selected: list[SessionEvidence],
++        local_texts_by_session: dict[str, list[str]],
++        *,
++        group_by_repository: bool,
+     ) -> list[OutcomeSourceGroup]:
+-        return [
+-            OutcomeSourceGroup(
+-                id=repository_id,
+-                title=repository_id,
+-                evidence_refs=[
+-                    EvidenceRef(
+-                        session_id=item.session_id,
+-                        repository_id=item.repository_id,
+-                    )
+-                    for item in evidence
+-                ],
++        groups: dict[str, list[SessionEvidence]] = {}
++        for evidence in selected:
++            key = evidence.repository_id if group_by_repository else evidence.session_id
++            groups.setdefault(key, []).append(evidence)
++        source_groups: list[OutcomeSourceGroup] = []
++        for key, evidence_items in groups.items():
++            source_groups.append(
++                OutcomeSourceGroup(
++                    id=key,
++                    title=key
++                    if group_by_repository
++                    else _fallback_title(evidence_items),
++                    impact=_supported_impact(
++                        proposal.impact,
++                        evidence_items,
++                        local_texts_by_session,
++                    ),
++                    status=_supported_status(proposal.status, evidence_items),
++                    evidence_refs=[
++                        reference
++                        for item in evidence_items
++                        for reference in _evidence_refs(item)
++                    ],
++                )
+             )
+-            for repository_id, evidence in by_repository.items()
+-        ]
++        return source_groups
+ 
+     @staticmethod
+-    def _ungrouped_outcomes(
++    def _ungrouped_failed_outcomes(
+         failed_sessions,
+         *,
+         rank_start: int = 0,
+     ) -> list[Outcome]:
+         return [
+             Outcome(
+                 id=_synthesized_id(
+-                    resolved.session.title or resolved.session.session_id,
++                    redact_text(resolved.session.title or resolved.session.session_id),
+                     [resolved.session.session_id],
++                    discriminator="failed",
+                 ),
+-                title=resolved.session.title or resolved.session.session_id,
++                title=redact_text(resolved.session.title or resolved.session.session_id),
+                 status=OutcomeStatus.IN_PROGRESS,
+                 impact="",
+                 included=False,
+                 rank=rank_start + index,
+                 bucket=OutcomeBucket.UNGROUPED,
+                 evidence_refs=[
+                     EvidenceRef(
+-                        session_id=resolved.session.session_id,
+-                        repository_id=resolved.repository.repository_id,
++                        session_id=redact_text(resolved.session.session_id),
++                        repository_id=redact_text(resolved.repository.repository_id),
+                     )
+                 ],
+             )
+             for index, resolved in enumerate(failed_sessions)
+         ]
+ 
++    @staticmethod
++    def _ungrouped_evidence_outcomes(
++        omitted: list[SessionEvidence],
++        *,
++        rank_start: int = 0,
++    ) -> list[Outcome]:
++        return [
++            Outcome(
++                id=_synthesized_id(
++                    _fallback_title([evidence]),
++                    [evidence.session_id],
++                    discriminator="omitted",
++                ),
++                title=_fallback_title([evidence]),
++                status=OutcomeStatus.IN_PROGRESS,
++                impact="",
++                included=False,
++                rank=rank_start + index,
++                bucket=OutcomeBucket.UNGROUPED,
++                evidence_refs=_evidence_refs(evidence),
++            )
++            for index, evidence in enumerate(omitted)
++        ]
++
+ 
+ def _strip_json_fence(output: str) -> str:
+     value = output.strip()
+     if value.startswith("```json") and value.endswith("```"):
+         return value[len("```json") : -len("```")].strip()
+     return value
+ 
+ 
+-def _synthesized_id(title: str, session_ids: list[str]) -> str:
++def _synthesized_id(
++    title: str,
++    session_ids: list[str],
++    *,
++    discriminator: str,
++) -> str:
+     normalized_title = " ".join(title.split()).casefold()
+-    value = "\0".join([normalized_title, *sorted(session_ids)])
++    value = "\0".join([normalized_title, *sorted(session_ids), discriminator])
+     return sha256(value.encode()).hexdigest()[:16]
++
++
++def _evidence_refs(evidence: SessionEvidence) -> list[EvidenceRef]:
++    files = [item.text for item in evidence.files_changed]
++    commit = _commit_from_evidence(evidence)
++    if not files:
++        return [
++            EvidenceRef(
++                session_id=evidence.session_id,
++                repository_id=evidence.repository_id,
++                commit=commit,
++            )
++        ]
++    return [
++        EvidenceRef(
++            session_id=evidence.session_id,
++            repository_id=evidence.repository_id,
++            commit=commit,
++            file=file,
++        )
++        for file in files
++    ]
++
++
++def _commit_from_evidence(evidence: SessionEvidence) -> str | None:
++    for value in _local_texts(evidence):
++        match = _COMMIT_PATTERN.search(value)
++        if match:
++            return match.group(0)
++    return None
++
++
++def _local_texts(
++    evidence: SessionEvidence,
++    *,
++    extra_values: list[str | None] | None = None,
++) -> list[str]:
++    texts = [
++        evidence.session_id,
++        evidence.repository_id,
++        evidence.title,
++        evidence.working_directory,
++        *(extra_values or []),
++    ]
++    for collection in (
++        evidence.goals,
++        evidence.commands,
++        evidence.files_changed,
++        evidence.errors,
++        evidence.outcomes,
++    ):
++        for item in collection:
++            texts.append(item.text)
++            texts.extend(item.source_activity_ids)
++    return [value for value in texts if value]
++
++
++def _corpus(
++    selected: list[SessionEvidence],
++    local_texts_by_session: dict[str, list[str]],
++) -> str:
++    return "\n".join(
++        text
++        for evidence in selected
++        for text in local_texts_by_session.get(evidence.session_id, _local_texts(evidence))
++    ).casefold()
++
++
++def _value_is_observed(
++    value: str,
++    selected: list[SessionEvidence],
++    local_texts_by_session: dict[str, list[str]],
++) -> bool:
++    normalized = " ".join(value.split()).casefold()
++    if not normalized:
++        return False
++    return normalized in _corpus(selected, local_texts_by_session)
++
++
++def _supported_title(
++    proposed: str,
++    selected: list[SessionEvidence],
++    local_texts_by_session: dict[str, list[str]],
++) -> str:
++    words = [
++        word
++        for word in re.findall(r"[a-z0-9]+", proposed.casefold())
++        if len(word) > 2
++    ]
++    corpus = _corpus(selected, local_texts_by_session)
++    if words and all(word in corpus for word in words):
++        return proposed
++    return _fallback_title(selected)
++
++
++def _fallback_title(selected: list[SessionEvidence]) -> str:
++    if len(selected) == 1:
++        return selected[0].title or selected[0].session_id
++    repositories = sorted({item.repository_id for item in selected})
++    if len(repositories) > 1:
++        return " / ".join(repositories)
++    return " / ".join(item.title or item.session_id for item in selected)
++
++
++def _supported_status(
++    proposed: OutcomeStatus,
++    selected: list[SessionEvidence],
++) -> OutcomeStatus:
++    if proposed is OutcomeStatus.IN_PROGRESS:
++        return OutcomeStatus.IN_PROGRESS
++    for evidence in selected:
++        if any(
++            item.status is EvidenceStatus.COMPLETED
++            and item.confidence is EvidenceConfidence.HIGH
++            for item in evidence.outcomes
++        ):
++            return OutcomeStatus.COMPLETED
++    return OutcomeStatus.IN_PROGRESS
++
++
++def _supported_impact(
++    proposed: str,
++    selected: list[SessionEvidence],
++    local_texts_by_session: dict[str, list[str]],
++) -> str:
++    value = " ".join(proposed.split())
++    if not value:
++        return ""
++    return proposed if value.casefold() in _corpus(selected, local_texts_by_session) else ""
+diff --git a/src/iiwi/summarizers/opencode_run.py b/src/iiwi/summarizers/opencode_run.py
+index 223edd6..d353cc1 100644
+--- a/src/iiwi/summarizers/opencode_run.py
++++ b/src/iiwi/summarizers/opencode_run.py
+@@ -6,20 +6,21 @@ required. The prompt and a grouped raw transcript are handed to a subprocess;
+ the narrative prose comes back on stdout.
+ """
+ 
+ from __future__ import annotations
+ 
+ from pathlib import Path
+ from typing import Protocol
+ 
+ from iiwi.models.report_options import DetailLevel
+ from iiwi.process import CommandResult
++from iiwi.security.secure_files import secure_temporary_directory
+ 
+ _TEMPLATE = """Create a concise software engineering weekly report from the attached
+ OpenCode session transcript and usage statistics.
+ 
+ The reporting period is the last __DAYS__ days. The transcript is already
+ grouped by Git repository identity when possible, using headings like:
+ 
+ ## Project: project-folder-name
+ 
+ Use those project headings exactly. Worktree directories belonging to the same
+@@ -180,40 +181,63 @@ class OpenCodeRunner:
+         title: str,
+     ) -> str:
+         """Invoke opencode and return the trimmed narrative text.
+ 
+         The transcript is written to a temporary file and attached with
+         `--file`, and stdout is redirected to a second temporary file (the same
+         pipe-truncation avoidance the export path uses). Failures surface as
+         `OpenCodeRunError`.
+         """
+ 
+-        workdir = self._workdir or Path(self._mkdtemp())
+-        transcript_path = workdir / "transcript.md"
+-        transcript_path.write_text(transcript, encoding="utf-8")
+-        output_path = workdir / "summary.md"
+-        args = [
+-            self._executable,
+-            "run",
+-            prompt,
+-            "--title",
+-            title,
+-            "--file",
+-            str(transcript_path),
+-            "--print-logs",
+-        ]
+-        if self._model:
+-            args += ["--model", self._model]
+-        result = self._runner.run(args, stdout_path=output_path)
+-        if result.returncode != 0:
+-            raise OpenCodeRunError(result.stderr.strip() or "opencode run failed")
+-        if not output_path.exists():
+-            raise OpenCodeRunError("opencode run produced no output")
+-        narrative = output_path.read_text(encoding="utf-8").strip()
++        if self._workdir is not None:
++            return self._run_in_workdir(
++                self._workdir,
++                transcript=transcript,
++                prompt=prompt,
++                title=title,
++            )
++        try:
++            with secure_temporary_directory() as workdir:
++                return self._run_in_workdir(
++                    workdir,
++                    transcript=transcript,
++                    prompt=prompt,
++                    title=title,
++                )
++        except OSError as exc:
++            raise OpenCodeRunError(str(exc)) from exc
++
++    def _run_in_workdir(
++        self,
++        workdir: Path,
++        *,
++        transcript: str,
++        prompt: str,
++        title: str,
++    ) -> str:
++        try:
++            transcript_path = workdir / "transcript.md"
++            transcript_path.write_text(transcript, encoding="utf-8")
++            output_path = workdir / "summary.md"
++            args = [
++                self._executable,
++                "run",
++                prompt,
++                "--title",
++                title,
++                "--file",
++                str(transcript_path),
++                "--print-logs",
++            ]
++            if self._model:
++                args += ["--model", self._model]
++            result = self._runner.run(args, stdout_path=output_path)
++            if result.returncode != 0:
++                raise OpenCodeRunError(result.stderr.strip() or "opencode run failed")
++            if not output_path.exists():
++                raise OpenCodeRunError("opencode run produced no output")
++            narrative = output_path.read_text(encoding="utf-8").strip()
++        except OSError as exc:
++            raise OpenCodeRunError(str(exc)) from exc
+         if not narrative:
+             raise OpenCodeRunError("opencode run produced no output")
+         return narrative
+-
+-    def _mkdtemp(self) -> str:
+-        import tempfile
+-
+-        return tempfile.mkdtemp(prefix="iiwi-report-")
+diff --git a/src/iiwi/summarizers/outcome_prompt.py b/src/iiwi/summarizers/outcome_prompt.py
+index daa8dc1..bcc9ead 100644
+--- a/src/iiwi/summarizers/outcome_prompt.py
++++ b/src/iiwi/summarizers/outcome_prompt.py
+@@ -1,13 +1,13 @@
+ """Prompt contract for evidence-backed outcome synthesis."""
+ 
+-_OUTCOME_PROMPT = """Synthesize evidence-backed engineering outcomes from the attached
++_OUTCOME_PROMPT = """Synthesize evidence-backed work outcomes from the attached
+ redacted session evidence. Return JSON only; do not wrap it in prose.
+ 
+ Aim for 3–5 ranked outcomes when the evidence supports that many. You may emit
+ more candidates when they are independently meaningful. Each response must use
+ exactly this shape:
+ 
+ {
+   "outcomes": [
+     {
+       "title": "concise outcome title",
+diff --git a/src/iiwi/templates/outcomes.md.j2 b/src/iiwi/templates/outcomes.md.j2
+index 995b891..2733e44 100644
+--- a/src/iiwi/templates/outcomes.md.j2
++++ b/src/iiwi/templates/outcomes.md.j2
+@@ -1,52 +1,60 @@
+ # {{ "Weekly Work Update" if report_type.value == "manager" else "Engineering Worklog" }}
+ 
+ **Period:** {{ report.period.since.strftime("%Y-%m-%d %H:%M") }} – {{ report.period.until.strftime("%Y-%m-%d %H:%M") }}
+ **Timezone:** {{ timezone }}
+ **Generated:** {{ report.generated_at.strftime("%Y-%m-%d %H:%M") }}
++**Audience:** {{ "Manager update" if report_type.value == "manager" else "Engineering worklog" }}
+ 
+ {% set completed = report.outcomes | selectattr("included") | selectattr("status", "equalto", "completed") | list %}
+ {% if completed %}
+ ## Outcomes
+ {% for outcome in completed %}
+ - {{ outcome.title }}{% if outcome.origin.value == "user_added" %} _(User added)_{% endif %}
+ {% if outcome.impact %}
+   - Impact: {{ outcome.impact }}
++{% else %}
++  - Impact: Unsupported by extracted evidence
+ {% endif %}
++
+ {% endfor %}
+ {% endif %}
+ {% set in_progress = report.outcomes | selectattr("included") | selectattr("status", "equalto", "in_progress") | list %}
+ {% if in_progress %}
+ ## In Progress
+ {% for outcome in in_progress %}
+ - {{ outcome.title }}{% if outcome.origin.value == "user_added" %} _(User added)_{% endif %}
+ {% if outcome.impact %}
+   - Impact: {{ outcome.impact }}
++{% else %}
++  - Impact: Unsupported by extracted evidence
+ {% endif %}
++
+ {% endfor %}
+ {% endif %}
+ {% if report.blockers %}
+ ## Blockers
+ 
+ {{ report.blockers }}
+ {% endif %}
+ {% if report.next_week %}
+ ## Next Week
+ 
+ {{ report.next_week }}
+ {% endif %}
+ {% if full and evidence_by_repository %}
+ ### Evidence
+ {% for repository_id, references in evidence_by_repository | dictsort %}
++
+ #### {{ repository_id }}
+ {% for reference in references %}
+-- Session: `{{ reference.session_id }}`{% if reference.commit %} · Commit: `{{ reference.commit }}`{% endif %}{% if reference.file %} · File: `{{ reference.file }}`{% endif %}
++- Session: `{{ reference.session_id }}`{% if reference.commit %} · Commit: `{{ reference.commit }}`{% endif %}{% if reference.file %} · File: `{{ reference.file }}`{% endif %}{{ "\n" }}
+ {% endfor %}
+ {% endfor %}
+ {% endif %}
+ {% if full and report.usage_text %}
+ ## Usage
+ {% if report.usage_days %}
+ 
+ Window: the last {{ report.usage_days }} days ending at generation time. It contains the
+ report period but does not match it exactly, because OpenCode reports usage only for a
+ window ending now.
+diff --git a/tests/integration/test_interactive_cli.py b/tests/integration/test_interactive_cli.py
+index 721b292..5c413e9 100644
+--- a/tests/integration/test_interactive_cli.py
++++ b/tests/integration/test_interactive_cli.py
+@@ -66,37 +66,43 @@ def char(value: str) -> KeyPress:
+     return KeyPress(char=value)
+ 
+ 
+ def _period() -> DateRange:
+     return DateRange(
+         since=datetime(2026, 8, 3, tzinfo=TZ),
+         until=datetime(2026, 8, 10, tzinfo=TZ),
+     )
+ 
+ 
+-def _scan(*session_ids: str) -> ScanResult:
++def _scan(
++    *session_ids: str,
++    activity_content_by_session: dict[str, list[SessionActivity]] | None = None,
++) -> ScanResult:
+     session_ids = session_ids or ("ses-1",)
+     repository = RepositoryIdentity(
+         repository_id="repo-a",
+         display_name="repo-a",
+         identity_type=RepositoryIdentityType.PATH_FALLBACK,
+         working_directory="/tmp/repo-a",
+         resolution_method="test",
+     )
+     resolved = [
+         ResolvedSession(
+             session=AgentSession(
+                 harness="opencode",
+                 session_id=session_id,
+                 title=f"Session {session_id}",
+                 working_directory="/tmp/repo-a",
+-                activities=[
++                activities=activity_content_by_session.get(session_id)
++                if activity_content_by_session
++                and activity_content_by_session.get(session_id) is not None
++                else [
+                     SessionActivity(
+                         activity_id=f"{session_id}-act-{i}",
+                         activity_type=ActivityType.USER_MESSAGE,
+                     )
+                     for i in range(5)
+                 ],
+             ),
+             repository=repository,
+         )
+         for session_id in session_ids
+@@ -362,21 +368,47 @@ def test_non_tty_bare_invocation_keeps_exit_code_three(
+     assert "subcommand" in result.stdout
+ 
+ 
+ def test_quick_review_writes_the_exact_reviewed_draft(tmp_path: Path) -> None:
+     output_path = tmp_path / "reviewed.md"
+     draft = ReportDraft(
+         harness="opencode",
+         period=_period(),
+         report_type=ReportType.ENGINEERING,
+     )
+-    scan = _scan("ses-1", "ses-2", "ses-3")
++    scan = _scan(
++        "ses-1",
++        "ses-2",
++        "ses-3",
++        activity_content_by_session={
++            "ses-3": [
++                SessionActivity(
++                    activity_id="ses-3-goal",
++                    activity_type=ActivityType.USER_MESSAGE,
++                    content="Stable delivery",
++                ),
++                SessionActivity(
++                    activity_id="ses-3-verification",
++                    activity_type=ActivityType.COMMAND,
++                    content="pytest tests/unit/test_stable_delivery.py",
++                    metadata={"exit_code": 0},
++                ),
++                *[
++                    SessionActivity(
++                        activity_id=f"ses-3-filler-{index}",
++                        activity_type=ActivityType.USER_MESSAGE,
++                    )
++                    for index in range(4)
++                ],
++            ]
++        },
++    )
+     review_calls: list[tuple[OutcomeReviewDraft, bool]] = []
+     edited = Outcome(
+         id="callback-id",
+         title="Edited rollout",
+         status=OutcomeStatus.COMPLETED,
+         impact="Verified customer rollout",
+         rank=99,
+         origin=OutcomeOrigin.USER_ADDED,
+     )
+     added = Outcome(
+@@ -443,21 +475,21 @@ def test_quick_review_writes_the_exact_reviewed_draft(tmp_path: Path) -> None:
+     assert content.index("Edited rollout") < content.index("Stable delivery")
+     assert content.index("Stable delivery") < content.index("Manual follow-up")
+     assert "Verified customer rollout" in content
+     assert "Manual follow-up _(User added)_" in content
+     assert "Waiting for security approval" in content
+     assert "Ship the verified rollout" in content
+     assert "Session: `ses-2`" in content
+     assert "Session: `ses-3`" in content
+     assert "Excluded candidate" not in content
+     assert "Unsupported impact to omit" not in content
+-    assert "- Stable delivery\n  - Impact:" not in content
++    assert "Impact: Unsupported by extracted evidence" in content
+     assert [dry_run for _, dry_run in review_calls] == [True, False]
+     assert review_calls[0][0] is review_calls[1][0]
+ 
+ 
+ def test_quick_review_splits_a_real_cross_repository_merge(tmp_path: Path) -> None:
+     repositories = [
+         RepositoryIdentity(
+             repository_id=f"repo-{suffix}",
+             display_name=f"repo-{suffix}",
+             identity_type=RepositoryIdentityType.GIT_REMOTE,
+@@ -466,24 +498,31 @@ def test_quick_review_splits_a_real_cross_repository_merge(tmp_path: Path) -> No
+         for suffix in ("a", "b")
+     ]
+     resolved = [
+         ResolvedSession(
+             session=AgentSession(
+                 harness="opencode",
+                 session_id=f"ses-{suffix}",
+                 title=f"Session {suffix}",
+                 activities=[
+                     SessionActivity(
+-                        activity_id=f"ses-{suffix}-act-{index}",
++                        activity_id=f"ses-{suffix}-linkage",
+                         activity_type=ActivityType.USER_MESSAGE,
+-                    )
+-                    for index in range(5)
++                        content="IIWI-42 same rollout",
++                    ),
++                    *[
++                        SessionActivity(
++                            activity_id=f"ses-{suffix}-act-{index}",
++                            activity_type=ActivityType.USER_MESSAGE,
++                        )
++                        for index in range(5)
++                    ],
+                 ],
+             ),
+             repository=repository,
+         )
+         for suffix, repository in zip(("a", "b"), repositories, strict=True)
+     ]
+     scan = ScanResult(
+         period=_period(),
+         candidate_session_count=2,
+         loaded_session_count=2,
+diff --git a/tests/unit/interactive/test_cli_actions.py b/tests/unit/interactive/test_cli_actions.py
+index 5d25de1..2dbabbd 100644
+--- a/tests/unit/interactive/test_cli_actions.py
++++ b/tests/unit/interactive/test_cli_actions.py
+@@ -200,20 +200,61 @@ def test_synthesize_translates_real_opencode_failure_for_controller_recovery(
+     with pytest.raises(
+         OutcomeSynthesisError,
+         match="missing-opencode: executable not found",
+     ):
+         cli_actions._synthesize(
+             ReportDraft(harness="codex", period=_period()),
+             scan,
+         )
+ 
+ 
++def test_synthesize_translates_temp_io_failure_for_controller_recovery(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    settings = SimpleNamespace(
++        harnesses=SimpleNamespace(
++            opencode=SimpleNamespace(
++                cli=SimpleNamespace(
++                    executable="opencode",
++                    model="",
++                    run_timeout_seconds=1.0,
++                )
++            )
++        )
++    )
++
++    class BrokenSynthesisService:
++        def __init__(self, runner: object) -> None:
++            del runner
++
++        def synthesize(self, scan: ScanResult) -> object:
++            del scan
++            raise OSError("cannot write synthesis transcript")
++
++    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
++    monkeypatch.setattr(
++        cli_actions,
++        "OutcomeSynthesisService",
++        BrokenSynthesisService,
++        raising=False,
++    )
++
++    with pytest.raises(
++        OutcomeSynthesisError,
++        match="cannot write synthesis transcript",
++    ):
++        cli_actions._synthesize(
++            ReportDraft(harness="codex", period=_period()),
++            _scan(),
++        )
++
++
+ def test_generate_reviewed_passes_the_same_review_object_to_report_service(
+     monkeypatch: pytest.MonkeyPatch,
+ ) -> None:
+     scan = _scan()
+     review = _review()
+     draft = ReportDraft(harness="codex", period=_period(), dry_run=True)
+     settings = SimpleNamespace(report=SimpleNamespace(timezone="Asia/Taipei"))
+     now = datetime(2026, 8, 10, 12, tzinfo=TZ)
+     received: list[tuple[OutcomeReviewDraft, dict[str, object]]] = []
+ 
+diff --git a/tests/unit/interactive/test_collapsed_advanced_settings.py b/tests/unit/interactive/test_collapsed_advanced_settings.py
+index f0e7755..cb7c165 100644
+--- a/tests/unit/interactive/test_collapsed_advanced_settings.py
++++ b/tests/unit/interactive/test_collapsed_advanced_settings.py
+@@ -218,56 +218,58 @@ def test_enter_on_advanced_settings_expands_instead_of_editing_detail() -> None:
+ 
+     run_interactive(
+         actions=_actions(draft),
+         input_source=input_source,
+         console=console,
+     )
+ 
+     assert draft.detail.value == "full"
+ 
+ 
+-def test_preview_report_runs_as_dry_run_and_returns_to_setup() -> None:
++def test_preview_report_runs_as_dry_run_from_quick_review() -> None:
+     draft = ReportDraft(harness="opencode", period=_period())
+     generation_modes: list[bool] = []
+     console, stream = _console()
+     input_source = ScriptedInput(
+         [
+             char("2"),
+             KeyPress(key=Key.DOWN),
+             KeyPress(key=Key.ENTER),
++            char("p"),
++            char("b"),
+             char("b"),
+-            KeyPress(key=Key.ENTER),
+             char("b"),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(draft, generation_modes=generation_modes),
+         input_source=input_source,
+         console=console,
+     )
+ 
+-    assert generation_modes == [True, True]
++    assert generation_modes == [True]
+     assert draft.dry_run is False
+     assert "preview-content" in stream.getvalue()
+ 
+ 
+ def test_generate_report_forces_real_output_mode() -> None:
+     draft = ReportDraft(harness="opencode", period=_period(), dry_run=True)
+     generation_modes: list[bool] = []
+     console, _ = _console()
+     input_source = ScriptedInput(
+         [
+             char("2"),
+             KeyPress(key=Key.ENTER),
++            char("g"),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(draft, generation_modes=generation_modes),
+         input_source=input_source,
+         console=console,
+     )
+diff --git a/tests/unit/interactive/test_controller.py b/tests/unit/interactive/test_controller.py
+index c02635c..f586f7a 100644
+--- a/tests/unit/interactive/test_controller.py
++++ b/tests/unit/interactive/test_controller.py
+@@ -273,21 +273,21 @@ def test_zero_sessions_is_recoverable_by_changing_period() -> None:
+     run_interactive(
+         actions=_actions(scan_callback=lambda draft: _scan(0), counters=counters),
+         input_source=input_source,
+         console=_console(),
+     )
+ 
+     assert counters["scan"] == 1
+     assert counters["choose_period"] == 1
+ 
+ 
+-def test_setup_g_generates_without_visiting_review() -> None:
++def test_setup_g_enters_quick_review_then_generate_writes() -> None:
+     counters: dict[str, int] = {}
+ 
+     def populated_scan(draft: ReportDraft) -> ScanResult:
+         sessions = [
+             ResolvedSession(
+                 session=AgentSession(
+                     harness="opencode",
+                     session_id="ses-0",
+                     title="Session 0",
+                     working_directory="/tmp/repo-a",
+@@ -310,21 +310,21 @@ def test_setup_g_generates_without_visiting_review() -> None:
+         ]
+         return ScanResult(
+             period=_period(),
+             candidate_session_count=1,
+             loaded_session_count=1,
+             failed_session_count=0,
+             resolved_sessions=sessions,
+             sessions_by_repository={"repo-a": sessions},
+         )
+ 
+-    input_source = ScriptedInput([char("2"), char("g"), char("q"), char("q")])
++    input_source = ScriptedInput([char("2"), char("g"), char("g"), char("q"), char("q")])
+ 
+     run_interactive(
+         actions=_actions(scan_callback=populated_scan, counters=counters),
+         input_source=input_source,
+         console=_console(),
+     )
+ 
+     assert counters.get("scan") == 1
+     assert counters.get("generate") == 1
+ 
+@@ -424,24 +424,24 @@ def _setup_populated_scan(draft: ReportDraft) -> ScanResult:
+     return ScanResult(
+         period=_period(),
+         candidate_session_count=1,
+         loaded_session_count=1,
+         failed_session_count=0,
+         resolved_sessions=sessions,
+         sessions_by_repository={"repo-a": sessions},
+     )
+ 
+ 
+-def test_setup_enter_on_the_action_row_generates() -> None:
++def test_setup_enter_on_the_action_row_enters_quick_review_then_generate_writes() -> None:
+     counters: dict[str, int] = {}
+     input_source = ScriptedInput(
+-        [char("2"), KeyPress(key=Key.ENTER), char("q"), char("q")]
++        [char("2"), KeyPress(key=Key.ENTER), char("g"), char("q"), char("q")]
+     )
+ 
+     run_interactive(
+         actions=_actions(scan_callback=_setup_populated_scan, counters=counters),
+         input_source=input_source,
+         console=_console(),
+     )
+ 
+     assert counters.get("scan") == 1
+     assert counters.get("generate") == 1
+diff --git a/tests/unit/interactive/test_interactive_regressions.py b/tests/unit/interactive/test_interactive_regressions.py
+index b322a1d..fe0f673 100644
+--- a/tests/unit/interactive/test_interactive_regressions.py
++++ b/tests/unit/interactive/test_interactive_regressions.py
+@@ -341,20 +341,21 @@ def test_search_filter_helper_matches_session_titles_and_repository_names() -> N
+ def test_preview_supports_page_and_boundary_navigation() -> None:
+     page_down = getattr(Key, "PAGE_DOWN", None)
+     assert page_down is not None, "missing Key.PAGE_DOWN"
+     console, stream = _console(height=12)
+     draft = ReportDraft(harness="opencode", period=_period())
+     keys = ScriptedInput(
+         [
+             char("2"),
+             KeyPress(key=Key.DOWN),
+             KeyPress(key=Key.ENTER),
++            char("p"),
+             KeyPress(key=page_down),
+             char("G"),
+             char("g"),
+             char("b"),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(actions=_actions(draft=draft), input_source=keys, console=console)
+diff --git a/tests/unit/interactive/test_outcome_review_controller.py b/tests/unit/interactive/test_outcome_review_controller.py
+index 387c825..dc05101 100644
+--- a/tests/unit/interactive/test_outcome_review_controller.py
++++ b/tests/unit/interactive/test_outcome_review_controller.py
+@@ -229,20 +229,110 @@ def test_g_synthesizes_selected_scan_once_and_opens_outcome_review(
+         draft,
+         log,
+         [*_open_review_keys(), char("b"), char("q"), char("q")],
+     )
+ 
+     assert len(log.synthesis_scans) == 1
+     assert log.synthesis_scans[0].loaded_session_count == 1
+     assert Screen.OUTCOME_REVIEW in screens
+ 
+ 
++@pytest.mark.parametrize(
++    "setup_keys",
++    [
++        [char("g")],
++        [KeyPress(key=Key.DOWN), KeyPress(key=Key.ENTER)],
++    ],
++)
++def test_setup_generate_and_preview_enter_quick_review_before_rendering_output(
++    monkeypatch: pytest.MonkeyPatch,
++    setup_keys: list[KeyPress],
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    log = ActionLog(_review())
++
++    screens = _run(
++        monkeypatch,
++        draft,
++        log,
++        [char("2"), *setup_keys, char("b"), char("q"), char("q")],
++    )
++
++    assert Screen.OUTCOME_REVIEW in screens
++    assert log.reviewed_calls == []
++
++
++def test_reentering_quick_review_with_unchanged_selection_preserves_existing_draft(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    original = _review(_outcome("first", 0), _outcome("second", 1))
++    replacement = _review(_outcome("replacement", 0))
++    syntheses = iter([original, replacement])
++    log = ActionLog(original)
++
++    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
++        log.synthesis_scans.append(selected_scan)
++        return next(syntheses)
++
++    actions = _actions(draft, log)
++    actions = InteractiveActions(
++        new_draft=actions.new_draft,
++        choose_harness=actions.choose_harness,
++        choose_period=actions.choose_period,
++        scan=actions.scan,
++        generate=actions.generate,
++        synthesize=synthesize,
++        generate_reviewed=actions.generate_reviewed,
++        edit_outcome=actions.edit_outcome,
++        add_outcome=actions.add_outcome,
++        edit_gap=actions.edit_gap,
++        save_report_type=actions.save_report_type,
++        doctor=actions.doctor,
++        edit_settings=actions.edit_settings,
++        restore_selection=actions.restore_selection,
++        save_selection=actions.save_selection,
++        exclude_repository=actions.exclude_repository,
++    )
++    screens: list[Screen] = []
++    monkeypatch.setattr(
++        controller,
++        "_render_screen",
++        lambda state, console: screens.append(state.screen),
++    )
++
++    run_interactive(
++        actions=actions,
++        input_source=ScriptedInput(
++            [
++                *_open_review_keys(),
++                char("j"),
++                KeyPress(key=Key.SPACE),
++                char("b"),
++                char("g"),
++                char("g"),
++                char("q"),
++                char("q"),
++            ]
++        ),
++        console=Console(file=StringIO(), color_system=None, force_terminal=False),
++    )
++
++    assert len(log.synthesis_scans) == 1
++    assert [item.id for item in log.reviewed_calls[0][2].ordered()] == [
++        "first",
++        "second",
++    ]
++    assert log.reviewed_calls[0][2].outcomes[0].included is False
++    assert Screen.OUTCOME_REVIEW in screens
++
++
+ def test_up_down_changes_focus_and_space_toggles_the_focused_outcome(
+     monkeypatch: pytest.MonkeyPatch,
+ ) -> None:
+     draft = ReportDraft(harness="opencode", period=_period())
+     review = _review()
+     log = ActionLog(review)
+ 
+     _run(
+         monkeypatch,
+         draft,
+diff --git a/tests/unit/interactive/test_outcome_review_failures.py b/tests/unit/interactive/test_outcome_review_failures.py
+index 62ffb4e..f24c5ce 100644
+--- a/tests/unit/interactive/test_outcome_review_failures.py
++++ b/tests/unit/interactive/test_outcome_review_failures.py
+@@ -140,36 +140,40 @@ class ActionLog:
+         self.reviewed_calls: list[
+             tuple[ReportDraft, ScanResult, OutcomeReviewDraft, bool, bool]
+         ] = []
+ 
+ 
+ def _actions(
+     draft: ReportDraft,
+     log: ActionLog,
+     *,
+     synthesize: Callable[[ReportDraft, ScanResult], OutcomeReviewDraft],
++    generate_session: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
++    | None = None,
+     generate_reviewed: Callable[
+         [ReportDraft, ScanResult, OutcomeReviewDraft, bool], InteractiveReportResult
+     ]
+     | None = None,
+ ) -> InteractiveActions:
+     scan = _scan()
+ 
+     def do_scan(current: ReportDraft) -> ScanResult:
+         log.scan_count += 1
+         return scan
+ 
+     def generate(
+         current: ReportDraft,
+         selected_scan: ScanResult,
+         force: bool,
+     ) -> InteractiveReportResult:
++        if generate_session is not None:
++            return generate_session(current, selected_scan, force)
+         notice = current.generation_notice
+         log.session_calls.append((current, selected_scan, force, notice))
+         result = InteractiveReportResult(
+             output_path=Path("reports/session-based.md"),
+             content=f"## Warnings\n\n- {notice}",
+             repository_count=1,
+             session_count=selected_scan.loaded_session_count,
+         )
+         log.session_results.append(result)
+         return result
+@@ -211,40 +215,43 @@ def _actions(
+         exclude_repository=lambda repository_id, display_name: "excluded",
+     )
+ 
+ 
+ def _run(
+     draft: ReportDraft,
+     log: ActionLog,
+     keys: list[KeyPress],
+     *,
+     synthesize: Callable[[ReportDraft, ScanResult], OutcomeReviewDraft],
++    generate_session: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
++    | None = None,
+     generate_reviewed: Callable[
+         [ReportDraft, ScanResult, OutcomeReviewDraft, bool], InteractiveReportResult
+     ]
+     | None = None,
+ ) -> tuple[list[Screen], str]:
+     screens: list[Screen] = []
+     original_render = controller._render_screen
+ 
+     def capture(state, console: Console) -> None:
+         screens.append(state.screen)
+         original_render(state, console)
+ 
+     controller._render_screen = capture
+     stream = StringIO()
+     try:
+         run_interactive(
+             actions=_actions(
+                 draft,
+                 log,
+                 synthesize=synthesize,
++                generate_session=generate_session,
+                 generate_reviewed=generate_reviewed,
+             ),
+             input_source=ScriptedInput(keys),
+             console=Console(
+                 file=stream,
+                 color_system=None,
+                 force_terminal=False,
+                 width=100,
+                 height=30,
+             ),
+@@ -307,20 +314,67 @@ def test_complete_synthesis_failure_can_generate_labeled_session_fallback() -> N
+         synthesize=fail_synthesis,
+     )
+ 
+     assert "Use session-based report" in output
+     assert len(log.session_calls) == 1
+     assert log.session_calls[0][3] == FALLBACK_NOTICE
+     assert FALLBACK_NOTICE in log.session_results[0].content
+     assert draft.generation_notice is None
+ 
+ 
++def test_session_fallback_notice_survives_output_conflict_overwrite() -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    log = ActionLog()
++
++    def fail_synthesis(current: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
++        raise OutcomeSynthesisError("synthesis unavailable")
++
++    def conflict_once(
++        current: ReportDraft,
++        selected_scan: ScanResult,
++        force: bool,
++    ) -> InteractiveReportResult:
++        notice = current.generation_notice
++        log.session_calls.append((current, selected_scan, force, notice))
++        if not force:
++            raise ReportAlreadyExistsError("session fallback exists")
++        result = InteractiveReportResult(
++            output_path=Path("reports/session-based.md"),
++            content=f"## Warnings\n\n- {notice}",
++            repository_count=1,
++            session_count=selected_scan.loaded_session_count,
++        )
++        log.session_results.append(result)
++        return result
++
++    _, output = _run(
++        draft,
++        log,
++        [
++            *_open_review_keys(),
++            KeyPress(key=Key.DOWN),
++            KeyPress(key=Key.ENTER),
++            KeyPress(key=Key.ENTER),
++            char("q"),
++            char("q"),
++        ],
++        synthesize=fail_synthesis,
++        generate_session=conflict_once,
++    )
++
++    assert "Overwrite once" in output
++    assert [call[2] for call in log.session_calls] == [False, True]
++    assert [call[3] for call in log.session_calls] == [FALLBACK_NOTICE, FALLBACK_NOTICE]
++    assert FALLBACK_NOTICE in log.session_results[0].content
++    assert draft.generation_notice is None
++
++
+ def test_session_generation_threads_only_an_explicit_fallback_notice(
+     monkeypatch: pytest.MonkeyPatch,
+ ) -> None:
+     draft = ReportDraft(
+         harness="opencode",
+         period=_period(),
+         dry_run=True,
+         generation_notice=FALLBACK_NOTICE,
+     )
+     captured: list[dict[str, object]] = []
+diff --git a/tests/unit/interactive/test_outcome_review_render.py b/tests/unit/interactive/test_outcome_review_render.py
+index 048464b..7c22ad6 100644
+--- a/tests/unit/interactive/test_outcome_review_render.py
++++ b/tests/unit/interactive/test_outcome_review_render.py
+@@ -1,27 +1,39 @@
+ from __future__ import annotations
+ 
++from datetime import datetime
+ from io import StringIO
++from zoneinfo import ZoneInfo
+ 
+ from rich.console import Console
+ 
+ from iiwi.interactive import controller, render
+ from iiwi.interactive.models import Screen
+ from iiwi.models.outcome import (
+     EvidenceRef,
+     Outcome,
+     OutcomeBucket,
+     OutcomeOrigin,
+     OutcomeReviewDraft,
+     OutcomeStatus,
+ )
+ from iiwi.models.report_options import ReportType
++from iiwi.models.time_range import DateRange
++
++TZ = ZoneInfo("Asia/Taipei")
++
++
++def _period() -> DateRange:
++    return DateRange(
++        since=datetime(2026, 8, 3, tzinfo=TZ),
++        until=datetime(2026, 8, 10, tzinfo=TZ),
++    )
+ 
+ 
+ def _console(*, width: int = 100, height: int = 40) -> tuple[Console, StringIO]:
+     stream = StringIO()
+     return (
+         Console(
+             file=stream,
+             color_system=None,
+             force_terminal=False,
+             width=width,
+@@ -146,39 +158,98 @@ def test_outcome_review_renders_visual_hierarchy_and_controls() -> None:
+     assert "Blockers" in text and "Next week" in text
+     assert "Space Include" in text
+     assert "e Edit" in text
+     assert "J/K Reorder" in text
+     assert "v Evidence" in text
+     assert "s Split" in text
+     assert "a Add" in text
+     assert "p Preview" in text and "g Generate" in text
+ 
+ 
++def test_outcome_review_header_includes_the_reporting_period() -> None:
++    console, stream = _console(height=50)
++
++    render.render_outcome_review(
++        console,
++        _review(),
++        cursor=1,
++        expanded_evidence=set(),
++        period=_period(),
++    )
++
++    assert "Aug 03" in stream.getvalue()
++    assert "Aug 10" in stream.getvalue()
++
++
+ def test_only_the_focused_outcome_expands_beyond_one_display_line() -> None:
+     console, stream = _console()
+ 
+     render.render_outcome_review(
+         console,
+         _review(),
+         cursor=1,
+         expanded_evidence=set(),
+     )
+ 
+     lines = stream.getvalue().splitlines()
+     assert sum("Kept the existing repaint loop" in line for line in lines) == 1
+     assert "Interactive screens remain stable." not in stream.getvalue()
+     assert "Status" in stream.getvalue() and "In progress" in stream.getvalue()
+     assert "Impact" in stream.getvalue()
+     assert "Managers can verify progress before publishing." in stream.getvalue()
+     assert "Evidence" in stream.getvalue() and "1 reference" in stream.getvalue()
+ 
+ 
++def test_empty_impact_is_explicitly_marked_unsupported_in_quick_review() -> None:
++    console, stream = _console()
++    review = OutcomeReviewDraft(
++        report_type=ReportType.MANAGER,
++        outcomes=[_outcome("empty", "Outcome without impact", 0, impact="")],
++    )
++
++    render.render_outcome_review(
++        console,
++        review,
++        cursor=1,
++        expanded_evidence=set(),
++    )
++
++    text = stream.getvalue()
++    assert "Impact" in text
++    assert "Unsupported" in text
++
++
++def test_truncated_impact_keeps_a_continuation_indicator() -> None:
++    review = OutcomeReviewDraft(
++        report_type=ReportType.MANAGER,
++        outcomes=[
++            _outcome(
++                "long",
++                "Long impact outcome",
++                0,
++                impact=" ".join(f"impact-fragment-{index}" for index in range(40)),
++            )
++        ],
++    )
++    console, stream = _console(width=42, height=12)
++
++    render.render_outcome_review(
++        console,
++        review,
++        cursor=1,
++        expanded_evidence=set(),
++    )
++
++    assert "Impact" in stream.getvalue()
++    assert "…" in stream.getvalue()
++
++
+ def test_expanded_focused_evidence_adds_repository_session_and_file_rows() -> None:
+     collapsed_console, collapsed_stream = _console()
+     expanded_console, expanded_stream = _console()
+     review = _review()
+ 
+     render.render_outcome_review(
+         collapsed_console,
+         review,
+         cursor=1,
+         expanded_evidence=set(),
+diff --git a/tests/unit/interactive/test_review_regressions.py b/tests/unit/interactive/test_review_regressions.py
+index 094c490..ddf5ee9 100644
+--- a/tests/unit/interactive/test_review_regressions.py
++++ b/tests/unit/interactive/test_review_regressions.py
+@@ -321,20 +321,22 @@ def test_user_labels_are_rendered_as_literal_text_not_rich_markup() -> None:
+ 
+ def test_preview_action_can_preview_generated_report_content() -> None:
+     draft = ReportDraft(harness="opencode", period=_period())
+     counters: dict[str, int] = {}
+     console, stream = _console()
+     keys = ScriptedInput(
+         [
+             char("2"),
+             KeyPress(key=Key.DOWN),
+             KeyPress(key=Key.ENTER),
++            char("p"),
++            char("b"),
+             char("b"),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(
+             draft=draft,
+             scan_callback=lambda value: _scan(),
+diff --git a/tests/unit/interactive/test_unified_activity_review.py b/tests/unit/interactive/test_unified_activity_review.py
+index f3ccc30..d54687a 100644
+--- a/tests/unit/interactive/test_unified_activity_review.py
++++ b/tests/unit/interactive/test_unified_activity_review.py
+@@ -146,20 +146,21 @@ def test_main_browse_entry_can_generate_from_the_same_activity_tree() -> None:
+         color_system=None,
+         force_terminal=False,
+         width=100,
+         height=25,
+     )
+     input_source = ScriptedInput(
+         [
+             KeyPress(key=Key.DOWN),
+             KeyPress(key=Key.ENTER),
+             char("g"),
++            char("g"),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(counters),
+         input_source=input_source,
+         console=console,
+     )
+diff --git a/tests/unit/models/test_outcome.py b/tests/unit/models/test_outcome.py
+index 1672a0a..0d55212 100644
+--- a/tests/unit/models/test_outcome.py
++++ b/tests/unit/models/test_outcome.py
+@@ -73,20 +73,54 @@ def test_split_restores_source_groups_and_preserves_evidence() -> None:
+         ],
+     )
+     draft = OutcomeReviewDraft(outcomes=[merged])
+ 
+     draft.split("merged")
+ 
+     assert [item.title for item in draft.ordered()] == ["API", "UI"]
+     assert [item.evidence_refs for item in draft.ordered()] == [[first], [second]]
+ 
+ 
++def test_split_children_do_not_inherit_unsupported_parent_impact() -> None:
++    first = EvidenceRef(session_id="ses-a", repository_id="repo-a")
++    second = EvidenceRef(session_id="ses-b", repository_id="repo-a")
++    merged = Outcome(
++        id="merged",
++        title="Combined claim",
++        status=OutcomeStatus.COMPLETED,
++        impact="Aggregate impact only supported by the merge",
++        rank=0,
++        evidence_refs=[first, second],
++        source_groups=[
++            OutcomeSourceGroup(id="a", title="API", evidence_refs=[first]),
++            OutcomeSourceGroup(id="b", title="UI", evidence_refs=[second]),
++        ],
++    )
++    draft = OutcomeReviewDraft(outcomes=[merged])
++
++    draft.split("merged")
++
++    assert [item.impact for item in draft.ordered()] == ["", ""]
++
++
++def test_including_more_candidate_promotes_it_to_primary_review_order() -> None:
++    more = outcome("more", 1, bucket=OutcomeBucket.MORE)
++    more.included = False
++    draft = OutcomeReviewDraft(outcomes=[outcome("primary", 0), more])
++
++    draft.toggle_included("more")
++
++    promoted = next(item for item in draft.outcomes if item.id == "more")
++    assert promoted.included is True
++    assert promoted.bucket is OutcomeBucket.PRIMARY
++
++
+ def test_add_user_outcome_has_no_invented_evidence() -> None:
+     draft = OutcomeReviewDraft(outcomes=[])
+     added = draft.add_user_outcome("Reviewed launch design", "Reduced ambiguity")
+     assert added.origin is OutcomeOrigin.USER_ADDED
+     assert added.evidence_refs == []
+     assert added.bucket is OutcomeBucket.PRIMARY
+ 
+ 
+ def test_split_without_source_groups_preserves_parent_and_raises_value_error() -> None:
+     parent = Outcome(
+diff --git a/tests/unit/renderers/test_narrative.py b/tests/unit/renderers/test_narrative.py
+index 01e43c4..fe463e4 100644
+--- a/tests/unit/renderers/test_narrative.py
++++ b/tests/unit/renderers/test_narrative.py
+@@ -61,17 +61,44 @@ def test_render_narrative_normalizes_to_a_single_trailing_newline() -> None:
+ 
+ def test_narrative_brief_omits_usage() -> None:
+     report = narrative_report()
+     report.usage_text = "gpt-5 123 tokens"
+ 
+     assert "## Usage" not in render_narrative(
+         report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF
+     )
+ 
+ 
++def test_narrative_brief_filters_full_depth_sections_from_model_body() -> None:
++    report = narrative_report()
++    report.narrative_text = """## Outcomes
++
++- Shipped supported work.
++
++#### Related Sessions
++
++- Session: ses-secret
++
++## Key Files
++
++- src/iiwi/services/report.py
++
++## Usage
++
++gpt-5 123 tokens
++"""
++
++    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
++
++    assert "Shipped supported work." in output
++    assert "ses-secret" not in output
++    assert "src/iiwi/services/report.py" not in output
++    assert "gpt-5 123 tokens" not in output
++
++
+ def test_narrative_full_keeps_usage() -> None:
+     report = narrative_report()
+     report.usage_text = "gpt-5 123 tokens"
+ 
+     assert "## Usage" in render_narrative(
+         report, timezone="Asia/Taipei", detail=DetailLevel.FULL
+     )
+diff --git a/tests/unit/renderers/test_outcome_markdown.py b/tests/unit/renderers/test_outcome_markdown.py
+index f069826..5c7ec85 100644
+--- a/tests/unit/renderers/test_outcome_markdown.py
++++ b/tests/unit/renderers/test_outcome_markdown.py
+@@ -74,21 +74,36 @@ def render_without_gaps() -> str:
+ def test_report_type_controls_heading_and_sections(
+     report_type: ReportType, heading: str
+ ) -> None:
+     output = render(report_type=report_type, detail=DetailLevel.BRIEF)
+ 
+     assert output.startswith(heading)
+     assert "## Outcomes" in output
+     assert "## In Progress" in output
+     assert "## Blockers" in output
+     assert "## Next Week" in output
+-    assert "Finish parity coverage\n  - Impact" not in output
++
++
++def test_report_type_changes_audience_text_beyond_the_heading() -> None:
++    manager = render(report_type=ReportType.MANAGER, detail=DetailLevel.BRIEF)
++    engineering = render(report_type=ReportType.ENGINEERING, detail=DetailLevel.BRIEF)
++
++    assert "**Audience:** Manager update" in manager
++    assert "**Audience:** Engineering worklog" in engineering
++    assert manager != engineering
++
++
++def test_empty_impact_is_marked_as_unsupported() -> None:
++    output = render(report_type=ReportType.MANAGER, detail=DetailLevel.BRIEF)
++
++    assert "Finish parity coverage" in output
++    assert "Impact: Unsupported by extracted evidence" in output
+ 
+ 
+ def test_brief_hides_session_file_and_commit_evidence() -> None:
+     output = render(report_type=ReportType.MANAGER, detail=DetailLevel.BRIEF)
+ 
+     assert "ses-a" not in output
+     assert "src/iiwi/services/report.py" not in output
+ 
+ 
+ def test_full_groups_evidence_by_repository() -> None:
+diff --git a/tests/unit/security/test_secure_files.py b/tests/unit/security/test_secure_files.py
+index fdb6ea4..bd2f559 100644
+--- a/tests/unit/security/test_secure_files.py
++++ b/tests/unit/security/test_secure_files.py
+@@ -1,29 +1,49 @@
+ import os
+ from pathlib import Path
+ 
+ import pytest
+ 
+-from iiwi.errors import ReportOutputError
++from iiwi.errors import ReportAlreadyExistsError, ReportOutputError
+ from iiwi.security.secure_files import atomic_secure_write, secure_temporary_directory
+ 
+ 
+ def test_atomic_write_rejects_existing_file_without_force(tmp_path: Path) -> None:
+     path = tmp_path / "report.md"
+     path.write_text("old")
+ 
+     with pytest.raises(ReportOutputError, match="already exists"):
+         atomic_secure_write(path, "new")
+ 
+     assert path.read_text() == "old"
+ 
+ 
++def test_atomic_write_rejects_file_created_after_initial_check(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    path = tmp_path / "report.md"
++    real_fsync = os.fsync
++
++    def create_racing_destination(descriptor: int) -> None:
++        if not path.exists():
++            path.write_text("racing writer", encoding="utf-8")
++        real_fsync(descriptor)
++
++    monkeypatch.setattr(os, "fsync", create_racing_destination)
++
++    with pytest.raises(ReportAlreadyExistsError, match="already exists"):
++        atomic_secure_write(path, "new content", force=False)
++
++    assert path.read_text(encoding="utf-8") == "racing writer"
++
++
+ @pytest.mark.skipif(os.name != "posix", reason="POSIX mode semantics")
+ def test_atomic_write_sets_mode_0600(tmp_path: Path) -> None:
+     path = tmp_path / "report.md"
+ 
+     atomic_secure_write(path, "content")
+ 
+     assert path.read_text() == "content"
+     assert path.stat().st_mode & 0o777 == 0o600
+ 
+ 
+diff --git a/tests/unit/services/test_outcomes.py b/tests/unit/services/test_outcomes.py
+index 6a6bd21..e922f72 100644
+--- a/tests/unit/services/test_outcomes.py
++++ b/tests/unit/services/test_outcomes.py
+@@ -6,21 +6,21 @@ from datetime import UTC, datetime, timedelta
+ 
+ import pytest
+ 
+ from iiwi.errors import OutcomeSynthesisError
+ from iiwi.models import OutcomeBucket, OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+-from iiwi.models.session import AgentSession
++from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+ from iiwi.models.time_range import DateRange
+ from iiwi.services import outcomes
+ from iiwi.services.outcomes import OutcomeSynthesisService
+ from iiwi.services.scan import ScanResult
+ 
+ 
+ @dataclass
+ class StaticRunner:
+     output: str
+     calls: list[dict[str, str]] = field(default_factory=list)
+@@ -84,31 +84,58 @@ def cross_repo_payload(
+     *, confidence: str, linkage_signals: list[dict[str, str]]
+ ) -> dict[str, object]:
+     return payload(
+         title="Shared rollout",
+         source_session_ids=["ses-a", "ses-b"],
+         confidence=confidence,
+         linkage_signals=linkage_signals,
+     )
+ 
+ 
+-def resolved(session_id: str, repository_id: str = "repo-a") -> ResolvedSession:
++def activity(
++    activity_id: str,
++    activity_type: ActivityType,
++    content: str,
++    *,
++    tool_name: str | None = None,
++    metadata: dict[str, object] | None = None,
++) -> SessionActivity:
++    return SessionActivity(
++        activity_id=activity_id,
++        activity_type=activity_type,
++        content=content,
++        tool_name=tool_name,
++        metadata=metadata or {},
++    )
++
++
++def resolved(
++    session_id: str,
++    repository_id: str = "repo-a",
++    *,
++    title: str | None = None,
++    branch: str | None = None,
++    activities: list[SessionActivity] | None = None,
++) -> ResolvedSession:
+     return ResolvedSession(
+         session=AgentSession(
+             harness="test",
+             session_id=session_id,
+-            title=f"Session {session_id}",
++            title=title or f"Session {session_id}",
++            branch=branch,
++            activities=activities or [],
+         ),
+         repository=RepositoryIdentity(
+             repository_id=repository_id,
+             display_name=repository_id,
+             identity_type=RepositoryIdentityType.GIT_REMOTE,
++            branch=branch,
+             resolution_method="test",
+         ),
+     )
+ 
+ 
+ def scan_with(sessions: list[ResolvedSession]) -> ScanResult:
+     now = datetime(2026, 8, 10, tzinfo=UTC)
+     return ScanResult(
+         period=DateRange(since=now - timedelta(days=7), until=now),
+         candidate_session_count=len(sessions),
+@@ -127,66 +154,193 @@ def two_session_scan() -> ScanResult:
+ 
+ 
+ def scan_with_six_sessions() -> ScanResult:
+     return scan_with([resolved(f"ses-{index}") for index in range(1, 7)])
+ 
+ 
+ def two_repo_scan() -> ScanResult:
+     return scan_with([resolved("ses-a", "repo-a"), resolved("ses-b", "repo-b")])
+ 
+ 
++def two_repo_scan_with_linkage_evidence() -> ScanResult:
++    return scan_with(
++        [
++            resolved(
++                "ses-a",
++                "repo-a",
++                branch="IIWI-42",
++                activities=[
++                    activity(
++                        "a-user",
++                        ActivityType.USER_MESSAGE,
++                        "Implement same feature rollout for the API.",
++                    )
++                ],
++            ),
++            resolved(
++                "ses-b",
++                "repo-b",
++                branch="IIWI-42",
++                activities=[
++                    activity(
++                        "b-user",
++                        ActivityType.USER_MESSAGE,
++                        "Implement same feature rollout for the UI.",
++                    )
++                ],
++            ),
++        ]
++    )
++
++
+ def fail_only(session_id: str):
+     original = outcomes.extract_evidence
+ 
+     def extract(resolved_session: ResolvedSession):
+         if resolved_session.session.session_id == session_id:
+             raise RuntimeError("extraction failed")
+         return original(resolved_session)
+ 
+     return extract
+ 
+ 
+ def test_preselects_five_and_retains_the_remainder_in_more() -> None:
+     service = service_for_json(payload_with_six_single_session_outcomes())
+     result = service.synthesize(scan_with_six_sessions())
+     assert [item.bucket for item in result.outcomes[:5]] == [OutcomeBucket.PRIMARY] * 5
+     assert result.outcomes[5].bucket is OutcomeBucket.MORE
+     assert len(result.outcomes) == 6
+ 
+ 
++def test_unsupported_model_claims_are_not_copied_from_activity_free_session() -> None:
++    result = service_for_json(
++        payload(
++            title="Invented launch outcome",
++            impact="Revenue increased",
++            source_session_ids=["ses-a"],
++        )
++    ).synthesize(one_scan())
++
++    outcome = result.outcomes[0]
++    assert outcome.title == "Session ses-a"
++    assert outcome.status == "in_progress"
++    assert outcome.impact == ""
++
++
++def test_evidence_refs_include_locally_extracted_file_references() -> None:
++    result = service_for_json(
++        payload(
++            title="Updated checkout renderer",
++            impact="",
++            source_session_ids=["ses-a"],
++        )
++    ).synthesize(
++        scan_with(
++            [
++                resolved(
++                    "ses-a",
++                    activities=[
++                        activity(
++                            "file-a",
++                            ActivityType.FILE_CHANGE,
++                            "src/checkout/render.py",
++                        )
++                    ],
++                )
++            ]
++        )
++    )
++
++    assert [reference.file for reference in result.outcomes[0].evidence_refs] == [
++        "src/checkout/render.py"
++    ]
++
++
++def test_model_omission_preserves_extracted_session_as_ungrouped_candidate() -> None:
++    result = service_for_json(payload_for_sessions(["ses-a"])).synthesize(two_session_scan())
++
++    assert [outcome.bucket for outcome in result.outcomes] == [
++        OutcomeBucket.PRIMARY,
++        OutcomeBucket.UNGROUPED,
++    ]
++    assert result.outcomes[1].title == "Session ses-b"
++    assert result.outcomes[1].included is False
++
++
++def test_duplicate_model_proposals_keep_stable_unique_candidate_ids() -> None:
++    result = service_for_json(
++        {
++            "outcomes": [
++                {
++                    "title": "Repeated title",
++                    "status": "in_progress",
++                    "impact": "",
++                    "source_session_ids": ["ses-a"],
++                    "confidence": "high",
++                    "linkage_signals": [],
++                },
++                {
++                    "title": "Repeated title",
++                    "status": "in_progress",
++                    "impact": "",
++                    "source_session_ids": ["ses-a"],
++                    "confidence": "high",
++                    "linkage_signals": [],
++                },
++            ]
++        }
++    ).synthesize(one_scan())
++
++    assert len({outcome.id for outcome in result.outcomes}) == 2
++
++
+ def test_high_confidence_cross_repo_merge_requires_two_independent_signals() -> None:
+     result = service_for_json(
+         cross_repo_payload(
+             confidence="high",
+             linkage_signals=[
+                 {"kind": "branch_or_issue", "value": "IIWI-42"},
+                 {"kind": "direct_reference", "value": "same feature rollout"},
+             ],
+         )
+-    ).synthesize(two_repo_scan())
++    ).synthesize(two_repo_scan_with_linkage_evidence())
+     assert len(result.outcomes) == 1
+     assert {ref.repository_id for ref in result.outcomes[0].evidence_refs} == {
+         "repo-a",
+         "repo-b",
+     }
+ 
+ 
++def test_linkage_signal_values_must_be_observed_in_local_evidence() -> None:
++    result = service_for_json(
++        cross_repo_payload(
++            confidence="high",
++            linkage_signals=[
++                {"kind": "branch_or_issue", "value": "IIWI-999"},
++                {"kind": "direct_reference", "value": "unobserved shared wording"},
++            ],
++        )
++    ).synthesize(two_repo_scan_with_linkage_evidence())
++
++    assert len(result.outcomes) == 2
++
++
+ def test_real_cross_repo_merge_splits_into_named_repository_outcomes() -> None:
+     result = service_for_json(
+         cross_repo_payload(
+             confidence="high",
+             linkage_signals=[
+                 {"kind": "branch_or_issue", "value": "IIWI-42"},
+                 {"kind": "direct_reference", "value": "same feature rollout"},
+             ],
+         )
+-    ).synthesize(two_repo_scan())
++    ).synthesize(two_repo_scan_with_linkage_evidence())
+     draft = OutcomeReviewDraft(outcomes=result.outcomes)
+ 
+     draft.split(result.outcomes[0].id)
+ 
+     assert [outcome.title for outcome in draft.ordered()] == ["repo-a", "repo-b"]
+     assert [
+         [reference.repository_id for reference in outcome.evidence_refs]
+         for outcome in draft.ordered()
+     ] == [["repo-a"], ["repo-b"]]
+ 
+@@ -251,13 +405,49 @@ def test_unsupported_impact_is_left_empty() -> None:
+ 
+ def test_one_extraction_failure_becomes_ungrouped_without_blocking_success(
+     monkeypatch,
+ ) -> None:
+     monkeypatch.setattr(outcomes, "extract_evidence", fail_only("ses-b"))
+     result = service_for_json(payload_for_sessions(["ses-a"])).synthesize(two_session_scan())
+     assert result.failed_session_ids == ["ses-b"]
+     assert any(item.bucket is OutcomeBucket.UNGROUPED for item in result.outcomes)
+ 
+ 
++def test_ungrouped_failed_session_titles_are_redacted(monkeypatch) -> None:
++    monkeypatch.setattr(outcomes, "extract_evidence", fail_only("ses-b"))
++    result = service_for_json(payload_for_sessions(["ses-a"])).synthesize(
++        scan_with(
++            [
++                resolved("ses-a"),
++                resolved("ses-b", title="token=secret-title"),
++            ]
++        )
++    )
++
++    ungrouped = next(item for item in result.outcomes if item.bucket is OutcomeBucket.UNGROUPED)
++    assert "secret-title" not in ungrouped.title
++    assert "[REDACTED]" in ungrouped.title
++
++
++def test_ungrouped_failed_session_references_are_redacted(monkeypatch) -> None:
++    secret_id = "token=secret-session"
++    monkeypatch.setattr(outcomes, "extract_evidence", fail_only(secret_id))
++
++    result = service_for_json(payload_for_sessions(["ses-a"])).synthesize(
++        scan_with([resolved("ses-a"), resolved(secret_id)])
++    )
++
++    ungrouped = next(item for item in result.outcomes if item.bucket is OutcomeBucket.UNGROUPED)
++    assert "secret-session" not in ungrouped.evidence_refs[0].session_id
++    assert "[REDACTED]" in ungrouped.evidence_refs[0].session_id
++
++
++def test_all_extraction_failures_raise_complete_synthesis_error(monkeypatch) -> None:
++    monkeypatch.setattr(outcomes, "extract_evidence", fail_only("ses-a"))
++
++    with pytest.raises(OutcomeSynthesisError, match="could not extract evidence"):
++        service_for_raw("not called").synthesize(one_scan())
++
++
+ def test_invalid_or_empty_model_output_is_a_complete_synthesis_error() -> None:
+     with pytest.raises(OutcomeSynthesisError, match="valid outcome JSON"):
+         service_for_raw("not-json").synthesize(one_scan())
+diff --git a/tests/unit/summarizers/test_opencode_run.py b/tests/unit/summarizers/test_opencode_run.py
+index 792204f..ab31600 100644
+--- a/tests/unit/summarizers/test_opencode_run.py
++++ b/tests/unit/summarizers/test_opencode_run.py
+@@ -1,10 +1,11 @@
++import tempfile
+ from dataclasses import dataclass, field
+ from pathlib import Path
+ 
+ import pytest
+ 
+ from iiwi.models.report_options import DetailLevel
+ from iiwi.process import CommandResult
+ from iiwi.summarizers.opencode_run import (
+     OpenCodeRunError,
+     OpenCodeRunner,
+@@ -109,10 +110,56 @@ def test_run_raises_when_output_is_empty(tmp_path: Path) -> None:
+     with pytest.raises(OpenCodeRunError, match="no output"):
+         driver.run(transcript="t", prompt="p", title="title")
+ 
+ 
+ def test_run_raises_when_stdout_file_is_never_written(tmp_path: Path) -> None:
+     runner = RecordingRunner()
+     driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+ 
+     with pytest.raises(OpenCodeRunError, match="no output"):
+         driver.run(transcript="t", prompt="p", title="title")
++
++
++def test_run_removes_owned_tempdir_on_success_and_failure(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    created: list[Path] = []
++
++    def mkdtemp(*, prefix: str) -> str:
++        path = tmp_path / f"{prefix}{len(created)}"
++        path.mkdir()
++        created.append(path)
++        return str(path)
++
++    monkeypatch.setattr(tempfile, "mkdtemp", mkdtemp)
++
++    OpenCodeRunner(runner=RecordingRunner(output="ok")).run(
++        transcript="t",
++        prompt="p",
++        title="title",
++    )
++    with pytest.raises(OpenCodeRunError, match="failed"):
++        OpenCodeRunner(runner=RecordingRunner(returncode=1, stderr="failed")).run(
++            transcript="t",
++            prompt="p",
++            title="title",
++        )
++
++    assert [path.exists() for path in created] == [False, False]
++
++
++def test_run_translates_tempfile_io_failures(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    def mkdtemp(*, prefix: str) -> str:
++        del prefix
++        raise OSError("no temp space")
++
++    monkeypatch.setattr(tempfile, "mkdtemp", mkdtemp)
++
++    with pytest.raises(OpenCodeRunError, match="no temp space"):
++        OpenCodeRunner(runner=RecordingRunner(output="ok")).run(
++            transcript="t",
++            prompt="p",
++            title="title",
++        )
+diff --git a/tests/unit/summarizers/test_outcome_prompt.py b/tests/unit/summarizers/test_outcome_prompt.py
+index 62b226d..13a06be 100644
+--- a/tests/unit/summarizers/test_outcome_prompt.py
++++ b/tests/unit/summarizers/test_outcome_prompt.py
+@@ -20,10 +20,17 @@ def test_outcome_prompt_requires_the_constrained_json_contract() -> None:
+ 
+ def test_outcome_prompt_preserves_evidence_first_merge_rules() -> None:
+     prompt = build_outcome_prompt()
+ 
+     assert "3–5" in prompt
+     assert 'Impact must be ""' in prompt
+     assert "unknown session ids" in prompt
+     assert "shared_work_id" in prompt
+     assert "branch_or_issue" in prompt
+     assert "direct_reference" in prompt
++
++
++def test_outcome_prompt_is_audience_neutral() -> None:
++    prompt = build_outcome_prompt()
++
++    assert "engineering outcomes" not in prompt.casefold()
++    assert "work outcomes" in prompt.casefold()

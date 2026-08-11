@@ -1,0 +1,602 @@
+# Review package: cb7b608285d5a4f8e9092395120572d04c78340a..f33e5b22960d73c7102463e9ed08aa226cfc8671
+
+## Commits
+f33e5b2 feat: synthesize evidence-backed outcomes
+
+## Files changed
+ src/iiwi/errors.py                            |   4 +
+ src/iiwi/services/outcomes.py                 | 252 ++++++++++++++++++++++++++
+ src/iiwi/summarizers/outcome_prompt.py        |  45 +++++
+ tests/unit/services/test_outcomes.py          | 219 ++++++++++++++++++++++
+ tests/unit/summarizers/test_outcome_prompt.py |  29 +++
+ 5 files changed, 549 insertions(+)
+
+## Diff
+diff --git a/src/iiwi/errors.py b/src/iiwi/errors.py
+index 9c70d30..ce54ee8 100644
+--- a/src/iiwi/errors.py
++++ b/src/iiwi/errors.py
+@@ -20,10 +20,14 @@ class SessionParseError(HarnessSourceError):
+ class ReportOutputError(IiwiError):
+     """Raised when a report cannot be written safely."""
+ 
+ 
+ class ReportAlreadyExistsError(ReportOutputError):
+     """Raised when report generation would overwrite an existing file."""
+ 
+ 
+ class NoSessionsError(IiwiError):
+     """Raised when no session activity matches the requested period."""
++
++
++class OutcomeSynthesisError(IiwiError):
++    """Raised when outcome synthesis cannot produce valid evidence-backed output."""
+diff --git a/src/iiwi/services/outcomes.py b/src/iiwi/services/outcomes.py
+new file mode 100644
+index 0000000..6371e67
+--- /dev/null
++++ b/src/iiwi/services/outcomes.py
+@@ -0,0 +1,252 @@
++"""Deterministic boundary between model proposals and extracted evidence."""
++
++from __future__ import annotations
++
++from hashlib import sha256
++from typing import Literal
++
++from pydantic import BaseModel, ConfigDict, Field, ValidationError
++
++from iiwi.errors import OutcomeSynthesisError
++from iiwi.extraction.pipeline import extract_evidence
++from iiwi.models import (
++    EvidenceRef,
++    Outcome,
++    OutcomeBucket,
++    OutcomeSourceGroup,
++    OutcomeStatus,
++    OutcomeSynthesisResult,
++)
++from iiwi.models.evidence import EvidenceConfidence, SessionEvidence
++from iiwi.security.redactor import redact_value
++from iiwi.services.scan import ScanResult
++from iiwi.summarizers.opencode_run import OpenCodeRunner
++from iiwi.summarizers.outcome_prompt import build_outcome_prompt
++
++
++class _LinkSignal(BaseModel):
++    model_config = ConfigDict(extra="forbid")
++
++    kind: Literal[
++        "shared_work_id",
++        "branch_or_issue",
++        "direct_reference",
++        "similar_wording",
++        "timestamp_proximity",
++    ]
++    value: str
++
++
++class _ProposedOutcome(BaseModel):
++    model_config = ConfigDict(extra="forbid")
++
++    title: str
++    status: OutcomeStatus
++    impact: str = ""
++    source_session_ids: list[str]
++    confidence: EvidenceConfidence
++    linkage_signals: list[_LinkSignal] = Field(default_factory=list)
++
++
++class _SynthesisPayload(BaseModel):
++    model_config = ConfigDict(extra="forbid")
++
++    outcomes: list[_ProposedOutcome]
++
++
++class _EvidencePayload(BaseModel):
++    sessions: list[SessionEvidence]
++
++
++_ALLOWED_LINKAGE_KINDS = frozenset({"branch_or_issue", "direct_reference"})
++
++
++class OutcomeSynthesisService:
++    """Turn model-selected session ids into traceable, deterministic outcomes."""
++
++    def __init__(self, runner: OpenCodeRunner) -> None:
++        self._runner = runner
++
++    def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
++        evidence_by_session: dict[str, SessionEvidence] = {}
++        failed_sessions = []
++        for resolved in scan.resolved_sessions:
++            try:
++                extracted = extract_evidence(resolved)
++                redacted = redact_value(extracted.model_dump(mode="json"))
++                evidence_by_session[extracted.session_id] = SessionEvidence.model_validate(
++                    redacted
++                )
++            except Exception:  # Extraction failures remain visible candidates.
++                failed_sessions.append(resolved)
++
++        if not evidence_by_session:
++            return OutcomeSynthesisResult(
++                outcomes=self._ungrouped_outcomes(failed_sessions),
++                failed_session_ids=[item.session.session_id for item in failed_sessions],
++            )
++
++        output = self._runner.run(
++            transcript=_EvidencePayload(
++                sessions=list(evidence_by_session.values())
++            ).model_dump_json(indent=2),
++            prompt=build_outcome_prompt(),
++            title="Iiwi outcome synthesis",
++        )
++        payload = self._parse_payload(output)
++        outcomes: list[Outcome] = []
++        for proposal in payload.outcomes:
++            selected = self._selected_evidence(proposal, evidence_by_session)
++            outcomes.extend(self._outcomes_for_proposal(proposal, selected))
++
++        for rank, outcome in enumerate(outcomes):
++            outcome.rank = rank
++            outcome.bucket = OutcomeBucket.PRIMARY if rank < 5 else OutcomeBucket.MORE
++
++        ungrouped = self._ungrouped_outcomes(failed_sessions, rank_start=len(outcomes))
++        return OutcomeSynthesisResult(
++            outcomes=[*outcomes, *ungrouped],
++            failed_session_ids=[item.session.session_id for item in failed_sessions],
++        )
++
++    @staticmethod
++    def _parse_payload(output: str) -> _SynthesisPayload:
++        raw = _strip_json_fence(output)
++        if not raw:
++            raise OutcomeSynthesisError("model did not return valid outcome JSON")
++        try:
++            payload = _SynthesisPayload.model_validate_json(raw)
++        except (ValidationError, ValueError) as exc:
++            raise OutcomeSynthesisError("model did not return valid outcome JSON") from exc
++        if not payload.outcomes:
++            raise OutcomeSynthesisError("model did not return valid outcome JSON")
++        return payload
++
++    @staticmethod
++    def _selected_evidence(
++        proposal: _ProposedOutcome,
++        evidence_by_session: dict[str, SessionEvidence],
++    ) -> list[SessionEvidence]:
++        if not proposal.source_session_ids:
++            raise OutcomeSynthesisError("outcome must reference at least one source session")
++        selected = []
++        for session_id in proposal.source_session_ids:
++            evidence = evidence_by_session.get(session_id)
++            if evidence is None:
++                raise OutcomeSynthesisError(f"unknown session: {session_id}")
++            if evidence not in selected:
++                selected.append(evidence)
++        return selected
++
++    def _outcomes_for_proposal(
++        self,
++        proposal: _ProposedOutcome,
++        selected: list[SessionEvidence],
++    ) -> list[Outcome]:
++        by_repository: dict[str, list[SessionEvidence]] = {}
++        for evidence in selected:
++            by_repository.setdefault(evidence.repository_id, []).append(evidence)
++
++        if len(by_repository) == 1 or self._may_merge_cross_repository(proposal):
++            return [
++                self._outcome(
++                    proposal,
++                    selected,
++                    source_groups=self._source_groups(by_repository)
++                    if len(by_repository) > 1
++                    else [],
++                )
++            ]
++        return [
++            self._outcome(proposal, repository_evidence)
++            for repository_evidence in by_repository.values()
++        ]
++
++    @staticmethod
++    def _may_merge_cross_repository(proposal: _ProposedOutcome) -> bool:
++        if proposal.confidence is not EvidenceConfidence.HIGH:
++            return False
++        kinds = {signal.kind for signal in proposal.linkage_signals}
++        return "shared_work_id" in kinds or kinds >= _ALLOWED_LINKAGE_KINDS
++
++    @staticmethod
++    def _outcome(
++        proposal: _ProposedOutcome,
++        selected: list[SessionEvidence],
++        *,
++        source_groups: list[OutcomeSourceGroup] | None = None,
++    ) -> Outcome:
++        session_ids = [item.session_id for item in selected]
++        return Outcome(
++            id=_synthesized_id(proposal.title, session_ids),
++            title=proposal.title,
++            status=proposal.status,
++            impact=proposal.impact,
++            rank=0,
++            evidence_refs=[
++                EvidenceRef(
++                    session_id=item.session_id,
++                    repository_id=item.repository_id,
++                )
++                for item in selected
++            ],
++            source_groups=source_groups or [],
++        )
++
++    @staticmethod
++    def _source_groups(
++        by_repository: dict[str, list[SessionEvidence]],
++    ) -> list[OutcomeSourceGroup]:
++        return [
++            OutcomeSourceGroup(
++                id=repository_id,
++                evidence_refs=[
++                    EvidenceRef(
++                        session_id=item.session_id,
++                        repository_id=item.repository_id,
++                    )
++                    for item in evidence
++                ],
++            )
++            for repository_id, evidence in by_repository.items()
++        ]
++
++    @staticmethod
++    def _ungrouped_outcomes(
++        failed_sessions,
++        *,
++        rank_start: int = 0,
++    ) -> list[Outcome]:
++        return [
++            Outcome(
++                id=_synthesized_id(
++                    resolved.session.title or resolved.session.session_id,
++                    [resolved.session.session_id],
++                ),
++                title=resolved.session.title or resolved.session.session_id,
++                status=OutcomeStatus.IN_PROGRESS,
++                impact="",
++                rank=rank_start + index,
++                bucket=OutcomeBucket.UNGROUPED,
++                evidence_refs=[
++                    EvidenceRef(
++                        session_id=resolved.session.session_id,
++                        repository_id=resolved.repository.repository_id,
++                    )
++                ],
++            )
++            for index, resolved in enumerate(failed_sessions)
++        ]
++
++
++def _strip_json_fence(output: str) -> str:
++    value = output.strip()
++    if value.startswith("```json") and value.endswith("```"):
++        return value[len("```json") : -len("```")].strip()
++    return value
++
++
++def _synthesized_id(title: str, session_ids: list[str]) -> str:
++    normalized_title = " ".join(title.split()).casefold()
++    value = "\0".join([normalized_title, *sorted(session_ids)])
++    return sha256(value.encode()).hexdigest()[:16]
+diff --git a/src/iiwi/summarizers/outcome_prompt.py b/src/iiwi/summarizers/outcome_prompt.py
+new file mode 100644
+index 0000000..daa8dc1
+--- /dev/null
++++ b/src/iiwi/summarizers/outcome_prompt.py
+@@ -0,0 +1,45 @@
++"""Prompt contract for evidence-backed outcome synthesis."""
++
++_OUTCOME_PROMPT = """Synthesize evidence-backed engineering outcomes from the attached
++redacted session evidence. Return JSON only; do not wrap it in prose.
++
++Aim for 3–5 ranked outcomes when the evidence supports that many. You may emit
++more candidates when they are independently meaningful. Each response must use
++exactly this shape:
++
++{
++  "outcomes": [
++    {
++      "title": "concise outcome title",
++      "status": "completed | in_progress",
++      "impact": "supported impact, or empty string",
++      "source_session_ids": ["known session id"],
++      "confidence": "high | medium | low",
++      "linkage_signals": [
++        {
++          "kind": "one allowed linkage kind",
++          "value": "observed linkage value"
++        }
++      ]
++    }
++  ]
++}
++
++Only use source_session_ids present in the attached evidence; do not use unknown session ids.
++Do not emit repository ids, files, commits, activity ids, or any
++other evidence references: Iiwi reconstructs those from known evidence.
++
++Allowed linkage kinds are shared_work_id, branch_or_issue, direct_reference,
++similar_wording, and timestamp_proximity. Merge sessions from different
++repositories only with high confidence and either
++one shared_work_id signal, or both distinct branch_or_issue and direct_reference
++signals. Similar wording or timestamp proximity alone never supports a
++cross-repository merge. When Impact is unsupported by the supplied evidence,
++Impact must be "". Do not invent work, status, impact, or linkage evidence.
++"""
++
++
++def build_outcome_prompt() -> str:
++    """Return the fixed outcome-synthesis instruction contract."""
++
++    return _OUTCOME_PROMPT
+diff --git a/tests/unit/services/test_outcomes.py b/tests/unit/services/test_outcomes.py
+new file mode 100644
+index 0000000..927ff55
+--- /dev/null
++++ b/tests/unit/services/test_outcomes.py
+@@ -0,0 +1,219 @@
++from __future__ import annotations
++
++import json
++from dataclasses import dataclass, field
++from datetime import UTC, datetime, timedelta
++
++import pytest
++
++from iiwi.errors import OutcomeSynthesisError
++from iiwi.models import OutcomeBucket
++from iiwi.models.repository import (
++    RepositoryIdentity,
++    RepositoryIdentityType,
++    ResolvedSession,
++)
++from iiwi.models.session import AgentSession
++from iiwi.models.time_range import DateRange
++from iiwi.services import outcomes
++from iiwi.services.outcomes import OutcomeSynthesisService
++from iiwi.services.scan import ScanResult
++
++
++@dataclass
++class StaticRunner:
++    output: str
++    calls: list[dict[str, str]] = field(default_factory=list)
++
++    def run(self, *, transcript: str, prompt: str, title: str) -> str:
++        self.calls.append({"transcript": transcript, "prompt": prompt, "title": title})
++        return self.output
++
++
++def service_for_json(value: dict[str, object]) -> OutcomeSynthesisService:
++    return OutcomeSynthesisService(StaticRunner(json.dumps(value)))
++
++
++def service_for_raw(value: str) -> OutcomeSynthesisService:
++    return OutcomeSynthesisService(StaticRunner(value))
++
++
++def payload(
++    *,
++    title: str = "Completed outcome",
++    impact: str = "Verified result",
++    source_session_ids: list[str],
++    confidence: str = "high",
++    linkage_signals: list[dict[str, str]] | None = None,
++) -> dict[str, object]:
++    return {
++        "outcomes": [
++            {
++                "title": title,
++                "status": "completed",
++                "impact": impact,
++                "source_session_ids": source_session_ids,
++                "confidence": confidence,
++                "linkage_signals": linkage_signals or [],
++            }
++        ]
++    }
++
++
++def payload_for_sessions(session_ids: list[str]) -> dict[str, object]:
++    return payload(source_session_ids=session_ids)
++
++
++def payload_with_six_single_session_outcomes() -> dict[str, object]:
++    return {
++        "outcomes": [
++            {
++                "title": f"Outcome {index}",
++                "status": "completed",
++                "impact": "",
++                "source_session_ids": [f"ses-{index}"],
++                "confidence": "high",
++                "linkage_signals": [],
++            }
++            for index in range(1, 7)
++        ]
++    }
++
++
++def cross_repo_payload(
++    *, confidence: str, linkage_signals: list[dict[str, str]]
++) -> dict[str, object]:
++    return payload(
++        title="Shared rollout",
++        source_session_ids=["ses-a", "ses-b"],
++        confidence=confidence,
++        linkage_signals=linkage_signals,
++    )
++
++
++def resolved(session_id: str, repository_id: str = "repo-a") -> ResolvedSession:
++    return ResolvedSession(
++        session=AgentSession(
++            harness="test",
++            session_id=session_id,
++            title=f"Session {session_id}",
++        ),
++        repository=RepositoryIdentity(
++            repository_id=repository_id,
++            display_name=repository_id,
++            identity_type=RepositoryIdentityType.GIT_REMOTE,
++            resolution_method="test",
++        ),
++    )
++
++
++def scan_with(sessions: list[ResolvedSession]) -> ScanResult:
++    now = datetime(2026, 8, 10, tzinfo=UTC)
++    return ScanResult(
++        period=DateRange(since=now - timedelta(days=7), until=now),
++        candidate_session_count=len(sessions),
++        loaded_session_count=len(sessions),
++        failed_session_count=0,
++        resolved_sessions=sessions,
++    )
++
++
++def one_scan() -> ScanResult:
++    return scan_with([resolved("ses-a")])
++
++
++def two_session_scan() -> ScanResult:
++    return scan_with([resolved("ses-a"), resolved("ses-b")])
++
++
++def scan_with_six_sessions() -> ScanResult:
++    return scan_with([resolved(f"ses-{index}") for index in range(1, 7)])
++
++
++def two_repo_scan() -> ScanResult:
++    return scan_with([resolved("ses-a", "repo-a"), resolved("ses-b", "repo-b")])
++
++
++def fail_only(session_id: str):
++    original = outcomes.extract_evidence
++
++    def extract(resolved_session: ResolvedSession):
++        if resolved_session.session.session_id == session_id:
++            raise RuntimeError("extraction failed")
++        return original(resolved_session)
++
++    return extract
++
++
++def test_preselects_five_and_retains_the_remainder_in_more() -> None:
++    service = service_for_json(payload_with_six_single_session_outcomes())
++    result = service.synthesize(scan_with_six_sessions())
++    assert [item.bucket for item in result.outcomes[:5]] == [OutcomeBucket.PRIMARY] * 5
++    assert result.outcomes[5].bucket is OutcomeBucket.MORE
++    assert len(result.outcomes) == 6
++
++
++def test_high_confidence_cross_repo_merge_requires_two_independent_signals() -> None:
++    result = service_for_json(
++        cross_repo_payload(
++            confidence="high",
++            linkage_signals=[
++                {"kind": "branch_or_issue", "value": "IIWI-42"},
++                {"kind": "direct_reference", "value": "same feature rollout"},
++            ],
++        )
++    ).synthesize(two_repo_scan())
++    assert len(result.outcomes) == 1
++    assert {ref.repository_id for ref in result.outcomes[0].evidence_refs} == {
++        "repo-a",
++        "repo-b",
++    }
++
++
++@pytest.mark.parametrize(
++    "signals",
++    [
++        [{"kind": "similar_wording", "value": "auth"}],
++        [{"kind": "timestamp_proximity", "value": "same hour"}],
++        [{"kind": "branch_or_issue", "value": "IIWI-42"}],
++    ],
++)
++def test_unsupported_cross_repo_merge_is_split_by_repository(signals) -> None:
++    result = service_for_json(
++        cross_repo_payload(confidence="high", linkage_signals=signals)
++    ).synthesize(two_repo_scan())
++    assert len(result.outcomes) == 2
++
++
++def test_model_cannot_attach_evidence_from_an_unknown_session() -> None:
++    with pytest.raises(OutcomeSynthesisError, match="unknown session"):
++        service_for_json(payload_for_sessions(["invented-session"])).synthesize(one_scan())
++
++
++def test_model_cannot_supply_repository_references() -> None:
++    model_output = payload_for_sessions(["ses-a"])
++    model_output["outcomes"][0]["repository_id"] = "invented-repository"
++
++    with pytest.raises(OutcomeSynthesisError, match="valid outcome JSON"):
++        service_for_json(model_output).synthesize(one_scan())
++
++
++def test_unsupported_impact_is_left_empty() -> None:
++    result = service_for_json(payload(impact="", source_session_ids=["ses-a"])).synthesize(
++        one_scan()
++    )
++    assert result.outcomes[0].impact == ""
++
++
++def test_one_extraction_failure_becomes_ungrouped_without_blocking_success(
++    monkeypatch,
++) -> None:
++    monkeypatch.setattr(outcomes, "extract_evidence", fail_only("ses-b"))
++    result = service_for_json(payload_for_sessions(["ses-a"])).synthesize(two_session_scan())
++    assert result.failed_session_ids == ["ses-b"]
++    assert any(item.bucket is OutcomeBucket.UNGROUPED for item in result.outcomes)
++
++
++def test_invalid_or_empty_model_output_is_a_complete_synthesis_error() -> None:
++    with pytest.raises(OutcomeSynthesisError, match="valid outcome JSON"):
++        service_for_raw("not-json").synthesize(one_scan())
+diff --git a/tests/unit/summarizers/test_outcome_prompt.py b/tests/unit/summarizers/test_outcome_prompt.py
+new file mode 100644
+index 0000000..62b226d
+--- /dev/null
++++ b/tests/unit/summarizers/test_outcome_prompt.py
+@@ -0,0 +1,29 @@
++from iiwi.summarizers.outcome_prompt import build_outcome_prompt
++
++
++def test_outcome_prompt_requires_the_constrained_json_contract() -> None:
++    prompt = build_outcome_prompt()
++
++    for key in (
++        "outcomes",
++        "title",
++        "status",
++        "impact",
++        "source_session_ids",
++        "confidence",
++        "linkage_signals",
++        "kind",
++        "value",
++    ):
++        assert key in prompt
++
++
++def test_outcome_prompt_preserves_evidence_first_merge_rules() -> None:
++    prompt = build_outcome_prompt()
++
++    assert "3–5" in prompt
++    assert 'Impact must be ""' in prompt
++    assert "unknown session ids" in prompt
++    assert "shared_work_id" in prompt
++    assert "branch_or_issue" in prompt
++    assert "direct_reference" in prompt

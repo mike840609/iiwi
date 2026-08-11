@@ -1,0 +1,862 @@
+# Review package: 6014cd545f0ef72a19420cb5193c71ab1edd8934..8ddcae2
+
+## Commits
+8ddcae2 feat: render outcome quick review TUI
+
+## Files changed
+ src/iiwi/interactive/controller.py                 |  13 +-
+ src/iiwi/interactive/render.py                     | 397 +++++++++++++++++++++
+ .../unit/interactive/test_outcome_review_render.py | 212 +++++++++++
+ .../test_viewport_wrapping_regressions.py          |  53 +++
+ 4 files changed, 672 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/src/iiwi/interactive/controller.py b/src/iiwi/interactive/controller.py
+index 172c63e..9be944f 100644
+--- a/src/iiwi/interactive/controller.py
++++ b/src/iiwi/interactive/controller.py
+@@ -19,20 +19,21 @@ from iiwi.errors import (
+ from iiwi.interactive.input import Key, KeyPress
+ from iiwi.interactive.models import ReportDraft, Screen
+ from iiwi.interactive.render import (
+     build_filtered_rows,
+     build_session_preview_lines,
+     build_visible_rows,
+     main_menu_options,
+     recoverable_error_detail_capacity,
+     render_help,
+     render_main_menu,
++    render_outcome_review,
+     render_recoverable_error,
+     render_report_preview,
+     render_report_result,
+     render_report_setup,
+     render_session_browser,
+     render_session_preview,
+     render_session_review,
+     report_generate_row,
+     report_preview_capacity,
+     report_preview_row,
+@@ -1287,23 +1288,29 @@ def _help_key(state: _State, key: KeyPress) -> None:
+ 
+ 
+ def _render_outcome_review_hook(
+     console: Console,
+     review: OutcomeReviewDraft,
+     *,
+     cursor: int,
+     expanded_evidence: set[str],
+     message: str | None,
+ ) -> None:
+-    """Task 4 screen hook; Task 5 supplies the rendered-line-aware viewport."""
+-
+-    _ = (console, review, cursor, expanded_evidence, message)
++    """Render Task 4's state through the Rich single-frame viewport."""
++
++    render_outcome_review(
++        console,
++        review,
++        cursor=cursor,
++        expanded_evidence=expanded_evidence,
++        message=message,
++    )
+ 
+ 
+ def _render_screen(state: _State, console: Console) -> None:
+     if state.screen is Screen.MAIN:
+         render_main_menu(console, selected=state.main_cursor)
+     elif state.screen is Screen.REPORT_SETUP:
+         assert state.draft is not None
+         render_report_setup(
+             console,
+             state.draft,
+diff --git a/src/iiwi/interactive/render.py b/src/iiwi/interactive/render.py
+index 87c2ed5..8abf43f 100644
+--- a/src/iiwi/interactive/render.py
++++ b/src/iiwi/interactive/render.py
+@@ -15,34 +15,46 @@ from iiwi.interactive.density import (
+     is_subagent,
+     last_activity_at,
+     message_volume,
+     repository_meta,
+     scan_volume,
+     session_meta,
+     volume_label,
+ )
+ from iiwi.interactive.models import ReportDraft
+ from iiwi.interactive.selection import SelectionMark, SelectionState, noise_reason
++from iiwi.models.outcome import (
++    Outcome,
++    OutcomeBucket,
++    OutcomeOrigin,
++    OutcomeReviewDraft,
++)
+ from iiwi.models.repository import ResolvedSession
+ from iiwi.models.session import ActivityType, AgentSession
+ from iiwi.models.time_range import DateRange
+ from iiwi.security.redactor import redact_text
+ from iiwi.services.scan import ScanResult
+ 
+ 
+ @dataclass(frozen=True)
+ class VisibleRow:
+     kind: str
+     repository_id: str
+     session_id: str | None = None
+ 
+ 
++@dataclass(frozen=True)
++class OutcomeReviewRow:
++    kind: str
++    outcome_id: str | None = None
++
++
+ _MAIN_OPTIONS = ["Review Activity", "Generate Report", "Check Setup", "Settings"]
+ # The main menu explains what each option does, the way mole's menu does: one
+ # dim clause per row, aligned under the widest label.
+ _MAIN_DESCRIPTIONS = {
+     "Review Activity": "Explore sessions by repository",
+     "Generate Report": "Configure and produce a report",
+     "Check Setup": "Diagnose the harness setup",
+     "Settings": "Edit saved settings",
+ }
+ # Keep the common choices visible and put the lower-frequency report knobs
+@@ -132,20 +144,35 @@ _WORDMARK = (
+ )
+ _MIN_WORDMARK_HEIGHT = 24
+ # 16 cells of wordmark plus `v0.0.0` on the same row, with a gap between them.
+ _MIN_WORDMARK_WIDTH = 24
+ # Where to file a bug, one Cmd-click away in a terminal that supports OSC 8 and
+ # still readable as text in one that does not.
+ _PROJECT_URL = "https://github.com/mike840609/iiwi"
+ _PROJECT_LABEL = "github.com/mike840609/iiwi"
+ _REVIEW_SUBTITLE = "Select sessions to include in the report:"
+ _BROWSE_SUBTITLE = "Select a repository to explore:"
++_MORE_CANDIDATES_SECTION = "__more_candidates__"
++_UNGROUPED_CANDIDATES_SECTION = "__ungrouped_candidates__"
++_OUTCOME_REVIEW_HINTS = [
++    "↑↓ jk",
++    "Space Include",
++    "e Edit",
++    "J/K Reorder",
++    "v Evidence",
++    "s Split",
++    "a Add",
++    "p Preview",
++    "g Generate",
++    "? Help",
++    "b Back",
++]
+ 
+ 
+ def main_menu_options() -> list[str]:
+     """Return the main-menu actions in display order."""
+ 
+     return list(_MAIN_OPTIONS)
+ 
+ 
+ def report_setup_rows(*, advanced: bool = True) -> list[str]:
+     """Return setup actions and settings in keyboard-navigation order."""
+@@ -224,20 +251,390 @@ def _hint_lines(hints: list[str], width: int) -> list[str]:
+ def _print_hints(console: Console, hints: list[str]) -> None:
+     """Lay the hints out as mole's single status bar, wrapping only when forced.
+ 
+     Truncating would silently drop `q Quit` off the right edge on a narrow
+     terminal, so an over-long bar takes a second line instead.
+     """
+     for line in _hint_lines(hints, console.size.width):
+         _print_viewport_line(console, line, style="dim")
+ 
+ 
++def outcome_review_rows(draft: OutcomeReviewDraft) -> list[OutcomeReviewRow]:
++    """Return every structural Quick Review row in display order.
++
++    More and ungrouped outcomes remain in this structural list so callers can
++    preserve their identity. Rendering filters those children until their
++    disclosure row is open.
++    """
++
++    ordered = draft.ordered()
++    rows = [OutcomeReviewRow("settings")]
++    rows.extend(
++        OutcomeReviewRow("outcome", outcome.id)
++        for outcome in ordered
++        if outcome.bucket is OutcomeBucket.PRIMARY
++    )
++    more = [outcome for outcome in ordered if outcome.bucket is OutcomeBucket.MORE]
++    if more:
++        rows.append(OutcomeReviewRow("more"))
++        rows.extend(OutcomeReviewRow("outcome", outcome.id) for outcome in more)
++    ungrouped = [
++        outcome for outcome in ordered if outcome.bucket is OutcomeBucket.UNGROUPED
++    ]
++    if ungrouped:
++        rows.append(OutcomeReviewRow("ungrouped"))
++        rows.extend(OutcomeReviewRow("outcome", outcome.id) for outcome in ungrouped)
++    rows.extend(
++        [
++            OutcomeReviewRow("blockers"),
++            OutcomeReviewRow("next_week"),
++            OutcomeReviewRow("preview"),
++            OutcomeReviewRow("generate"),
++        ]
++    )
++    return rows
++
++
++def _visible_outcome_review_rows(
++    draft: OutcomeReviewDraft,
++    expanded_evidence: set[str],
++) -> list[OutcomeReviewRow]:
++    outcomes = {outcome.id: outcome for outcome in draft.outcomes}
++    more_open = _MORE_CANDIDATES_SECTION in expanded_evidence
++    ungrouped_open = _UNGROUPED_CANDIDATES_SECTION in expanded_evidence
++    visible: list[OutcomeReviewRow] = []
++    for row in outcome_review_rows(draft):
++        if row.kind != "outcome" or row.outcome_id is None:
++            visible.append(row)
++            continue
++        outcome = outcomes[row.outcome_id]
++        if outcome.bucket is OutcomeBucket.MORE and not more_open:
++            continue
++        if outcome.bucket is OutcomeBucket.UNGROUPED and not ungrouped_open:
++            continue
++        visible.append(row)
++    return visible
++
++
++@dataclass(frozen=True)
++class _OutcomeReviewBlock:
++    row: OutcomeReviewRow
++    lines: list[Text]
++
++
++def _truncated_text(text: Text, width: int) -> Text:
++    fitted = text.copy()
++    fitted.truncate(max(1, width), overflow="ellipsis")
++    return fitted
++
++
++def _labelled_wrapped_lines(
++    console: Console,
++    *,
++    indent: str,
++    label: str,
++    value: str,
++    style: str = "",
++    limit: int | None = None,
++) -> list[Text]:
++    """Wrap a value beside a fixed label and return its actual display lines."""
++
++    prefix = f"{indent}{label:<12}"
++    available = max(1, console.size.width - cell_len(prefix))
++    wrapped = list(
++        Text(value, style=style).wrap(
++            console,
++            available,
++            overflow="fold",
++            no_wrap=False,
++        )
++    ) or [Text("")]
++    if limit is not None:
++        wrapped = wrapped[:limit]
++    lines: list[Text] = []
++    for index, value_line in enumerate(wrapped):
++        lead = prefix if index == 0 else " " * cell_len(prefix)
++        lines.append(
++            _truncated_text(Text.assemble((lead, "dim"), value_line), console.size.width)
++        )
++    return lines
++
++
++def _outcome_summary(outcome: Outcome, *, focused: bool, width: int) -> Text:
++    style = _CURSOR_STYLE if focused else ""
++    summary = Text.assemble(
++        (_CURSOR if focused else " ", style),
++        " ",
++        ("●" if outcome.included else "○", "green" if outcome.included else "dim"),
++        " ",
++    )
++    if outcome.origin is OutcomeOrigin.USER_ADDED:
++        summary.append("User-added ", style="magenta")
++    if outcome.bucket is OutcomeBucket.UNGROUPED:
++        summary.append("Ungrouped ", style="yellow")
++    summary.append(outcome.title, style=style)
++    return _truncated_text(summary, width)
++
++
++def _evidence_detail_lines(console: Console, outcome: Outcome) -> list[Text]:
++    lines: list[Text] = []
++    for reference in outcome.evidence_refs:
++        values = [
++            ("Repository", reference.repository_id),
++            ("Session", reference.session_id),
++            ("Commit", reference.commit),
++            ("File", reference.file),
++        ]
++        lines.extend(
++            _labelled_wrapped_lines(
++                console,
++                indent="      ",
++                label=label,
++                value=value,
++                limit=1,
++            )[0]
++            for label, value in values
++            if value
++        )
++    return lines
++
++
++def _outcome_block(
++    console: Console,
++    outcome: Outcome,
++    *,
++    focused: bool,
++    evidence_expanded: bool,
++    evidence_details: bool = True,
++    impact_line_limit: int | None = None,
++) -> list[Text]:
++    lines = [_outcome_summary(outcome, focused=focused, width=console.size.width)]
++    if not focused:
++        return lines
++    status = outcome.status.value.replace("_", " ").capitalize()
++    lines.extend(
++        _labelled_wrapped_lines(
++            console,
++            indent="    ",
++            label="Status",
++            value=status,
++            limit=1,
++        )
++    )
++    impact = outcome.impact.strip()
++    if impact:
++        lines.extend(
++            _labelled_wrapped_lines(
++                console,
++                indent="    ",
++                label="Impact",
++                value=impact,
++                limit=impact_line_limit,
++            )
++        )
++    reference_count = len(outcome.evidence_refs)
++    evidence = f"{reference_count} reference{'s' if reference_count != 1 else ''}"
++    lines.extend(
++        _labelled_wrapped_lines(
++            console,
++            indent="    ",
++            label="Evidence",
++            value=evidence,
++            limit=1,
++        )
++    )
++    if evidence_expanded and evidence_details:
++        lines.extend(_evidence_detail_lines(console, outcome))
++    return lines
++
++
++def _review_control_line(
++    draft: OutcomeReviewDraft,
++    row: OutcomeReviewRow,
++    *,
++    focused: bool,
++    expanded_evidence: set[str],
++    width: int,
++) -> Text:
++    cursor = _CURSOR if focused else " "
++    style = _CURSOR_STYLE if focused else ""
++    if row.kind == "settings":
++        assert draft.detail is not None
++        value = f"{draft.report_type.value.title()} │ {draft.detail.value.title()}"
++        text = Text.assemble((f"{cursor} Report       ", style), (value, style))
++    elif row.kind == "more":
++        open_ = _MORE_CANDIDATES_SECTION in expanded_evidence
++        text = Text(f"{cursor} {'▾' if open_ else '▸'} More candidates", style=style)
++    elif row.kind == "ungrouped":
++        open_ = _UNGROUPED_CANDIDATES_SECTION in expanded_evidence
++        text = Text(f"{cursor} {'▾' if open_ else '▸'} Ungrouped candidates", style=style)
++    elif row.kind == "blockers":
++        text = Text(f"{cursor} Blockers    {draft.blockers or 'Not set'}", style=style)
++    elif row.kind == "next_week":
++        text = Text(f"{cursor} Next week   {draft.next_week or 'Not set'}", style=style)
++    elif row.kind == "preview":
++        text = Text(f"{cursor} Preview report", style=style or _ACTION_STYLE)
++    elif row.kind == "generate":
++        text = Text(f"{cursor} Generate report", style=style or _ACTION_STYLE)
++    else:
++        raise ValueError(f"Unknown outcome review row: {row.kind}")
++    return _truncated_text(text, width)
++
++
++def _build_outcome_review_blocks(
++    console: Console,
++    draft: OutcomeReviewDraft,
++    rows: list[OutcomeReviewRow],
++    *,
++    cursor: int,
++    expanded_evidence: set[str],
++    focused_capacity: int,
++) -> list[_OutcomeReviewBlock]:
++    outcomes = {outcome.id: outcome for outcome in draft.outcomes}
++    blocks: list[_OutcomeReviewBlock] = []
++    for index, row in enumerate(rows):
++        focused = index == cursor
++        if row.kind != "outcome":
++            lines = [
++                _review_control_line(
++                    draft,
++                    row,
++                    focused=focused,
++                    expanded_evidence=expanded_evidence,
++                    width=console.size.width,
++                )
++            ]
++        else:
++            assert row.outcome_id is not None
++            outcome = outcomes[row.outcome_id]
++            lines = _outcome_block(
++                console,
++                outcome,
++                focused=focused,
++                evidence_expanded=row.outcome_id in expanded_evidence,
++            )
++            if focused and len(lines) > focused_capacity:
++                lines = _outcome_block(
++                    console,
++                    outcome,
++                    focused=True,
++                    evidence_expanded=row.outcome_id in expanded_evidence,
++                    evidence_details=False,
++                )
++            if focused and len(lines) > focused_capacity:
++                lines = _outcome_block(
++                    console,
++                    outcome,
++                    focused=True,
++                    evidence_expanded=False,
++                    evidence_details=False,
++                    impact_line_limit=1,
++                )
++        blocks.append(_OutcomeReviewBlock(row=row, lines=lines))
++    return blocks
++
++
++def _outcome_block_window(
++    blocks: list[_OutcomeReviewBlock],
++    *,
++    cursor: int,
++    capacity: int,
++) -> tuple[int, int]:
++    """Choose the largest contiguous block window containing the focus."""
++
++    best: tuple[int, int] | None = None
++    best_score: tuple[int, int, int] | None = None
++    for start in range(cursor, -1, -1):
++        used = 0
++        for end in range(start, len(blocks)):
++            used += len(blocks[end].lines)
++            if not (start <= cursor <= end):
++                continue
++            indicators = int(start > 0) + int(end < len(blocks) - 1)
++            if used + indicators > capacity:
++                continue
++            count = end - start + 1
++            score = (count, used, -abs((start + end) - (2 * cursor)))
++            if best_score is None or score > best_score:
++                best = (start, end + 1)
++                best_score = score
++    if best is not None:
++        return best
++    return cursor, cursor + 1
++
++
++def render_outcome_review(
++    console: Console,
++    draft: OutcomeReviewDraft,
++    *,
++    cursor: int,
++    expanded_evidence: set[str],
++    message: str | None = None,
++) -> None:
++    """Render Quick Review inside one terminal frame using display-line budgets."""
++
++    rows = _visible_outcome_review_rows(draft, expanded_evidence)
++    cursor = min(max(0, cursor), max(0, len(rows) - 1))
++    hints = _hint_lines(_OUTCOME_REVIEW_HINTS, console.size.width)
++    terminal_budget = max(0, console.size.height - 1)
++    fixed_lines = 2 + 2 + len(hints) + int(message is not None)
++    body_capacity = max(1, terminal_budget - fixed_lines)
++    indicator_floor = int(cursor > 0) + int(cursor < len(rows) - 1)
++    focused_capacity = max(1, body_capacity - indicator_floor)
++    blocks = _build_outcome_review_blocks(
++        console,
++        draft,
++        rows,
++        cursor=cursor,
++        expanded_evidence=expanded_evidence,
++        focused_capacity=focused_capacity,
++    )
++    start, end = _outcome_block_window(blocks, cursor=cursor, capacity=body_capacity)
++
++    selected = sum(outcome.included for outcome in draft.outcomes)
++    _print_viewport_text(
++        console,
++        _truncated_text(
++            Text.assemble(("Quick Review", "bold"), (f"  {selected} selected", "dim")),
++            console.size.width,
++        ),
++    )
++    _print_viewport_text(
++        console,
++        _truncated_text(Text(_RULE_CHAR * console.size.width, style="dim"), console.size.width),
++    )
++    console.print()
++    if message is not None:
++        _print_viewport_text(
++            console,
++            _truncated_text(Text(message, style="yellow"), console.size.width),
++        )
++    if start > 0:
++        _print_viewport_text(
++            console,
++            _truncated_text(Text(f"↑ {start} more", style="dim"), console.size.width),
++        )
++    for block in blocks[start:end]:
++        for line in block.lines:
++            _print_viewport_text(console, _truncated_text(line, console.size.width))
++    if end < len(blocks):
++        _print_viewport_text(
++            console,
++            _truncated_text(
++                Text(f"↓ {len(blocks) - end} more", style="dim"),
++                console.size.width,
++            ),
++        )
++    console.print()
++    _print_hints(console, _OUTCOME_REVIEW_HINTS)
++
++
+ @dataclass(frozen=True)
+ class _BarScale:
+     """One scale shared by every row on screen. ``cells == 0`` disables the column."""
+ 
+     peak: int  # max repository volume in the filtered set
+     total: int  # total volume in the filtered set
+     cells: int  # _BAR_CELLS, or 0 when disabled
+ 
+ 
+ def _bar_scale(
+diff --git a/tests/unit/interactive/test_outcome_review_render.py b/tests/unit/interactive/test_outcome_review_render.py
+new file mode 100644
+index 0000000..18f18cf
+--- /dev/null
++++ b/tests/unit/interactive/test_outcome_review_render.py
+@@ -0,0 +1,212 @@
++from __future__ import annotations
++
++from io import StringIO
++
++from rich.console import Console
++
++from iiwi.interactive import render
++from iiwi.models.outcome import (
++    EvidenceRef,
++    Outcome,
++    OutcomeBucket,
++    OutcomeOrigin,
++    OutcomeReviewDraft,
++    OutcomeStatus,
++)
++from iiwi.models.report_options import ReportType
++
++
++def _console(*, width: int = 100, height: int = 40) -> tuple[Console, StringIO]:
++    stream = StringIO()
++    return (
++        Console(
++            file=stream,
++            color_system=None,
++            force_terminal=False,
++            width=width,
++            height=height,
++        ),
++        stream,
++    )
++
++
++def _outcome(
++    identifier: str,
++    title: str,
++    rank: int,
++    *,
++    bucket: OutcomeBucket = OutcomeBucket.PRIMARY,
++    included: bool = True,
++    origin: OutcomeOrigin = OutcomeOrigin.SYNTHESIZED,
++    impact: str = "",
++    evidence_refs: list[EvidenceRef] | None = None,
++) -> Outcome:
++    refs = evidence_refs
++    if refs is None and origin is OutcomeOrigin.SYNTHESIZED:
++        refs = [EvidenceRef(session_id=f"session-{identifier}", repository_id="repo-a")]
++    return Outcome(
++        id=identifier,
++        title=title,
++        status=OutcomeStatus.IN_PROGRESS,
++        impact=impact,
++        included=included,
++        rank=rank,
++        origin=origin,
++        bucket=bucket,
++        evidence_refs=refs or [],
++    )
++
++
++def _review() -> OutcomeReviewDraft:
++    return OutcomeReviewDraft(
++        report_type=ReportType.MANAGER,
++        outcomes=[
++            _outcome(
++                "primary-a",
++                "Shipped the evidence-first review",
++                0,
++                impact="Managers can verify progress before publishing.",
++                evidence_refs=[
++                    EvidenceRef(
++                        session_id="session-primary-a",
++                        repository_id="iiwi",
++                        commit="abc1234",
++                        file="src/iiwi/interactive/render.py",
++                    )
++                ],
++            ),
++            _outcome(
++                "primary-b",
++                "Kept the existing repaint loop",
++                1,
++                impact="Interactive screens remain stable.",
++            ),
++            _outcome(
++                "manual",
++                "Added release context",
++                2,
++                origin=OutcomeOrigin.USER_ADDED,
++                impact="Readers understand the rollout.",
++            ),
++            _outcome(
++                "more",
++                "Polished secondary copy",
++                3,
++                bucket=OutcomeBucket.MORE,
++                included=False,
++            ),
++            _outcome(
++                "ungrouped",
++                "Investigated an unmatched session",
++                4,
++                bucket=OutcomeBucket.UNGROUPED,
++                included=False,
++            ),
++        ],
++        blockers="Waiting for review",
++        next_week="Ship the renderer",
++    )
++
++
++def test_outcome_review_rows_follow_the_review_hierarchy() -> None:
++    rows = render.outcome_review_rows(_review())
++
++    assert [(row.kind, row.outcome_id) for row in rows] == [
++        ("settings", None),
++        ("outcome", "primary-a"),
++        ("outcome", "primary-b"),
++        ("outcome", "manual"),
++        ("more", None),
++        ("outcome", "more"),
++        ("ungrouped", None),
++        ("outcome", "ungrouped"),
++        ("blockers", None),
++        ("next_week", None),
++        ("preview", None),
++        ("generate", None),
++    ]
++
++
++def test_outcome_review_renders_visual_hierarchy_and_controls() -> None:
++    console, stream = _console(height=50)
++
++    render.render_outcome_review(
++        console,
++        _review(),
++        cursor=1,
++        expanded_evidence=set(),
++    )
++
++    text = stream.getvalue()
++    assert "Quick Review" in text
++    assert "Manager" in text and "Brief" in text
++    assert "3 selected" in text
++    assert "More candidates" in text
++    assert "Blockers" in text and "Next week" in text
++    assert "Space Include" in text
++    assert "e Edit" in text
++    assert "J/K Reorder" in text
++    assert "v Evidence" in text
++    assert "s Split" in text
++    assert "a Add" in text
++    assert "p Preview" in text and "g Generate" in text
++
++
++def test_only_the_focused_outcome_expands_beyond_one_display_line() -> None:
++    console, stream = _console()
++
++    render.render_outcome_review(
++        console,
++        _review(),
++        cursor=1,
++        expanded_evidence=set(),
++    )
++
++    lines = stream.getvalue().splitlines()
++    assert sum("Kept the existing repaint loop" in line for line in lines) == 1
++    assert "Interactive screens remain stable." not in stream.getvalue()
++    assert "Status" in stream.getvalue() and "In progress" in stream.getvalue()
++    assert "Impact" in stream.getvalue()
++    assert "Managers can verify progress before publishing." in stream.getvalue()
++    assert "Evidence" in stream.getvalue() and "1 reference" in stream.getvalue()
++
++
++def test_expanded_focused_evidence_adds_repository_session_and_file_rows() -> None:
++    collapsed_console, collapsed_stream = _console()
++    expanded_console, expanded_stream = _console()
++    review = _review()
++
++    render.render_outcome_review(
++        collapsed_console,
++        review,
++        cursor=1,
++        expanded_evidence=set(),
++    )
++    render.render_outcome_review(
++        expanded_console,
++        review,
++        cursor=1,
++        expanded_evidence={"primary-a"},
++    )
++
++    collapsed = collapsed_stream.getvalue()
++    expanded = expanded_stream.getvalue()
++    assert "Repository  iiwi" not in collapsed
++    assert "Repository  iiwi" in expanded
++    assert "Session     session-primary-a" in expanded
++    assert "File        src/iiwi/interactive/render.py" in expanded
++
++
++def test_user_added_and_ungrouped_outcomes_are_visibly_labelled() -> None:
++    console, stream = _console(height=50)
++
++    render.render_outcome_review(
++        console,
++        _review(),
++        cursor=3,
++        expanded_evidence={"__ungrouped_candidates__"},
++    )
++
++    text = stream.getvalue()
++    assert "Added release context" in text and "User-added" in text
++    assert "Investigated an unmatched session" in text and "Ungrouped" in text
+diff --git a/tests/unit/interactive/test_viewport_wrapping_regressions.py b/tests/unit/interactive/test_viewport_wrapping_regressions.py
+index 51c1cfb..9f5bf04 100644
+--- a/tests/unit/interactive/test_viewport_wrapping_regressions.py
++++ b/tests/unit/interactive/test_viewport_wrapping_regressions.py
+@@ -1,25 +1,28 @@
+ from __future__ import annotations
+ 
+ from datetime import datetime
+ from io import StringIO
+ from zoneinfo import ZoneInfo
+ 
+ from rich.console import Console
+ 
++from iiwi.interactive import render
+ from iiwi.interactive.render import (
+     build_visible_rows,
+     render_report_preview,
+     render_session_browser,
+     render_session_review,
+ )
+ from iiwi.interactive.selection import SelectionState
++from iiwi.models.outcome import EvidenceRef, Outcome, OutcomeReviewDraft, OutcomeStatus
++from iiwi.models.report_options import ReportType
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import AgentSession
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -188,10 +191,60 @@ def test_interactive_screens_fit_every_reasonable_terminal_size() -> None:
+                 assert len(lines) <= height - 1, (width, height, cursor)
+                 assert any("▶" in line for line in lines), (width, height, cursor)
+ 
+                 console, stream = _console(width=width, height=height)
+                 render_session_browser(
+                     console, scan, expanded_repositories=expanded, cursor=cursor
+                 )
+                 lines = _display_lines(stream)
+                 assert len(lines) <= height - 1, (width, height, cursor)
+                 assert any("▶" in line for line in lines), (width, height, cursor)
++
++
++def _long_outcome_review() -> OutcomeReviewDraft:
++    outcomes = [
++        Outcome(
++            id=f"outcome-{index}",
++            title=f"Outcome {index} " + "very-long-title-" * 10,
++            status=OutcomeStatus.IN_PROGRESS,
++            impact="A long impact explanation " + "continues-across-rendered-lines-" * 12,
++            rank=index,
++            evidence_refs=[
++                EvidenceRef(
++                    session_id=f"session-{index}-" + "long-session-id-" * 6,
++                    repository_id="repository-" + "long-repository-name-" * 8,
++                    commit="deadbeef" * 8,
++                    file="src/" + "deeply-nested-directory/" * 8 + "renderer.py",
++                )
++            ],
++        )
++        for index in range(12)
++    ]
++    return OutcomeReviewDraft(outcomes=outcomes, report_type=ReportType.MANAGER)
++
++
++def test_outcome_review_fits_width_height_and_focus_matrix() -> None:
++    review = _long_outcome_review()
++    rows = render.outcome_review_rows(review)
++    focuses = (0, len(rows) // 2, len(rows) - 1)
++    expanded = {outcome.id for outcome in review.outcomes}
++    error = "Could not refresh review: " + "long-error-detail-" * 20
++
++    for width in (40, 60, 80, 100, 140):
++        for height in (20, 24, 30):
++            for cursor in focuses:
++                console, stream = _console(width=width, height=height)
++                render.render_outcome_review(
++                    console,
++                    review,
++                    cursor=cursor,
++                    expanded_evidence=expanded,
++                    message=error,
++                )
++
++                lines = stream.getvalue().splitlines()
++                assert len(lines) <= height - 1, (width, height, cursor)
++                assert any("Quick Review" in line for line in lines), (width, height, cursor)
++                assert any("▶" in line for line in lines), (width, height, cursor)
++                assert any(
++                    "p Preview" in line or "g Generate" in line for line in lines
++                ), (width, height, cursor)

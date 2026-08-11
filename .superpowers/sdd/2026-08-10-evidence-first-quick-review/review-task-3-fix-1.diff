@@ -1,0 +1,89 @@
+# Review package: b0b41480aa4f5cc1768891b36392b4c55d202041..fefe69c
+
+## Commits
+fefe69c fix: skip usage collection for brief narratives
+
+## Files changed
+ src/iiwi/services/report.py              | 6 +++++-
+ tests/integration/test_report_service.py | 9 ++++++++-
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/src/iiwi/services/report.py b/src/iiwi/services/report.py
+index ad0c8bb..7a343be 100644
+--- a/src/iiwi/services/report.py
++++ b/src/iiwi/services/report.py
+@@ -197,21 +197,25 @@ class ReportService:
+         days = self._usage_days or max(1, (self._period.until - self._period.since).days)
+         narrative = self._opencode_runner.run(
+             transcript=transcript,
+             prompt=build_summary_prompt(days, detail=self._detail),
+             title=(
+                 f"Iiwi - {self._period.since.date().isoformat()} "
+                 f"to {self._period.until.date().isoformat()}"
+             ),
+         )
+         self._progress.advance(1)
+-        usage_text = self._collect_usage(scan, warnings)
++        usage_text = (
++            self._collect_usage(scan, warnings)
++            if self._detail is DetailLevel.FULL
++            else None
++        )
+         return WorklogReport(
+             generated_at=self._now_factory(),
+             period=self._period,
+             repositories=[],
+             narrative_text=narrative,
+             usage_text=usage_text,
+             usage_days=self._usage_days if usage_text else None,
+             warnings=[redact_text(warning) for warning in warnings],
+         )
+ 
+diff --git a/tests/integration/test_report_service.py b/tests/integration/test_report_service.py
+index f34b758..48c5a81 100644
+--- a/tests/integration/test_report_service.py
++++ b/tests/integration/test_report_service.py
+@@ -495,34 +495,41 @@ def test_narrative_mode_render_usage_and_warnings(tmp_path: Path) -> None:
+     ).generate(force=False)
+ 
+     assert result.report.usage_text == "gpt-5-mini  1234 tokens"
+     content = output.read_text()
+     assert "## Usage" in content
+     assert "gpt-5-mini  1234 tokens" in content
+ 
+ 
+ def test_narrative_brief_detail_changes_the_prompt_and_wrapper(tmp_path: Path) -> None:
+     runner = FakeOpenCodeRunner()
++    usage_calls: list[ScanResult] = []
++
++    def usage_provider(scan: ScanResult) -> str:
++        usage_calls.append(scan)
++        return "gpt-5-mini  1234 tokens"
+ 
+     result = narrative_service(
+         FakeSource(),
+         tmp_path / "report.md",
+         runner=runner,
+-        usage_provider=lambda _scan: "gpt-5-mini  1234 tokens",
++        usage_provider=usage_provider,
+         detail=DetailLevel.BRIEF,
+     ).generate()
+ 
+     assert (
+         "Do not include session IDs, file lists, command lists, or Usage."
+         in runner.calls[0]["prompt"]
+     )
+     assert "## Usage" not in result.content
++    assert result.report.usage_text is None
++    assert usage_calls == []
+ 
+ 
+ def test_narrative_mode_is_off_by_default(tmp_path: Path) -> None:
+     source = FakeSource()
+     output = tmp_path / "report.md"
+ 
+     result = service(source, output).generate(force=False)
+ 
+     assert result.report.narrative_text is None
+     assert result.report.repositories

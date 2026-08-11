@@ -1,0 +1,2622 @@
+# Review package: fefe69c91cbde3fcf529ca468cc450b455a0a8fc..c6fe165ca36de97ab4e03146c0e88ed492d8bd39
+
+## Commits
+c6fe165 feat: add quick review controller flow
+
+## Files changed
+ src/iiwi/config.py                                 |   3 +
+ src/iiwi/interactive/cli_actions.py                | 165 ++++++-
+ src/iiwi/interactive/controller.py                 | 365 +++++++++++++++-
+ tests/unit/interactive/test_activity_first_home.py |  11 +
+ tests/unit/interactive/test_cli_actions.py         | 214 +++++++++
+ .../test_collapsed_advanced_settings.py            |  15 +-
+ tests/unit/interactive/test_controller.py          |  11 +
+ .../unit/interactive/test_controller_generation.py |  18 +-
+ tests/unit/interactive/test_controller_results.py  |  17 +-
+ .../interactive/test_interactive_regressions.py    |  14 +
+ .../interactive/test_outcome_review_controller.py  | 482 +++++++++++++++++++++
+ tests/unit/interactive/test_review_regressions.py  |  13 +-
+ tests/unit/interactive/test_selection_memory.py    |  16 +-
+ .../interactive/test_unified_activity_review.py    |  11 +
+ tests/unit/test_config.py                          |  63 +++
+ 15 files changed, 1390 insertions(+), 28 deletions(-)
+
+## Diff
+diff --git a/src/iiwi/config.py b/src/iiwi/config.py
+index 4b7d715..2cce5bc 100644
+--- a/src/iiwi/config.py
++++ b/src/iiwi/config.py
+@@ -1,17 +1,19 @@
+ """Application configuration models."""
+ 
+ from pathlib import Path
+ 
+ from pydantic import BaseModel, Field
+ from pydantic_settings import BaseSettings, SettingsConfigDict
+ 
++from iiwi.models.report_options import ReportType
++
+ 
+ class OpenCodeCliSettings(BaseModel):
+     """OpenCode executable invocation settings."""
+ 
+     executable: str = "opencode"
+     timeout_seconds: float = 30.0
+     run_timeout_seconds: float = 600.0
+     model: str = ""
+     sanitize: bool = False
+ 
+@@ -56,20 +58,21 @@ class HarnessSettings(BaseModel):
+ 
+ 
+ class ReportSettings(BaseModel):
+     """Report defaults."""
+ 
+     timezone: str = "Asia/Taipei"
+     output_directory: Path = Path("reports")
+     # A comma-separated string, not `list[str]`: a list cannot be validated or
+     # round-tripped by `config set`, which writes and rereads strings.
+     exclude_repositories: str = ""
++    quick_review_report_type: ReportType = ReportType.MANAGER
+ 
+     def excluded_repository_ids(self) -> tuple[str, ...]:
+         """Normalise the string setting into the repository ids it names.
+ 
+         The format is this setting's own, so the parsing lives here rather
+         than at the call sites that filter on the result.
+         """
+ 
+         return tuple(
+             entry.strip()
+diff --git a/src/iiwi/interactive/cli_actions.py b/src/iiwi/interactive/cli_actions.py
+index 006b96c..8233d75 100644
+--- a/src/iiwi/interactive/cli_actions.py
++++ b/src/iiwi/interactive/cli_actions.py
+@@ -2,43 +2,61 @@
+ 
+ Imports of :mod:`iiwi.cli` stay inside callbacks so the Typer module can
+ import ``build_interactive_actions`` without creating an import cycle.
+ """
+ 
+ from __future__ import annotations
+ 
+ import contextlib
+ import os
+ from datetime import datetime
++from uuid import uuid4
+ 
++import typer
++
++from iiwi import config_store
+ from iiwi.history import HistoryEntry, append_history
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+ )
+ from iiwi.interactive.models import ReportDraft
+ from iiwi.logging import ConsoleReporter
++from iiwi.models.outcome import (
++    Outcome,
++    OutcomeOrigin,
++    OutcomeReviewDraft,
++    OutcomeStatus,
++)
++from iiwi.models.report_options import ReportType
+ from iiwi.models.time_range import DateRange
+ from iiwi.process import CommandRunner
+ from iiwi.security.redactor import redact_text
++from iiwi.services.outcomes import OutcomeSynthesisService
+ from iiwi.services.scan import ScanResult
++from iiwi.summarizers.opencode_run import OpenCodeRunner
+ 
+ 
+ def _new_draft() -> ReportDraft:
+     from iiwi import cli
+ 
+     settings = cli._load_settings()
+     now = cli._now_in_timezone(settings.report.timezone)
+     enabled = cli._enabled_harnesses(settings)
+     harness = cli.Harness.OPENCODE if cli.Harness.OPENCODE in enabled else enabled[0]
+     label, period = _named_periods(now)[0]
+-    return ReportDraft(harness=harness.value, period=period, period_label=label)
++    return ReportDraft(
++        harness=harness.value,
++        period=period,
++        period_label=label,
++        report_type=settings.report.quick_review_report_type,
++    )
+ 
+ 
+ def _choose_harness(current: str) -> str:
+     """Cycle to the next enabled harness without leaving the key-driven UI."""
+ 
+     from iiwi import cli
+ 
+     settings = cli._load_settings()
+     enabled = [harness.value for harness in cli._enabled_harnesses(settings)]
+     if not enabled:
+@@ -145,20 +163,159 @@ def _generate(
+                 )
+             )
+     return InteractiveReportResult(
+         output_path=None if draft.dry_run else result.output_path,
+         content=result.content,
+         repository_count=len(scan.sessions_by_repository),
+         session_count=scan.loaded_session_count,
+     )
+ 
+ 
++def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
++    """Synthesize the already-filtered review selection into an editable draft."""
++
++    from iiwi import cli
++
++    settings = cli._load_settings()
++    cli_settings = settings.harnesses.opencode.cli
++    runner = OpenCodeRunner(
++        runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
++        executable=cli_settings.executable,
++        model=cli_settings.model,
++    )
++    result = OutcomeSynthesisService(runner).synthesize(scan)
++    arguments: dict[str, object] = {
++        "outcomes": result.outcomes,
++        "report_type": draft.report_type,
++    }
++    if draft.detail_overridden:
++        arguments["detail"] = draft.detail
++    return OutcomeReviewDraft.model_validate(arguments)
++
++
++def _generate_reviewed(
++    draft: ReportDraft,
++    scan: ScanResult,
++    review: OutcomeReviewDraft,
++    force: bool,
++) -> InteractiveReportResult:
++    """Render the exact in-memory review through the existing report builder."""
++
++    from iiwi import cli
++
++    settings = cli._load_settings()
++    now = cli._now_in_timezone(settings.report.timezone)
++    harness = cli.Harness(draft.harness)
++    output_path = cli._default_output_path(settings, draft.period)
++    assert review.detail is not None
++    reporter = ConsoleReporter()
++    with reporter.progress() as progress:
++        service = cli._build_report_service(
++            settings,
++            draft.period,
++            output_path,
++            no_llm=True,
++            root_only=not draft.include_subagents,
++            now=now,
++            harness=harness,
++            sanitize=draft.sanitize,
++            detail=review.detail,
++            progress=progress,
++        )
++        result = service.generate_reviewed(
++            review,
++            scan=scan,
++            force=force,
++            dry_run=draft.dry_run,
++        )
++    if not draft.dry_run:
++        with contextlib.suppress(OSError):
++            append_history(
++                HistoryEntry(
++                    generated_at=now,
++                    harness=harness.value,
++                    since=draft.period.since,
++                    until=draft.period.until,
++                    output_path=result.output_path,
++                    repository_count=len(scan.sessions_by_repository),
++                    session_count=scan.loaded_session_count,
++                    narrative=False,
++                    detail=review.detail.value,
++                )
++            )
++    return InteractiveReportResult(
++        output_path=None if draft.dry_run else result.output_path,
++        content=result.content,
++        repository_count=len(scan.sessions_by_repository),
++        session_count=scan.loaded_session_count,
++    )
++
++
++def _prompt_status(current: OutcomeStatus) -> OutcomeStatus:
++    choices = "/".join(status.value for status in OutcomeStatus)
++    while True:
++        answer = typer.prompt(
++            f"Status ({choices})",
++            default=current.value,
++        )
++        try:
++            return OutcomeStatus(answer.strip().casefold())
++        except ValueError:
++            typer.echo(f"  choose one of: {choices}")
++
++
++def _edit_outcome(outcome: Outcome) -> Outcome:
++    """Prompt for editable prose while leaving traceability fields untouched."""
++
++    title = typer.prompt("Title", default=outcome.title).strip()
++    impact = typer.prompt("Impact", default=outcome.impact).strip()
++    status = _prompt_status(outcome.status)
++    return outcome.model_copy(
++        update={"title": title, "impact": impact, "status": status},
++        deep=True,
++    )
++
++
++def _add_outcome() -> Outcome | None:
++    title = typer.prompt("Title", default="", show_default=False).strip()
++    if not title:
++        return None
++    impact = typer.prompt("Impact", default="", show_default=False).strip()
++    status = _prompt_status(OutcomeStatus.IN_PROGRESS)
++    return Outcome(
++        id=uuid4().hex,
++        title=title,
++        status=status,
++        impact=impact,
++        rank=0,
++        origin=OutcomeOrigin.USER_ADDED,
++    )
++
++
++def _edit_gap(label: str, current: str | None) -> str | None:
++    answer = typer.prompt(
++        label,
++        default=current or "",
++        show_default=bool(current),
++    ).strip()
++    if not answer or answer.casefold() == "none":
++        return None
++    return answer
++
++
++def _save_report_type(report_type: ReportType) -> None:
++    config_store.set_value(
++        "report.quick_review_report_type",
++        report_type.value,
++    )
++
++
+ def _doctor(harness_name: str) -> list[str]:
+     from iiwi import cli
+ 
+     settings = cli._load_settings()
+     harness = cli.Harness(harness_name)
+     cli._require_enabled_harness(settings, harness)
+     runner = CommandRunner(
+         timeout_seconds=settings.harnesses.opencode.cli.timeout_seconds
+     )
+     result = cli.run_doctor(settings, runner=runner, harness=harness.value)
+@@ -242,16 +399,22 @@ def _exclude_repository(repository_id: str, display_name: str) -> str:
+ 
+ def build_interactive_actions() -> InteractiveActions:
+     """Build the controller callbacks from the CLI's existing service seams."""
+ 
+     return InteractiveActions(
+         new_draft=_new_draft,
+         choose_harness=_choose_harness,
+         choose_period=_choose_period,
+         scan=_scan,
+         generate=_generate,
++        synthesize=_synthesize,
++        generate_reviewed=_generate_reviewed,
++        edit_outcome=_edit_outcome,
++        add_outcome=_add_outcome,
++        edit_gap=_edit_gap,
++        save_report_type=_save_report_type,
+         doctor=_doctor,
+         edit_settings=_edit_settings,
+         restore_selection=_restore_selection,
+         save_selection=_save_selection,
+         exclude_repository=_exclude_repository,
+     )
+diff --git a/src/iiwi/interactive/controller.py b/src/iiwi/interactive/controller.py
+index 7a92bee..172c63e 100644
+--- a/src/iiwi/interactive/controller.py
++++ b/src/iiwi/interactive/controller.py
+@@ -33,20 +33,22 @@ from iiwi.interactive.render import (
+     render_session_browser,
+     render_session_preview,
+     render_session_review,
+     report_generate_row,
+     report_preview_capacity,
+     report_preview_row,
+     report_result_options,
+     report_setup_rows,
+ )
+ from iiwi.interactive.selection import SelectionState
++from iiwi.models.outcome import Outcome, OutcomeBucket, OutcomeReviewDraft
++from iiwi.models.report_options import ReportType
+ from iiwi.models.session import AgentSession
+ from iiwi.models.time_range import DateRange
+ from iiwi.renderers.markdown import DetailLevel
+ from iiwi.services.scan import ScanResult
+ 
+ _ADVANCED_ROW = "Advanced settings"
+ 
+ 
+ class KeySource(Protocol):
+     """Minimal input contract; one context restores terminal mode after each key."""
+@@ -68,20 +70,29 @@ class InteractiveReportResult:
+ 
+ @dataclass(frozen=True)
+ class InteractiveActions:
+     """Business-logic seams supplied by `cli.py`, keeping this module cycle-free."""
+ 
+     new_draft: Callable[[], ReportDraft]
+     choose_harness: Callable[[str], str]
+     choose_period: Callable[[str | None], tuple[str, DateRange]]
+     scan: Callable[[ReportDraft], ScanResult]
+     generate: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
++    synthesize: Callable[[ReportDraft, ScanResult], OutcomeReviewDraft]
++    generate_reviewed: Callable[
++        [ReportDraft, ScanResult, OutcomeReviewDraft, bool],
++        InteractiveReportResult,
++    ]
++    edit_outcome: Callable[[Outcome], Outcome]
++    add_outcome: Callable[[], Outcome | None]
++    edit_gap: Callable[[str, str | None], str | None]
++    save_report_type: Callable[[ReportType], None]
+     doctor: Callable[[str], list[str]]
+     edit_settings: Callable[[], None]
+     restore_selection: Callable[[str, DateRange, bool], set[str] | None]
+     save_selection: Callable[[str, DateRange, bool, set[str]], None]
+     exclude_repository: Callable[[str, str], str]
+ 
+ 
+ @dataclass
+ class _ErrorState:
+     kind: str
+@@ -105,29 +116,38 @@ class _State:
+     browser_scan: ScanResult | None = None
+     selection: SelectionState | None = None
+     result: InteractiveReportResult | None = None
+     expanded_repositories: set[str] | None = None
+     preview_session: AgentSession | None = None
+     preview_offset: int = 0
+     preview_return_screen: Screen | None = None
+     error: _ErrorState | None = None
+     review_message: str | None = None
+     review_from_main: bool = False
++    outcome_review: OutcomeReviewDraft | None = None
++    outcome_cursor: int = 0
++    outcome_message: str | None = None
++    expanded_evidence: set[str] | None = None
+     search_query: str = ""
+     searching: bool = False
+     help_return_screen: Screen | None = None
+ 
+     def expansions(self) -> set[str]:
+         if self.expanded_repositories is None:
+             self.expanded_repositories = set()
+         return self.expanded_repositories
+ 
++    def evidence_expansions(self) -> set[str]:
++        if self.expanded_evidence is None:
++            self.expanded_evidence = set()
++        return self.expanded_evidence
++
+ 
+ def _read_key(input_source: KeySource) -> KeyPress:
+     """Read exactly one key while guaranteeing terminal restoration before actions run."""
+ 
+     with input_source:
+         return input_source.read_key()
+ 
+ 
+ def _char(key: KeyPress, value: str) -> bool:
+     return key.char is not None and key.char.casefold() == value.casefold()
+@@ -193,43 +213,52 @@ def _paint(console: Console, frame: str, previous: list[str] | None) -> list[str
+     console.file.write(f"{_CURSOR_HIDE}{''.join(out)}{_CURSOR_SHOW}")
+     console.file.flush()
+     return lines
+ 
+ 
+ def _reset_search(state: _State) -> None:
+     state.search_query = ""
+     state.searching = False
+ 
+ 
++def _clear_outcome_review(state: _State) -> None:
++    state.outcome_review = None
++    state.outcome_cursor = 0
++    state.outcome_message = None
++    state.expanded_evidence = set()
++
++
+ def _new_report(state: _State, actions: InteractiveActions) -> None:
+     state.draft = actions.new_draft()
+     state.setup_cursor = 0
+     state.setup_advanced = False
+     state.selection = None
+     state.result = None
+     state.error = None
+     state.review_message = None
+     state.review_from_main = False
++    _clear_outcome_review(state)
+     state.preview_offset = 0
+     state.preview_return_screen = None
+     state.expanded_repositories = set()
+     _reset_search(state)
+     state.screen = Screen.REPORT_SETUP
+ 
+ 
+ def _load_browse(
+     state: _State,
+     actions: InteractiveActions,
+     draft: ReportDraft,
+ ) -> None:
+     """Load configured activity into the same selectable tree used by reports."""
+ 
++    _clear_outcome_review(state)
+     state.draft = draft
+     try:
+         scan = actions.scan(draft)
+     except IiwiError as exc:
+         state.error = _ErrorState(
+             kind="browse-source",
+             title=f"Could not read {draft.harness} sessions",
+             detail=str(exc),
+         )
+         state.screen = Screen.RECOVERABLE_ERROR
+@@ -375,20 +404,21 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
+ 
+ 
+ def _clear_expansions_if_scan_was_invalidated(
+     state: _State,
+     draft: ReportDraft,
+     *,
+     had_scan: bool,
+ ) -> None:
+     if had_scan and draft.scan is None:
+         state.expanded_repositories = set()
++        _clear_outcome_review(state)
+ 
+ 
+ def _edit_setup_field(state: _State, actions: InteractiveActions, *, field: str) -> None:
+     assert state.draft is not None
+     draft = state.draft
+     had_scan = draft.scan is not None
+     if field == "Harness":
+         draft.set_harness(actions.choose_harness(draft.harness))
+         if draft.harness != "opencode":
+             draft.set_sanitize(False)
+@@ -652,48 +682,38 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
+     state.error = None
+     state.screen = Screen.REPORT_RESULT
+ 
+ 
+ def _generate_from_setup(
+     state: _State,
+     actions: InteractiveActions,
+     *,
+     preview: bool,
+ ) -> None:
+-    """Generate from setup, using dry-run only for the Preview action.
+-
+-    Both actions share the same scan and restored selection. Preview temporarily
+-    enables ``dry_run`` for the business layer, then restores the draft so a later
+-    Generate action can never inherit a hidden no-write mode.
+-    """
++    """Keep setup actions one-step while routing them through reviewed output."""
+     assert state.draft is not None
+-    draft = state.draft
+-    draft.set_dry_run(preview)
+-    try:
+-        state.review_from_main = False
+-        _review(state, actions)
+-        if state.screen is not Screen.SESSION_REVIEW:
+-            return
+-        _generate(state, actions, force=False)
+-    finally:
+-        draft.set_dry_run(False)
+-    if preview and state.screen is Screen.REPORT_RESULT:
+-        state.preview_offset = 0
++    state.review_from_main = False
++    _review(state, actions)
++    if state.screen is Screen.SESSION_REVIEW:
++        _begin_outcome_review(state, actions)
++    if state.screen is Screen.OUTCOME_REVIEW:
++        _generate_outcome_review(state, actions, preview=preview)
++    if preview and state.screen is Screen.REPORT_PREVIEW:
+         state.preview_return_screen = Screen.REPORT_SETUP
+-        state.screen = Screen.REPORT_PREVIEW
+ 
+ 
+ def _rescan_review(state: _State, actions: InteractiveActions) -> None:
+     assert state.draft is not None
+     assert state.selection is not None
+     selected = set(state.selection.selected_session_ids)
+     state.draft.scan = None
++    _clear_outcome_review(state)
+     _review(state, actions)
+     if state.screen is not Screen.SESSION_REVIEW or state.selection is None:
+         return
+     available = {
+         item.session.session_id for item in state.selection.scan.resolved_sessions
+     }
+     state.selection.selected_session_ids = selected & available
+     _sync_selection(state, actions)
+ 
+ 
+@@ -728,21 +748,21 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
+         state.selection.select_all()
+         _sync_selection(state, actions)
+         state.review_message = None
+         return
+     if _char(key, "n"):
+         state.selection.select_none()
+         _sync_selection(state, actions)
+         state.review_message = None
+         return
+     if _exact_char(key, "g"):
+-        _generate(state, actions, force=False)
++        _begin_outcome_review(state, actions)
+         return
+     if _exact_char(key, "p"):
+         _preview_from_row(
+             state,
+             state.selection.scan,
+             rows,
+             "review_cursor",
+             return_screen=Screen.SESSION_REVIEW,
+         )
+         return
+@@ -784,20 +804,286 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
+             if row.repository_id in expanded:
+                 expanded.remove(row.repository_id)
+             else:
+                 expanded.add(row.repository_id)
+             state.review_cursor = min(
+                 state.review_cursor,
+                 max(0, len(_tree_rows(state.selection.scan, state)) - 1),
+             )
+ 
+ 
++@dataclass(frozen=True)
++class _OutcomeReviewTarget:
++    kind: str
++    outcome_id: str | None = None
++
++
++_MORE_SECTION = "__more_candidates__"
++_UNGROUPED_SECTION = "__ungrouped_candidates__"
++
++
++def _outcome_review_targets(state: _State) -> list[_OutcomeReviewTarget]:
++    """Return Task 4's logical controls in the order Task 5 will render them."""
++
++    assert state.outcome_review is not None
++    review = state.outcome_review
++    targets = [_OutcomeReviewTarget("settings")]
++    targets.extend(
++        _OutcomeReviewTarget("outcome", outcome.id)
++        for outcome in review.ordered()
++        if outcome.bucket is OutcomeBucket.PRIMARY
++    )
++    more = [
++        outcome
++        for outcome in review.ordered()
++        if outcome.bucket is OutcomeBucket.MORE
++    ]
++    if more:
++        targets.append(_OutcomeReviewTarget("more"))
++        if _MORE_SECTION in state.evidence_expansions():
++            targets.extend(
++                _OutcomeReviewTarget("outcome", outcome.id) for outcome in more
++            )
++    ungrouped = [
++        outcome
++        for outcome in review.ordered()
++        if outcome.bucket is OutcomeBucket.UNGROUPED
++    ]
++    if ungrouped:
++        targets.append(_OutcomeReviewTarget("ungrouped"))
++        if _UNGROUPED_SECTION in state.evidence_expansions():
++            targets.extend(
++                _OutcomeReviewTarget("outcome", outcome.id) for outcome in ungrouped
++            )
++    targets.extend(
++        [
++            _OutcomeReviewTarget("blockers"),
++            _OutcomeReviewTarget("next_week"),
++            _OutcomeReviewTarget("preview"),
++            _OutcomeReviewTarget("generate"),
++        ]
++    )
++    return targets
++
++
++def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
++    assert state.draft is not None
++    assert state.selection is not None
++    if state.selection.selected_count == 0:
++        state.review_message = "Select at least one session before generating."
++        state.screen = Screen.SESSION_REVIEW
++        return
++    _sync_selection(state, actions)
++    filtered_scan = state.selection.filtered_scan()
++    state.outcome_review = actions.synthesize(state.draft, filtered_scan)
++    state.outcome_cursor = 0
++    state.outcome_message = None
++    state.expanded_evidence = set()
++    state.review_message = None
++    state.error = None
++    state.screen = Screen.OUTCOME_REVIEW
++
++
++def _generate_outcome_review(
++    state: _State,
++    actions: InteractiveActions,
++    *,
++    preview: bool,
++    force: bool = False,
++) -> None:
++    assert state.draft is not None
++    assert state.selection is not None
++    assert state.outcome_review is not None
++    draft = state.draft
++    draft.set_dry_run(preview)
++    try:
++        result = actions.generate_reviewed(
++            draft,
++            state.selection.filtered_scan(),
++            state.outcome_review,
++            force,
++        )
++    except ReportAlreadyExistsError as exc:
++        state.error = _ErrorState(
++            kind="report-output-conflict",
++            title="Could not write report",
++            detail=str(exc),
++        )
++        state.screen = Screen.RECOVERABLE_ERROR
++        return
++    except ReportOutputError as exc:
++        state.error = _ErrorState(
++            kind="report-output",
++            title="Could not write report",
++            detail=str(exc),
++        )
++        state.screen = Screen.RECOVERABLE_ERROR
++        return
++    except IiwiError as exc:
++        state.error = _ErrorState(
++            kind="report-generate",
++            title="Could not generate report",
++            detail=str(exc),
++        )
++        state.screen = Screen.RECOVERABLE_ERROR
++        return
++    finally:
++        draft.set_dry_run(False)
++    state.result = result
++    state.result_cursor = 0
++    state.preview_offset = 0
++    state.outcome_message = None
++    state.error = None
++    if preview:
++        state.preview_return_screen = Screen.OUTCOME_REVIEW
++        state.screen = Screen.REPORT_PREVIEW
++    else:
++        state.preview_return_screen = None
++        state.screen = Screen.REPORT_RESULT
++
++
++def _cycle_report_type(state: _State, actions: InteractiveActions) -> None:
++    assert state.draft is not None
++    assert state.outcome_review is not None
++    review = state.outcome_review
++    report_type = (
++        ReportType.ENGINEERING
++        if review.report_type is ReportType.MANAGER
++        else ReportType.MANAGER
++    )
++    review.set_report_type(report_type)
++    assert review.detail is not None
++    state.draft.report_type = review.report_type
++    state.draft.detail = review.detail
++    state.draft.detail_overridden = review.detail_overridden
++    actions.save_report_type(report_type)
++
++
++def _move_reviewed_outcome(
++    state: _State,
++    target: _OutcomeReviewTarget,
++    delta: int,
++) -> None:
++    assert state.outcome_review is not None
++    assert target.outcome_id is not None
++    state.outcome_review.move(target.outcome_id, delta)
++    rows = _outcome_review_targets(state)
++    state.outcome_cursor = next(
++        index
++        for index, row in enumerate(rows)
++        if row.kind == "outcome" and row.outcome_id == target.outcome_id
++    )
++
++
++def _outcome_review_key(
++    state: _State,
++    key: KeyPress,
++    actions: InteractiveActions,
++) -> None:
++    assert state.outcome_review is not None
++    rows = _outcome_review_targets(state)
++    state.outcome_cursor = min(state.outcome_cursor, len(rows) - 1)
++    target = rows[state.outcome_cursor]
++
++    if _exact_char(key, "J") and target.kind == "outcome":
++        _move_reviewed_outcome(state, target, 1)
++        return
++    if _exact_char(key, "K") and target.kind == "outcome":
++        _move_reviewed_outcome(state, target, -1)
++        return
++
++    state.outcome_cursor = _move(state.outcome_cursor, key, len(rows))
++    target = rows[state.outcome_cursor]
++    if _char(key, "q"):
++        state.screen = Screen.MAIN
++        return
++    if key.key is Key.ESCAPE or _char(key, "b"):
++        state.screen = Screen.SESSION_REVIEW
++        return
++    if _exact_char(key, "p"):
++        _generate_outcome_review(state, actions, preview=True)
++        return
++    if _exact_char(key, "g"):
++        _generate_outcome_review(state, actions, preview=False)
++        return
++    if _exact_char(key, "a"):
++        added = actions.add_outcome()
++        if added is not None:
++            created = state.outcome_review.add_user_outcome(
++                added.title,
++                added.impact,
++                added.status,
++            )
++            rows = _outcome_review_targets(state)
++            state.outcome_cursor = next(
++                index
++                for index, row in enumerate(rows)
++                if row.outcome_id == created.id
++            )
++        return
++    if target.kind != "outcome":
++        if key.key is not Key.ENTER:
++            return
++        if target.kind == "settings":
++            _cycle_report_type(state, actions)
++        elif target.kind == "more":
++            expansions = state.evidence_expansions()
++            expansions.symmetric_difference_update({_MORE_SECTION})
++        elif target.kind == "ungrouped":
++            expansions = state.evidence_expansions()
++            expansions.symmetric_difference_update({_UNGROUPED_SECTION})
++        elif target.kind == "blockers":
++            state.outcome_review.blockers = actions.edit_gap(
++                "Blockers", state.outcome_review.blockers
++            )
++        elif target.kind == "next_week":
++            state.outcome_review.next_week = actions.edit_gap(
++                "Next week", state.outcome_review.next_week
++            )
++        elif target.kind == "preview":
++            _generate_outcome_review(state, actions, preview=True)
++        elif target.kind == "generate":
++            _generate_outcome_review(state, actions, preview=False)
++        return
++
++    assert target.outcome_id is not None
++    if key.key is Key.SPACE:
++        state.outcome_review.toggle_included(target.outcome_id)
++        return
++    if _exact_char(key, "v"):
++        state.evidence_expansions().symmetric_difference_update({target.outcome_id})
++        return
++    if _exact_char(key, "e"):
++        outcome = next(
++            item
++            for item in state.outcome_review.outcomes
++            if item.id == target.outcome_id
++        )
++        edited = actions.edit_outcome(outcome.model_copy(deep=True))
++        state.outcome_review.edit(
++            target.outcome_id,
++            title=edited.title,
++            status=edited.status,
++            impact=edited.impact,
++        )
++        return
++    if _exact_char(key, "s"):
++        try:
++            state.outcome_review.split(target.outcome_id)
++        except ValueError as exc:
++            state.outcome_message = str(exc)
++        state.outcome_cursor = min(
++            state.outcome_cursor,
++            len(_outcome_review_targets(state)) - 1,
++        )
++
++
+ def _error_options(error: _ErrorState) -> list[str]:
+     if error.kind in {"doctor-result", "settings-result"}:
+         return ["Main menu"]
+     if error.kind == "report-path":
+         return ["Back"]
+     if error.kind in {"report-empty", "browse-empty"}:
+         return ["Change period", "Change harness", "Back", "Main menu"]
+     if error.kind == "report-output-conflict":
+         return ["Overwrite once", "Back", "Main menu"]
+     if error.kind in {"report-output", "report-generate"}:
+@@ -859,21 +1145,29 @@ def _error_key(
+         return
+ 
+     choice = options[error.selected]
+     if choice == "Main menu":
+         state.screen = Screen.MAIN
+         return
+     if choice == "Back":
+         state.screen = _error_back_screen(error)
+         return
+     if choice == "Overwrite once":
+-        _generate(state, actions, force=True)
++        if state.outcome_review is not None:
++            _generate_outcome_review(
++                state,
++                actions,
++                preview=False,
++                force=True,
++            )
++        else:
++            _generate(state, actions, force=True)
+         return
+     assert state.draft is not None
+     if choice == "Change harness":
+         state.draft.set_harness(actions.choose_harness(state.draft.harness))
+         if state.draft.harness != "opencode":
+             state.draft.set_sanitize(False)
+     else:
+         state.draft.set_period(*actions.choose_period(state.draft.period_label))
+     state.selection = None
+     if error.kind.startswith("browse"):
+@@ -898,20 +1192,21 @@ def _result_key(state: _State, key: KeyPress) -> None:
+     choice = options[state.result_cursor]
+     if choice == "Preview report":
+         state.preview_offset = 0
+         state.preview_return_screen = Screen.REPORT_RESULT
+         state.screen = Screen.REPORT_PREVIEW
+     elif choice == "Back to main menu":
+         state.screen = Screen.MAIN
+     elif choice == "Generate another report":
+         state.draft.clear_scan()
+         state.selection = None
++        _clear_outcome_review(state)
+         state.result = None
+         state.error = None
+         state.review_message = None
+         state.review_from_main = False
+         state.setup_cursor = 0
+         state.setup_advanced = False
+         state.preview_offset = 0
+         state.expanded_repositories = set()
+         _reset_search(state)
+         state.screen = Screen.REPORT_SETUP
+@@ -984,20 +1279,33 @@ def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None
+ 
+ def _help_key(state: _State, key: KeyPress) -> None:
+     if _char(key, "q"):
+         state.screen = Screen.MAIN
+         return
+     if key.key in {Key.ESCAPE, Key.ENTER} or _char(key, "b") or _exact_char(key, "?"):
+         state.screen = state.help_return_screen or Screen.MAIN
+         state.help_return_screen = None
+ 
+ 
++def _render_outcome_review_hook(
++    console: Console,
++    review: OutcomeReviewDraft,
++    *,
++    cursor: int,
++    expanded_evidence: set[str],
++    message: str | None,
++) -> None:
++    """Task 4 screen hook; Task 5 supplies the rendered-line-aware viewport."""
++
++    _ = (console, review, cursor, expanded_evidence, message)
++
++
+ def _render_screen(state: _State, console: Console) -> None:
+     if state.screen is Screen.MAIN:
+         render_main_menu(console, selected=state.main_cursor)
+     elif state.screen is Screen.REPORT_SETUP:
+         assert state.draft is not None
+         render_report_setup(
+             console,
+             state.draft,
+             selected=state.setup_cursor,
+             advanced=state.setup_advanced,
+@@ -1016,20 +1324,29 @@ def _render_screen(state: _State, console: Console) -> None:
+         assert state.selection is not None
+         render_session_review(
+             console,
+             state.selection,
+             expanded_repositories=state.expansions(),
+             cursor=state.review_cursor,
+             message=state.review_message,
+             query=state.search_query,
+             searching=state.searching,
+         )
++    elif state.screen is Screen.OUTCOME_REVIEW:
++        assert state.outcome_review is not None
++        _render_outcome_review_hook(
++            console,
++            state.outcome_review,
++            cursor=state.outcome_cursor,
++            expanded_evidence=state.evidence_expansions(),
++            message=state.outcome_message,
++        )
+     elif state.screen is Screen.SESSION_PREVIEW:
+         assert state.preview_session is not None
+         render_session_preview(
+             console,
+             state.preview_session,
+             offset=state.preview_offset,
+         )
+     elif state.screen is Screen.REPORT_RESULT:
+         assert state.draft is not None
+         assert state.result is not None
+@@ -1067,20 +1384,22 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
+     """Treat Ctrl-C while waiting for a key like the screen's normal Back action."""
+ 
+     if state.screen is Screen.MAIN:
+         state.screen = Screen.EXIT
+     elif state.screen in {Screen.REPORT_SETUP, Screen.SESSION_BROWSER}:
+         state.screen = Screen.MAIN
+     elif state.screen is Screen.SESSION_REVIEW:
+         if state.selection is not None and state.draft is not None:
+             _sync_selection(state, actions)
+         state.screen = Screen.MAIN if state.review_from_main else Screen.REPORT_SETUP
++    elif state.screen is Screen.OUTCOME_REVIEW:
++        state.screen = Screen.SESSION_REVIEW
+     elif state.screen is Screen.REPORT_RESULT:
+         state.screen = Screen.MAIN
+     elif state.screen is Screen.REPORT_PREVIEW:
+         state.screen = state.preview_return_screen or Screen.REPORT_RESULT
+         state.preview_return_screen = None
+     elif state.screen is Screen.SESSION_PREVIEW:
+         state.screen = state.preview_return_screen or Screen.MAIN
+     elif state.screen is Screen.RECOVERABLE_ERROR and state.error is not None:
+         state.screen = _error_back_screen(state.error)
+     elif state.screen is Screen.HELP:
+@@ -1098,20 +1417,22 @@ def _dispatch(
+         _open_help(state)
+         return
+     if state.screen is Screen.MAIN:
+         _main_key(state, key, actions)
+     elif state.screen is Screen.REPORT_SETUP:
+         _setup_key(state, key, actions)
+     elif state.screen is Screen.SESSION_BROWSER:
+         _browser_key(state, key, actions)
+     elif state.screen is Screen.SESSION_REVIEW:
+         _review_key(state, key, actions)
++    elif state.screen is Screen.OUTCOME_REVIEW:
++        _outcome_review_key(state, key, actions)
+     elif state.screen is Screen.REPORT_RESULT:
+         _result_key(state, key)
+     elif state.screen is Screen.REPORT_PREVIEW:
+         _preview_key(state, key, console)
+     elif state.screen is Screen.SESSION_PREVIEW:
+         _session_preview_key(state, key, console)
+     elif state.screen is Screen.RECOVERABLE_ERROR:
+         _error_key(state, key, actions, console)
+     elif state.screen is Screen.HELP:
+         _help_key(state, key)
+@@ -1149,11 +1470,11 @@ def run_interactive(
+         except KeyboardInterrupt:
+             _idle_interrupt(state, actions)
+             continue
+         origin = state.screen
+         try:
+             _dispatch(state, key, actions, console)
+         except (KeyboardInterrupt, typer.Abort):
+             # Actions run outside terminal cbreak mode. Cancelling a scan, report
+             # generation, or typed legacy settings editor returns to the screen
+             # that launched it instead of terminating the whole interactive app.
+-            state.screen = origin
+\ No newline at end of file
++            state.screen = origin
+diff --git a/tests/unit/interactive/test_activity_first_home.py b/tests/unit/interactive/test_activity_first_home.py
+index 6d1dc95..59a1c9b 100644
+--- a/tests/unit/interactive/test_activity_first_home.py
++++ b/tests/unit/interactive/test_activity_first_home.py
+@@ -9,20 +9,21 @@ from zoneinfo import ZoneInfo
+ from rich.console import Console
+ 
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+     run_interactive,
+ )
+ from iiwi.interactive.input import KeyPress
+ from iiwi.interactive.models import ReportDraft
+ from iiwi.interactive.render import render_main_menu
++from iiwi.models.outcome import OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import AgentSession
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -119,20 +120,30 @@ def _actions(counters: dict[str, int]) -> InteractiveActions:
+             repository_count=1,
+             session_count=scan_value.loaded_session_count,
+         )
+ 
+     return InteractiveActions(
+         new_draft=new_draft,
+         choose_harness=lambda current: current,
+         choose_period=lambda current: ("Last 7 days", _period()),
+         scan=scan,
+         generate=generate,
++        synthesize=lambda draft, scan: OutcomeReviewDraft(
++            outcomes=[], report_type=draft.report_type
++        ),
++        generate_reviewed=lambda draft, scan, review, force: generate(
++            draft, scan, force
++        ),
++        edit_outcome=lambda outcome: outcome,
++        add_outcome=lambda: None,
++        edit_gap=lambda label, current: current,
++        save_report_type=lambda report_type: None,
+         doctor=lambda harness: [f"{harness}: ok"],
+         edit_settings=lambda: None,
+         restore_selection=lambda harness, period, include_subagents: None,
+         save_selection=lambda harness, period, include_subagents, selected: None,
+         exclude_repository=lambda repository_id, display_name: "excluded",
+     )
+ 
+ 
+ def test_main_menu_leads_with_review_activity() -> None:
+     console, stream = _console()
+diff --git a/tests/unit/interactive/test_cli_actions.py b/tests/unit/interactive/test_cli_actions.py
+index 27258c1..6a17a21 100644
+--- a/tests/unit/interactive/test_cli_actions.py
++++ b/tests/unit/interactive/test_cli_actions.py
+@@ -1,32 +1,246 @@
+ from __future__ import annotations
+ 
+ from datetime import datetime
+ from types import SimpleNamespace
+ from zoneinfo import ZoneInfo
+ 
+ import pytest
+ 
+ from iiwi import cli
+ from iiwi.interactive import cli_actions
++from iiwi.interactive.models import ReportDraft
++from iiwi.models.outcome import (
++    Outcome,
++    OutcomeOrigin,
++    OutcomeReviewDraft,
++    OutcomeStatus,
++)
++from iiwi.models.report_options import DetailLevel, ReportType
+ from iiwi.models.time_range import DateRange
++from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+ 
+ 
+ def _period() -> DateRange:
+     return DateRange(
+         since=datetime(2026, 8, 3, tzinfo=TZ),
+         until=datetime(2026, 8, 10, tzinfo=TZ),
+     )
+ 
+ 
++def _scan() -> ScanResult:
++    return ScanResult(
++        period=_period(),
++        candidate_session_count=0,
++        loaded_session_count=0,
++        failed_session_count=0,
++        resolved_sessions=[],
++        sessions_by_repository={},
++    )
++
++
++def _review() -> OutcomeReviewDraft:
++    return OutcomeReviewDraft(
++        outcomes=[
++            Outcome(
++                id="user-added",
++                title="Reviewed launch plan",
++                status=OutcomeStatus.IN_PROGRESS,
++                rank=0,
++                origin=OutcomeOrigin.USER_ADDED,
++            )
++        ],
++        report_type=ReportType.MANAGER,
++    )
++
++
++def test_new_draft_uses_saved_manager_type_and_its_brief_default(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    settings = SimpleNamespace(
++        report=SimpleNamespace(
++            timezone="Asia/Taipei",
++            quick_review_report_type=ReportType.MANAGER,
++        )
++    )
++    now = datetime(2026, 8, 10, 12, tzinfo=TZ)
++    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
++    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
++    monkeypatch.setattr(cli, "_enabled_harnesses", lambda settings: [cli.Harness.CODEX])
++
++    draft = cli_actions._new_draft()
++
++    assert draft.report_type is ReportType.MANAGER
++    assert draft.detail is DetailLevel.BRIEF
++
++
++def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    scan = _scan()
++    settings = SimpleNamespace(
++        harnesses=SimpleNamespace(
++            opencode=SimpleNamespace(
++                cli=SimpleNamespace(
++                    executable="custom-opencode",
++                    model="review-model",
++                    run_timeout_seconds=321.0,
++                )
++            )
++        )
++    )
++    runner_timeouts: list[float] = []
++    opencode_arguments: list[dict[str, object]] = []
++    synthesized_scans: list[ScanResult] = []
++
++    class FakeCommandRunner:
++        def __init__(self, *, timeout_seconds: float) -> None:
++            runner_timeouts.append(timeout_seconds)
++
++    class FakeOpenCodeRunner:
++        def __init__(self, **kwargs: object) -> None:
++            opencode_arguments.append(kwargs)
++
++    class FakeSynthesisService:
++        def __init__(self, runner: object) -> None:
++            assert isinstance(runner, FakeOpenCodeRunner)
++
++        def synthesize(self, received: ScanResult) -> SimpleNamespace:
++            synthesized_scans.append(received)
++            return SimpleNamespace(outcomes=_review().outcomes)
++
++    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
++    monkeypatch.setattr(cli_actions, "CommandRunner", FakeCommandRunner)
++    monkeypatch.setattr(cli_actions, "OpenCodeRunner", FakeOpenCodeRunner, raising=False)
++    monkeypatch.setattr(
++        cli_actions,
++        "OutcomeSynthesisService",
++        FakeSynthesisService,
++        raising=False,
++    )
++    draft = ReportDraft(
++        harness="codex",
++        period=_period(),
++        report_type=ReportType.MANAGER,
++    )
++
++    review = cli_actions._synthesize(draft, scan)
++
++    assert runner_timeouts == [321.0]
++    assert len(opencode_arguments) == 1
++    assert opencode_arguments[0]["executable"] == "custom-opencode"
++    assert opencode_arguments[0]["model"] == "review-model"
++    assert synthesized_scans == [scan]
++    assert synthesized_scans[0] is scan
++    assert review.report_type is ReportType.MANAGER
++    assert review.detail is DetailLevel.BRIEF
++    assert review.detail_overridden is False
++
++
++def test_generate_reviewed_passes_the_same_review_object_to_report_service(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    scan = _scan()
++    review = _review()
++    draft = ReportDraft(harness="codex", period=_period(), dry_run=True)
++    settings = SimpleNamespace(report=SimpleNamespace(timezone="Asia/Taipei"))
++    now = datetime(2026, 8, 10, 12, tzinfo=TZ)
++    received: list[tuple[OutcomeReviewDraft, dict[str, object]]] = []
++
++    class FakeService:
++        def generate_reviewed(
++            self,
++            received_review: OutcomeReviewDraft,
++            **kwargs: object,
++        ) -> SimpleNamespace:
++            received.append((received_review, kwargs))
++            return SimpleNamespace(output_path=None, content="reviewed report")
++
++    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
++    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
++    monkeypatch.setattr(cli, "_default_output_path", lambda settings, period: None)
++    monkeypatch.setattr(cli, "_build_report_service", lambda *args, **kwargs: FakeService())
++
++    result = cli_actions._generate_reviewed(draft, scan, review, False)
++
++    assert len(received) == 1
++    assert received[0][0] is review
++    assert received[0][1] == {
++        "scan": scan,
++        "force": False,
++        "dry_run": True,
++    }
++    assert result.content == "reviewed report"
++
++
++def test_save_report_type_writes_only_the_quick_review_preference(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    writes: list[tuple[str, str]] = []
++    monkeypatch.setattr(
++        cli_actions.config_store,
++        "set_value",
++        lambda key, value: writes.append((key, value)),
++        raising=False,
++    )
++
++    cli_actions._save_report_type(ReportType.ENGINEERING)
++
++    assert writes == [("report.quick_review_report_type", "engineering")]
++
++
++def test_edit_and_add_callbacks_prompt_only_for_user_editable_fields(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    prompts = iter(
++        [
++            "Edited title",
++            "Supported impact",
++            "completed",
++            "Manual review",
++            "Reduced ambiguity",
++            "in_progress",
++        ]
++    )
++    monkeypatch.setattr(cli_actions.typer, "prompt", lambda *args, **kwargs: next(prompts))
++    original = _review().outcomes[0]
++
++    edited = cli_actions._edit_outcome(original)
++    added = cli_actions._add_outcome()
++
++    assert (edited.title, edited.impact, edited.status) == (
++        "Edited title",
++        "Supported impact",
++        OutcomeStatus.COMPLETED,
++    )
++    assert edited.id == original.id
++    assert added is not None
++    assert (added.title, added.impact, added.status) == (
++        "Manual review",
++        "Reduced ambiguity",
++        OutcomeStatus.IN_PROGRESS,
++    )
++    assert added.origin is OutcomeOrigin.USER_ADDED
++
++
++@pytest.mark.parametrize("answer", ["", "none", "NoNe"])
++def test_edit_gap_normalizes_blank_and_none_to_none(
++    monkeypatch: pytest.MonkeyPatch,
++    answer: str,
++) -> None:
++    monkeypatch.setattr(cli_actions.typer, "prompt", lambda *args, **kwargs: answer)
++
++    assert cli_actions._edit_gap("Blockers", "Existing") is None
++
++
+ def test_choose_harness_cycles_enabled_values_without_prompting(
+     monkeypatch: pytest.MonkeyPatch,
+ ) -> None:
+     monkeypatch.setattr(cli, "_load_settings", lambda: object())
+     monkeypatch.setattr(
+         cli,
+         "_enabled_harnesses",
+         lambda settings: [cli.Harness.OPENCODE, cli.Harness.CLAUDE_CODE, cli.Harness.CODEX],
+     )
+     monkeypatch.setattr(
+diff --git a/tests/unit/interactive/test_collapsed_advanced_settings.py b/tests/unit/interactive/test_collapsed_advanced_settings.py
+index c876225..f0e7755 100644
+--- a/tests/unit/interactive/test_collapsed_advanced_settings.py
++++ b/tests/unit/interactive/test_collapsed_advanced_settings.py
+@@ -9,20 +9,21 @@ from zoneinfo import ZoneInfo
+ from rich.console import Console
+ 
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+     run_interactive,
+ )
+ from iiwi.interactive.input import Key, KeyPress
+ from iiwi.interactive.models import ReportDraft
+ from iiwi.interactive.render import render_report_setup, report_setup_rows
++from iiwi.models.outcome import OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -120,20 +121,30 @@ def _actions(
+             repository_count=1,
+             session_count=1,
+         )
+ 
+     return InteractiveActions(
+         new_draft=lambda: draft,
+         choose_harness=lambda current: current,
+         choose_period=lambda current: ("Last 7 days", _period()),
+         scan=lambda draft_value: scan,
+         generate=generate,
++        synthesize=lambda draft, scan: OutcomeReviewDraft(
++            outcomes=[], report_type=draft.report_type
++        ),
++        generate_reviewed=lambda draft, scan, review, force: generate(
++            draft, scan, force
++        ),
++        edit_outcome=lambda outcome: outcome,
++        add_outcome=lambda: None,
++        edit_gap=lambda label, current: current,
++        save_report_type=lambda report_type: None,
+         doctor=lambda harness: [f"{harness}: ok"],
+         edit_settings=lambda: None,
+         restore_selection=lambda harness, period, include_subagents: {"ses-1"},
+         save_selection=lambda harness, period, include_subagents, selected: None,
+         exclude_repository=lambda repository_id, display_name: "excluded",
+     )
+ 
+ 
+ def test_setup_rows_hide_advanced_fields_by_default() -> None:
+     assert report_setup_rows(advanced=False) == [
+@@ -217,32 +228,34 @@ def test_enter_on_advanced_settings_expands_instead_of_editing_detail() -> None:
+ def test_preview_report_runs_as_dry_run_and_returns_to_setup() -> None:
+     draft = ReportDraft(harness="opencode", period=_period())
+     generation_modes: list[bool] = []
+     console, stream = _console()
+     input_source = ScriptedInput(
+         [
+             char("2"),
+             KeyPress(key=Key.DOWN),
+             KeyPress(key=Key.ENTER),
+             char("b"),
++            KeyPress(key=Key.ENTER),
++            char("b"),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(draft, generation_modes=generation_modes),
+         input_source=input_source,
+         console=console,
+     )
+ 
+-    assert generation_modes == [True]
++    assert generation_modes == [True, True]
+     assert draft.dry_run is False
+     assert "preview-content" in stream.getvalue()
+ 
+ 
+ def test_generate_report_forces_real_output_mode() -> None:
+     draft = ReportDraft(harness="opencode", period=_period(), dry_run=True)
+     generation_modes: list[bool] = []
+     console, _ = _console()
+     input_source = ScriptedInput(
+         [
+diff --git a/tests/unit/interactive/test_controller.py b/tests/unit/interactive/test_controller.py
+index 18924ad..c02635c 100644
+--- a/tests/unit/interactive/test_controller.py
++++ b/tests/unit/interactive/test_controller.py
+@@ -9,20 +9,21 @@ from zoneinfo import ZoneInfo
+ from rich.console import Console
+ 
+ from iiwi.errors import HarnessSourceError
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+     run_interactive,
+ )
+ from iiwi.interactive.input import Key, KeyPress
+ from iiwi.interactive.models import ReportDraft
++from iiwi.models.outcome import OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -139,20 +140,30 @@ def _actions(
+             repository_count=len(scan_value.sessions_by_repository),
+             session_count=scan_value.loaded_session_count,
+         )
+ 
+     return InteractiveActions(
+         new_draft=new_draft,
+         choose_harness=choose_harness,
+         choose_period=choose_period,
+         scan=scan,
+         generate=generate,
++        synthesize=lambda draft, scan: OutcomeReviewDraft(
++            outcomes=[], report_type=draft.report_type
++        ),
++        generate_reviewed=lambda draft, scan, review, force: generate(
++            draft, scan, force
++        ),
++        edit_outcome=lambda outcome: outcome,
++        add_outcome=lambda: None,
++        edit_gap=lambda label, current: current,
++        save_report_type=lambda report_type: None,
+         doctor=lambda harness: [f"{harness}: ok"],
+         edit_settings=lambda: None,
+         restore_selection=lambda harness, period, include_subagents: None,
+         save_selection=lambda harness, period, include_subagents, selected: None,
+         exclude_repository=lambda repository_id, display_name: "excluded",
+     )
+ 
+ 
+ def test_numeric_generate_then_back_returns_to_main_without_restarting() -> None:
+     counters: dict[str, int] = {}
+diff --git a/tests/unit/interactive/test_controller_generation.py b/tests/unit/interactive/test_controller_generation.py
+index 926854c..33d73da 100644
+--- a/tests/unit/interactive/test_controller_generation.py
++++ b/tests/unit/interactive/test_controller_generation.py
+@@ -9,20 +9,21 @@ from zoneinfo import ZoneInfo
+ from rich.console import Console
+ 
+ from iiwi.errors import ReportAlreadyExistsError
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+     run_interactive,
+ )
+ from iiwi.interactive.input import Key, KeyPress
+ from iiwi.interactive.models import ReportDraft
++from iiwi.models.outcome import OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -132,20 +133,30 @@ def _actions(
+             repository_count=len(selected_scan.sessions_by_repository),
+             session_count=selected_scan.loaded_session_count,
+         )
+ 
+     return InteractiveActions(
+         new_draft=lambda: draft,
+         choose_harness=lambda current: current,
+         choose_period=lambda current: ("Last week", _period()),
+         scan=do_scan,
+         generate=generate,
++        synthesize=lambda draft, scan: OutcomeReviewDraft(
++            outcomes=[], report_type=draft.report_type
++        ),
++        generate_reviewed=lambda draft, scan, review, force: generate(
++            draft, scan, force
++        ),
++        edit_outcome=lambda outcome: outcome,
++        add_outcome=lambda: None,
++        edit_gap=lambda label, current: current,
++        save_report_type=lambda report_type: None,
+         doctor=lambda harness: [],
+         edit_settings=lambda: None,
+         restore_selection=lambda harness, period, include_subagents: None,
+         save_selection=lambda harness, period, include_subagents, selected: None,
+         exclude_repository=lambda repository_id, display_name: "excluded",
+     )
+ 
+ 
+ def test_repository_and_individual_toggles_filter_generation_without_rescan() -> None:
+     draft = ReportDraft(harness="opencode", period=_period())
+@@ -154,20 +165,21 @@ def test_repository_and_individual_toggles_filter_generation_without_rescan() ->
+     console, _ = _console()
+     keys = ScriptedInput(
+         [
+             char("2"),
+             char("r"),
+             KeyPress(key=Key.SPACE),
+             KeyPress(key=Key.ENTER),
+             KeyPress(key=Key.DOWN),
+             KeyPress(key=Key.SPACE),
+             char("g"),
++            char("g"),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(
+             draft=draft,
+             scan_calls=scan_calls,
+             generation_calls=generation_calls,
+@@ -192,20 +204,21 @@ def test_zero_selection_blocks_generate_until_sessions_are_selected() -> None:
+     generation_calls: list[tuple[ScanResult, bool]] = []
+     console, stream = _console()
+     keys = ScriptedInput(
+         [
+             char("2"),
+             char("r"),
+             char("n"),
+             char("g"),
+             char("a"),
+             char("g"),
++            char("g"),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(
+             draft=draft,
+             scan_calls=scan_calls,
+             generation_calls=generation_calls,
+@@ -232,20 +245,21 @@ def test_existing_output_requires_explicit_overwrite_once() -> None:
+             repository_count=len(selected_scan.sessions_by_repository),
+             session_count=selected_scan.loaded_session_count,
+         )
+ 
+     console, stream = _console()
+     keys = ScriptedInput(
+         [
+             char("2"),
+             char("r"),
+             char("g"),
++            char("g"),
+             KeyPress(key=Key.ENTER),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(
+             draft=draft,
+             scan_calls=scan_calls,
+@@ -263,20 +277,21 @@ def test_existing_output_requires_explicit_overwrite_once() -> None:
+ def test_generate_another_preserves_options_but_clears_scan_and_selection() -> None:
+     draft = ReportDraft(harness="opencode", period=_period(), narrative=False)
+     scan_calls: list[ScanResult] = []
+     generation_calls: list[tuple[ScanResult, bool]] = []
+     console, _ = _console()
+     keys = ScriptedInput(
+         [
+             char("2"),
+             char("r"),
+             char("g"),
++            char("g"),
+             KeyPress(key=Key.DOWN),
+             KeyPress(key=Key.ENTER),
+             char("b"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(
+             draft=draft,
+@@ -295,29 +310,30 @@ def test_generate_another_preserves_options_but_clears_scan_and_selection() -> N
+ def test_result_print_path_action_keeps_result_screen_active() -> None:
+     draft = ReportDraft(harness="opencode", period=_period())
+     scan_calls: list[ScanResult] = []
+     generation_calls: list[tuple[ScanResult, bool]] = []
+     console, stream = _console()
+     keys = ScriptedInput(
+         [
+             char("2"),
+             char("r"),
+             char("g"),
++            char("g"),
+             KeyPress(key=Key.DOWN),
+             KeyPress(key=Key.DOWN),
+             KeyPress(key=Key.ENTER),
+             char("q"),
+             char("q"),
+         ]
+     )
+ 
+     run_interactive(
+         actions=_actions(
+             draft=draft,
+             scan_calls=scan_calls,
+             generation_calls=generation_calls,
+         ),
+         input_source=keys,
+         console=console,
+     )
+ 
+-    assert stream.getvalue().count("reports/worklog.md") >= 2
+\ No newline at end of file
++    assert stream.getvalue().count("reports/worklog.md") >= 2
+diff --git a/tests/unit/interactive/test_controller_results.py b/tests/unit/interactive/test_controller_results.py
+index 44fa58c..ef96e94 100644
+--- a/tests/unit/interactive/test_controller_results.py
++++ b/tests/unit/interactive/test_controller_results.py
+@@ -8,20 +8,21 @@ from zoneinfo import ZoneInfo
+ 
+ from rich.console import Console
+ 
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+     run_interactive,
+ )
+ from iiwi.interactive.input import Key, KeyPress
+ from iiwi.interactive.models import ReportDraft
++from iiwi.models.outcome import OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -100,20 +101,33 @@ def _actions() -> InteractiveActions:
+         new_draft=lambda: draft,
+         choose_harness=lambda current: current,
+         choose_period=lambda current: ("Last week", _period()),
+         scan=lambda current: _scan(),
+         generate=lambda current, scan, force: InteractiveReportResult(
+             output_path=Path("reports/worklog.md"),
+             content="report",
+             repository_count=1,
+             session_count=1,
+         ),
++        synthesize=lambda draft, scan: OutcomeReviewDraft(
++            outcomes=[], report_type=draft.report_type
++        ),
++        generate_reviewed=lambda draft, scan, review, force: InteractiveReportResult(
++            output_path=None if draft.dry_run else Path("reports/worklog.md"),
++            content="report",
++            repository_count=1,
++            session_count=1,
++        ),
++        edit_outcome=lambda outcome: outcome,
++        add_outcome=lambda: None,
++        edit_gap=lambda label, current: current,
++        save_report_type=lambda report_type: None,
+         doctor=lambda harness: ["OK opencode version: 1.0", "OK git: git version 2.0"],
+         edit_settings=lambda: None,
+         restore_selection=lambda harness, period, include_subagents: None,
+         save_selection=lambda harness, period, include_subagents, selected: None,
+         exclude_repository=lambda repository_id, display_name: "excluded",
+     )
+ 
+ 
+ def test_doctor_result_uses_a_persistent_result_screen() -> None:
+     console, stream = _console()
+@@ -147,20 +161,21 @@ def test_settings_completion_returns_through_a_visible_result_screen() -> None:
+ def test_print_report_path_opens_a_persistent_path_screen() -> None:
+     console, stream = _console()
+ 
+     run_interactive(
+         actions=_actions(),
+         input_source=ScriptedInput(
+             [
+                 char("2"),
+                 char("r"),
+                 char("g"),
++                char("g"),
+                 KeyPress(key=Key.DOWN),
+                 KeyPress(key=Key.DOWN),
+                 KeyPress(key=Key.ENTER),
+                 char("b"),
+                 char("q"),
+                 char("q"),
+             ]
+         ),
+         console=console,
+     )
+@@ -231,11 +246,11 @@ def test_p_on_a_repository_row_does_not_open_a_preview() -> None:
+                 char("p"),
+                 char("b"),
+                 char("b"),
+                 char("q"),
+             ]
+         ),
+         console=console,
+     )
+ 
+     text = stream.getvalue()
+-    assert "Session Preview" not in text
+\ No newline at end of file
++    assert "Session Preview" not in text
+diff --git a/tests/unit/interactive/test_interactive_regressions.py b/tests/unit/interactive/test_interactive_regressions.py
+index 95903d1..b322a1d 100644
+--- a/tests/unit/interactive/test_interactive_regressions.py
++++ b/tests/unit/interactive/test_interactive_regressions.py
+@@ -15,20 +15,21 @@ from iiwi import errors as app_errors
+ from iiwi.interactive import cli_actions
+ from iiwi.interactive import input as interactive_input
+ from iiwi.interactive import render as interactive_render
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+     run_interactive,
+ )
+ from iiwi.interactive.input import Key, KeyPress, normalize_posix_sequence
+ from iiwi.interactive.models import ReportDraft
++from iiwi.models.outcome import OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -121,20 +122,33 @@ def _actions(
+         new_draft=lambda: report_draft,
+         choose_harness=lambda current: current,
+         choose_period=lambda current: ("Last week", _period()),
+         scan=do_scan,
+         generate=lambda draft, scan, force: InteractiveReportResult(
+             output_path=Path("reports/worklog.md"),
+             content="\n".join(f"line {index}" for index in range(60)),
+             repository_count=1,
+             session_count=scan.loaded_session_count,
+         ),
++        synthesize=lambda draft, scan: OutcomeReviewDraft(
++            outcomes=[], report_type=draft.report_type
++        ),
++        generate_reviewed=lambda draft, scan, review, force: InteractiveReportResult(
++            output_path=None if draft.dry_run else Path("reports/worklog.md"),
++            content="\n".join(f"line {index}" for index in range(60)),
++            repository_count=1,
++            session_count=scan.loaded_session_count,
++        ),
++        edit_outcome=lambda outcome: outcome,
++        add_outcome=lambda: None,
++        edit_gap=lambda label, current: current,
++        save_report_type=lambda report_type: None,
+         doctor=lambda harness: [f"{harness}: ok"],
+         edit_settings=lambda: None,
+         restore_selection=lambda harness, period, include_subagents: None,
+         save_selection=lambda harness, period, include_subagents, selected: None,
+         exclude_repository=lambda repository_id, display_name: "excluded",
+     )
+ 
+ 
+ def _console(*, width: int = 100, height: int = 25) -> tuple[Console, StringIO]:
+     stream = StringIO()
+diff --git a/tests/unit/interactive/test_outcome_review_controller.py b/tests/unit/interactive/test_outcome_review_controller.py
+new file mode 100644
+index 0000000..8fce3ce
+--- /dev/null
++++ b/tests/unit/interactive/test_outcome_review_controller.py
+@@ -0,0 +1,482 @@
++from __future__ import annotations
++
++from collections.abc import Iterator
++from datetime import datetime
++from io import StringIO
++from pathlib import Path
++from zoneinfo import ZoneInfo
++
++import pytest
++from rich.console import Console
++
++from iiwi.interactive import controller
++from iiwi.interactive.controller import (
++    InteractiveActions,
++    InteractiveReportResult,
++    run_interactive,
++)
++from iiwi.interactive.input import Key, KeyPress
++from iiwi.interactive.models import ReportDraft, Screen
++from iiwi.models.outcome import (
++    EvidenceRef,
++    Outcome,
++    OutcomeOrigin,
++    OutcomeReviewDraft,
++    OutcomeSourceGroup,
++    OutcomeStatus,
++)
++from iiwi.models.report_options import DetailLevel, ReportType
++from iiwi.models.repository import (
++    RepositoryIdentity,
++    RepositoryIdentityType,
++    ResolvedSession,
++)
++from iiwi.models.session import ActivityType, AgentSession, SessionActivity
++from iiwi.models.time_range import DateRange
++from iiwi.services.scan import ScanResult
++
++TZ = ZoneInfo("Asia/Taipei")
++
++
++def char(value: str) -> KeyPress:
++    return KeyPress(char=value)
++
++
++class ScriptedInput:
++    def __init__(self, keys: list[KeyPress]) -> None:
++        self._keys: Iterator[KeyPress] = iter(keys)
++
++    def __enter__(self) -> ScriptedInput:
++        return self
++
++    def __exit__(self, exc_type, exc, traceback) -> None:
++        return None
++
++    def read_key(self) -> KeyPress:
++        return next(self._keys)
++
++
++def _period() -> DateRange:
++    return DateRange(
++        since=datetime(2026, 8, 3, tzinfo=TZ),
++        until=datetime(2026, 8, 10, tzinfo=TZ),
++    )
++
++
++def _scan() -> ScanResult:
++    repository = RepositoryIdentity(
++        repository_id="repo-a",
++        display_name="repo-a",
++        identity_type=RepositoryIdentityType.PATH_FALLBACK,
++        working_directory="/tmp/repo-a",
++        resolution_method="test",
++    )
++    session = AgentSession(
++        harness="opencode",
++        session_id="ses-a",
++        title="Session A",
++        working_directory="/tmp/repo-a",
++        activities=[
++            SessionActivity(
++                activity_id=f"activity-{index}",
++                activity_type=ActivityType.USER_MESSAGE,
++            )
++            for index in range(5)
++        ],
++    )
++    resolved = ResolvedSession(session=session, repository=repository)
++    return ScanResult(
++        period=_period(),
++        candidate_session_count=1,
++        loaded_session_count=1,
++        failed_session_count=0,
++        resolved_sessions=[resolved],
++        sessions_by_repository={"repo-a": [resolved]},
++    )
++
++
++def _outcome(identifier: str, rank: int, *, groups: int = 0) -> Outcome:
++    refs = [
++        EvidenceRef(session_id=f"ses-{identifier}-{index}", repository_id=f"repo-{index}")
++        for index in range(max(1, groups))
++    ]
++    return Outcome(
++        id=identifier,
++        title=f"Outcome {identifier}",
++        status=OutcomeStatus.IN_PROGRESS,
++        impact=f"Impact {identifier}",
++        rank=rank,
++        evidence_refs=refs,
++        source_groups=[
++            OutcomeSourceGroup(
++                id=f"group-{index}",
++                title=f"Split {index}",
++                evidence_refs=[ref],
++            )
++            for index, ref in enumerate(refs[:groups])
++        ],
++    )
++
++
++def _review(*outcomes: Outcome) -> OutcomeReviewDraft:
++    return OutcomeReviewDraft(
++        outcomes=list(outcomes) or [_outcome("a", 0), _outcome("b", 1)],
++        report_type=ReportType.MANAGER,
++    )
++
++
++class ActionLog:
++    def __init__(self, review: OutcomeReviewDraft) -> None:
++        self.review = review
++        self.synthesis_scans: list[ScanResult] = []
++        self.reviewed_calls: list[
++            tuple[ReportDraft, ScanResult, OutcomeReviewDraft, bool, bool]
++        ] = []
++        self.gap_calls: list[tuple[str, str | None]] = []
++        self.saved_report_types: list[ReportType] = []
++        self.edited_outcome: Outcome | None = None
++        self.added_outcome: Outcome | None = None
++        self.gap_answers: Iterator[str | None] = iter([])
++
++
++def _actions(draft: ReportDraft, log: ActionLog) -> InteractiveActions:
++    scan = _scan()
++
++    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
++        log.synthesis_scans.append(selected_scan)
++        return log.review
++
++    def generate_reviewed(
++        current_draft: ReportDraft,
++        selected_scan: ScanResult,
++        review: OutcomeReviewDraft,
++        force: bool,
++    ) -> InteractiveReportResult:
++        log.reviewed_calls.append(
++            (current_draft, selected_scan, review, force, current_draft.dry_run)
++        )
++        return InteractiveReportResult(
++            output_path=None if current_draft.dry_run else Path("reports/reviewed.md"),
++            content="reviewed-content",
++            repository_count=len(selected_scan.sessions_by_repository),
++            session_count=selected_scan.loaded_session_count,
++        )
++
++    def edit_outcome(outcome: Outcome) -> Outcome:
++        return log.edited_outcome or outcome
++
++    def add_outcome() -> Outcome | None:
++        return log.added_outcome
++
++    def edit_gap(label: str, current: str | None) -> str | None:
++        log.gap_calls.append((label, current))
++        return next(log.gap_answers)
++
++    return InteractiveActions(
++        new_draft=lambda: draft,
++        choose_harness=lambda current: current,
++        choose_period=lambda current: ("This week", _period()),
++        scan=lambda current: scan,
++        generate=lambda current, selected_scan, force: pytest.fail(
++            "session-based generation is reserved for the Task 6 explicit fallback"
++        ),
++        synthesize=synthesize,
++        generate_reviewed=generate_reviewed,
++        edit_outcome=edit_outcome,
++        add_outcome=add_outcome,
++        edit_gap=edit_gap,
++        save_report_type=log.saved_report_types.append,
++        doctor=lambda harness: [],
++        edit_settings=lambda: None,
++        restore_selection=lambda harness, period, include_subagents: None,
++        save_selection=lambda harness, period, include_subagents, selected: None,
++        exclude_repository=lambda repository_id, display_name: "excluded",
++    )
++
++
++def _run(
++    monkeypatch: pytest.MonkeyPatch,
++    draft: ReportDraft,
++    log: ActionLog,
++    keys: list[KeyPress],
++) -> list[Screen]:
++    screens: list[Screen] = []
++    monkeypatch.setattr(
++        controller,
++        "_render_screen",
++        lambda state, console: screens.append(state.screen),
++    )
++    run_interactive(
++        actions=_actions(draft, log),
++        input_source=ScriptedInput(keys),
++        console=Console(file=StringIO(), color_system=None, force_terminal=False),
++    )
++    return screens
++
++
++def _open_review_keys() -> list[KeyPress]:
++    return [char("2"), char("r"), char("g")]
++
++
++def test_g_synthesizes_selected_scan_once_and_opens_outcome_review(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    log = ActionLog(_review())
++
++    screens = _run(
++        monkeypatch,
++        draft,
++        log,
++        [*_open_review_keys(), char("b"), char("q"), char("q")],
++    )
++
++    assert len(log.synthesis_scans) == 1
++    assert log.synthesis_scans[0].loaded_session_count == 1
++    assert Screen.OUTCOME_REVIEW in screens
++
++
++def test_up_down_changes_focus_and_space_toggles_the_focused_outcome(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    review = _review()
++    log = ActionLog(review)
++
++    _run(
++        monkeypatch,
++        draft,
++        log,
++        [
++            *_open_review_keys(),
++            KeyPress(key=Key.DOWN),
++            KeyPress(key=Key.SPACE),
++            KeyPress(key=Key.DOWN),
++            KeyPress(key=Key.SPACE),
++            KeyPress(key=Key.UP),
++            char("b"),
++            char("q"),
++            char("q"),
++        ],
++    )
++
++    assert [outcome.included for outcome in review.ordered()] == [False, False]
++
++
++def test_uppercase_k_reorders_while_lowercase_j_only_navigates(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    review = _review()
++    log = ActionLog(review)
++
++    _run(
++        monkeypatch,
++        draft,
++        log,
++        [
++            *_open_review_keys(),
++            char("j"),
++            char("j"),
++            char("K"),
++            char("b"),
++            char("q"),
++            char("q"),
++        ],
++    )
++
++    assert [outcome.id for outcome in review.ordered()] == ["b", "a"]
++
++
++def test_edit_applies_fields_without_losing_identity_or_evidence(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    original = _outcome("a", 0)
++    original_ref = original.evidence_refs[0]
++    draft = ReportDraft(harness="opencode", period=_period())
++    review = _review(original)
++    log = ActionLog(review)
++    log.edited_outcome = Outcome(
++        id="replacement-id",
++        title="Edited title",
++        status=OutcomeStatus.COMPLETED,
++        impact="Edited impact",
++        rank=99,
++        origin=OutcomeOrigin.USER_ADDED,
++    )
++
++    _run(
++        monkeypatch,
++        draft,
++        log,
++        [*_open_review_keys(), char("j"), char("e"), char("b"), char("q"), char("q")],
++    )
++
++    edited = review.ordered()[0]
++    assert (edited.title, edited.status, edited.impact) == (
++        "Edited title",
++        OutcomeStatus.COMPLETED,
++        "Edited impact",
++    )
++    assert edited.id == "a"
++    assert edited.evidence_refs == [original_ref]
++
++
++def test_split_replaces_a_merged_outcome_with_its_two_source_groups(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    review = _review(_outcome("merged", 0, groups=2))
++    log = ActionLog(review)
++
++    _run(
++        monkeypatch,
++        draft,
++        log,
++        [*_open_review_keys(), char("j"), char("s"), char("b"), char("q"), char("q")],
++    )
++
++    assert [outcome.id for outcome in review.ordered()] == [
++        "merged:group-0",
++        "merged:group-1",
++    ]
++    assert [len(outcome.evidence_refs) for outcome in review.ordered()] == [1, 1]
++
++
++def test_add_creates_a_user_added_outcome_without_copying_evidence(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    review = _review(_outcome("a", 0))
++    log = ActionLog(review)
++    log.added_outcome = Outcome(
++        id="callback-id",
++        title="Manual review",
++        status=OutcomeStatus.COMPLETED,
++        impact="Reduced ambiguity",
++        rank=88,
++        origin=OutcomeOrigin.USER_ADDED,
++    )
++
++    _run(
++        monkeypatch,
++        draft,
++        log,
++        [*_open_review_keys(), char("a"), char("b"), char("q"), char("q")],
++    )
++
++    added = review.ordered()[-1]
++    assert added.title == "Manual review"
++    assert added.origin is OutcomeOrigin.USER_ADDED
++    assert added.evidence_refs == []
++    assert added.id != "callback-id"
++
++
++def test_activating_blockers_and_next_week_edits_each_gap_and_preserves_none(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    review = _review(_outcome("a", 0))
++    log = ActionLog(review)
++    log.gap_answers = iter([None, None])
++
++    _run(
++        monkeypatch,
++        draft,
++        log,
++        [
++            *_open_review_keys(),
++            char("j"),
++            char("j"),
++            KeyPress(key=Key.ENTER),
++            char("j"),
++            KeyPress(key=Key.ENTER),
++            char("b"),
++            char("q"),
++            char("q"),
++        ],
++    )
++
++    assert log.gap_calls == [("Blockers", None), ("Next week", None)]
++    assert review.blockers is None
++    assert review.next_week is None
++
++
++def test_report_type_persists_and_detail_defaults_stop_after_an_override(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    review = _review(_outcome("a", 0))
++    log = ActionLog(review)
++
++    _run(
++        monkeypatch,
++        draft,
++        log,
++        [
++            *_open_review_keys(),
++            KeyPress(key=Key.ENTER),
++            char("b"),
++            char("q"),
++            char("q"),
++        ],
++    )
++
++    assert review.report_type is ReportType.ENGINEERING
++    assert review.detail is DetailLevel.FULL
++    assert log.saved_report_types == [ReportType.ENGINEERING]
++
++    overridden = _review(_outcome("b", 0))
++    overridden.set_detail(DetailLevel.FULL)
++    second_log = ActionLog(overridden)
++    _run(
++        monkeypatch,
++        draft,
++        second_log,
++        [
++            *_open_review_keys(),
++            KeyPress(key=Key.ENTER),
++            KeyPress(key=Key.ENTER),
++            char("b"),
++            char("q"),
++            char("q"),
++        ],
++    )
++
++    assert overridden.report_type is ReportType.MANAGER
++    assert overridden.detail is DetailLevel.FULL
++    assert second_log.saved_report_types == [
++        ReportType.ENGINEERING,
++        ReportType.MANAGER,
++    ]
++
++
++def test_preview_and_write_use_the_same_review_draft_and_back_restores_it(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    draft = ReportDraft(harness="opencode", period=_period())
++    review = _review(_outcome("a", 0))
++    log = ActionLog(review)
++
++    screens = _run(
++        monkeypatch,
++        draft,
++        log,
++        [
++            *_open_review_keys(),
++            char("p"),
++            char("b"),
++            char("j"),
++            KeyPress(key=Key.SPACE),
++            char("g"),
++            char("q"),
++            char("q"),
++        ],
++    )
++
++    assert [call[2] is review for call in log.reviewed_calls] == [True, True]
++    assert [call[4] for call in log.reviewed_calls] == [True, False]
++    assert review.outcomes[0].included is False
++    assert Screen.REPORT_PREVIEW in screens
++    assert screens.count(Screen.OUTCOME_REVIEW) >= 2
++    assert Screen.REPORT_RESULT in screens
+diff --git a/tests/unit/interactive/test_review_regressions.py b/tests/unit/interactive/test_review_regressions.py
+index ba06241..094c490 100644
+--- a/tests/unit/interactive/test_review_regressions.py
++++ b/tests/unit/interactive/test_review_regressions.py
+@@ -10,20 +10,21 @@ from rich.console import Console
+ 
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+     run_interactive,
+ )
+ from iiwi.interactive.input import Key, KeyPress
+ from iiwi.interactive.models import ReportDraft
+ from iiwi.interactive.render import render_report_setup, render_session_review
+ from iiwi.interactive.selection import SelectionState
++from iiwi.models.outcome import OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -160,20 +161,30 @@ def _actions(
+             repository_count=len(selected_scan.sessions_by_repository),
+             session_count=selected_scan.loaded_session_count,
+         )
+ 
+     return InteractiveActions(
+         new_draft=lambda: draft,
+         choose_harness=lambda current: current,
+         choose_period=choose_period,
+         scan=do_scan,
+         generate=generate,
++        synthesize=lambda draft, scan: OutcomeReviewDraft(
++            outcomes=[], report_type=draft.report_type
++        ),
++        generate_reviewed=lambda draft, scan, review, force: generate(
++            draft, scan, force
++        ),
++        edit_outcome=lambda outcome: outcome,
++        add_outcome=lambda: None,
++        edit_gap=lambda label, current: current,
++        save_report_type=lambda report_type: None,
+         doctor=lambda harness: [],
+         edit_settings=lambda: None,
+         restore_selection=lambda harness, period, include_subagents: None,
+         save_selection=lambda harness, period, include_subagents, selected: None,
+         exclude_repository=lambda repository_id, display_name: "excluded",
+     )
+ 
+ 
+ def test_non_opencode_sanitize_enter_stays_in_report_setup() -> None:
+     draft = ReportDraft(harness="claude-code", period=_period())
+@@ -402,11 +413,11 @@ def test_report_setup_footer_omits_redundant_main_menu_shortcut() -> None:
+ 
+ 
+ def test_selection_from_scan_copies_caller_owned_set() -> None:
+     scan = _scan(1)
+     selected = {"ses-0"}
+     state = SelectionState.from_scan(scan, selected_session_ids=selected)
+ 
+     state.toggle_session("ses-0")
+ 
+     assert selected == {"ses-0"}
+-    assert state.selected_session_ids == set()
+\ No newline at end of file
++    assert state.selected_session_ids == set()
+diff --git a/tests/unit/interactive/test_selection_memory.py b/tests/unit/interactive/test_selection_memory.py
+index 5cb12bd..a900211 100644
+--- a/tests/unit/interactive/test_selection_memory.py
++++ b/tests/unit/interactive/test_selection_memory.py
+@@ -10,20 +10,21 @@ from zoneinfo import ZoneInfo
+ 
+ from rich.console import Console
+ 
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+     run_interactive,
+ )
+ from iiwi.interactive.input import Key, KeyPress
+ from iiwi.interactive.models import ReportDraft
++from iiwi.models.outcome import OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -132,20 +133,33 @@ class Recorder:
+             new_draft=self.new_draft,
+             choose_harness=lambda current: current,
+             choose_period=lambda current: ("Last week", _period()),
+             scan=self.scan,
+             generate=lambda draft, scan, force: InteractiveReportResult(
+                 output_path=Path("reports/worklog.md"),
+                 content="report",
+                 repository_count=1,
+                 session_count=1,
+             ),
++            synthesize=lambda draft, scan: OutcomeReviewDraft(
++                outcomes=[], report_type=draft.report_type
++            ),
++            generate_reviewed=lambda draft, scan, review, force: InteractiveReportResult(
++                output_path=Path("reports/worklog.md"),
++                content="report",
++                repository_count=1,
++                session_count=1,
++            ),
++            edit_outcome=lambda outcome: outcome,
++            add_outcome=lambda: None,
++            edit_gap=lambda label, current: current,
++            save_report_type=lambda report_type: None,
+             doctor=lambda harness: ["ok"],
+             edit_settings=lambda: None,
+             restore_selection=self.restore_selection,
+             save_selection=self.save_selection,
+             exclude_repository=self.exclude_repository,
+         )
+ 
+ 
+ def _console() -> tuple[Console, StringIO]:
+     stream = StringIO()
+@@ -322,11 +336,11 @@ def test_exclude_key_on_a_session_row_does_not_exclude() -> None:
+                 char("e"),
+                 char("b"),
+                 char("b"),
+                 char("q"),
+                 char("q"),
+             ]
+         ),
+         console=console,
+     )
+ 
+-    assert recorder.exclude_calls == []
+\ No newline at end of file
++    assert recorder.exclude_calls == []
+diff --git a/tests/unit/interactive/test_unified_activity_review.py b/tests/unit/interactive/test_unified_activity_review.py
+index 49eb6e4..f3ccc30 100644
+--- a/tests/unit/interactive/test_unified_activity_review.py
++++ b/tests/unit/interactive/test_unified_activity_review.py
+@@ -8,20 +8,21 @@ from zoneinfo import ZoneInfo
+ 
+ from rich.console import Console
+ 
+ from iiwi.interactive.controller import (
+     InteractiveActions,
+     InteractiveReportResult,
+     run_interactive,
+ )
+ from iiwi.interactive.input import Key, KeyPress
+ from iiwi.interactive.models import ReportDraft
++from iiwi.models.outcome import OutcomeReviewDraft
+ from iiwi.models.repository import (
+     RepositoryIdentity,
+     RepositoryIdentityType,
+     ResolvedSession,
+ )
+ from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
+ TZ = ZoneInfo("Asia/Taipei")
+@@ -113,20 +114,30 @@ def _actions(counters: dict[str, int]) -> InteractiveActions:
+             repository_count=len(scan_value.sessions_by_repository),
+             session_count=scan_value.loaded_session_count,
+         )
+ 
+     return InteractiveActions(
+         new_draft=new_draft,
+         choose_harness=lambda current: current,
+         choose_period=lambda current: ("Last 7 days", _period()),
+         scan=scan,
+         generate=generate,
++        synthesize=lambda draft, scan: OutcomeReviewDraft(
++            outcomes=[], report_type=draft.report_type
++        ),
++        generate_reviewed=lambda draft, scan, review, force: generate(
++            draft, scan, force
++        ),
++        edit_outcome=lambda outcome: outcome,
++        add_outcome=lambda: None,
++        edit_gap=lambda label, current: current,
++        save_report_type=lambda report_type: None,
+         doctor=lambda harness: [f"{harness}: ok"],
+         edit_settings=lambda: None,
+         restore_selection=lambda harness, period, include_subagents: None,
+         save_selection=lambda harness, period, include_subagents, selected: None,
+         exclude_repository=lambda repository_id, display_name: "excluded",
+     )
+ 
+ 
+ def test_main_browse_entry_can_generate_from_the_same_activity_tree() -> None:
+     counters: dict[str, int] = {}
+diff --git a/tests/unit/test_config.py b/tests/unit/test_config.py
+index 120c842..6bf5e42 100644
+--- a/tests/unit/test_config.py
++++ b/tests/unit/test_config.py
+@@ -1,15 +1,19 @@
+ from pathlib import Path
+ 
+ import pytest
++from typer.testing import CliRunner
+ 
++from iiwi import config_store
++from iiwi.cli import app
+ from iiwi.config import AppSettings
++from iiwi.models.report_options import ReportType
+ 
+ 
+ def test_settings_use_opencode_cli_and_taipei_defaults() -> None:
+     settings = AppSettings()
+ 
+     assert settings.harnesses.opencode.source == "cli"
+     assert settings.harnesses.opencode.cli.executable == "opencode"
+     assert settings.report.timezone == "Asia/Taipei"
+     assert settings.report.output_directory == Path("reports")
+ 
+@@ -20,20 +24,79 @@ def test_opencode_run_timeout_and_model_defaults() -> None:
+     assert settings.harnesses.opencode.cli.run_timeout_seconds == 600.0
+     assert settings.harnesses.opencode.cli.model == ""
+ 
+ 
+ def test_report_exclude_repositories_defaults_to_empty() -> None:
+     settings = AppSettings()
+ 
+     assert settings.report.exclude_repositories == ""
+ 
+ 
++def test_quick_review_report_type_defaults_to_manager() -> None:
++    settings = AppSettings()
++
++    assert settings.report.quick_review_report_type is ReportType.MANAGER
++
++
++def test_quick_review_report_type_is_configurable_from_the_environment(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    monkeypatch.setenv(
++        "IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE",
++        "engineering",
++    )
++
++    settings = AppSettings()
++
++    assert settings.report.quick_review_report_type is ReportType.ENGINEERING
++
++
++def test_quick_review_report_type_is_listable_settable_and_unsettable(
++    monkeypatch: pytest.MonkeyPatch,
++    tmp_path: Path,
++) -> None:
++    path = tmp_path / "config.env"
++    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
++    runner = CliRunner()
++
++    listed = runner.invoke(app, ["config", "list"])
++    assert listed.exit_code == 0
++    assert "report.quick_review_" in listed.stdout
++    assert "report_type" in listed.stdout
++    listed_setting = next(
++        row
++        for row in config_store.describe_settings(path)
++        if row.key == "report.quick_review_report_type"
++    )
++    assert (listed_setting.value, listed_setting.source, listed_setting.default) == (
++        "manager",
++        "default",
++        "manager",
++    )
++
++    written = runner.invoke(
++        app,
++        ["config", "set", "report.quick_review_report_type", "engineering"],
++    )
++    assert written.exit_code == 0
++    assert config_store.stored_values(path) == {
++        "IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE": "engineering"
++    }
++
++    removed = runner.invoke(
++        app,
++        ["config", "unset", "report.quick_review_report_type"],
++    )
++    assert removed.exit_code == 0
++    assert config_store.stored_values(path) == {}
++
++
+ def test_report_exclude_repositories_is_configurable(
+     monkeypatch: pytest.MonkeyPatch,
+ ) -> None:
+     monkeypatch.setenv(
+         "IIWI_REPORT__EXCLUDE_REPOSITORIES",
+         "dotfiles,  notes-vault",
+     )
+ 
+     settings = AppSettings()
+ 

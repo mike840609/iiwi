@@ -1,0 +1,237 @@
+# Review package: 8ddcae2802bb77eb2e79e196dc634348b9ed4315..35609dc
+
+## Commits
+35609dc fix: constrain quick review hard breaks
+
+## Files changed
+ src/iiwi/interactive/render.py                     | 19 +++++++++++++++----
+ .../unit/interactive/test_outcome_review_render.py | 20 +++++++++++++++++++-
+ .../test_viewport_wrapping_regressions.py          | 22 ++++++++++++++++------
+ 3 files changed, 50 insertions(+), 11 deletions(-)
+
+## Diff
+diff --git a/src/iiwi/interactive/render.py b/src/iiwi/interactive/render.py
+index 8abf43f..ea30062 100644
+--- a/src/iiwi/interactive/render.py
++++ b/src/iiwi/interactive/render.py
+@@ -314,20 +314,26 @@ def _visible_outcome_review_rows(
+         visible.append(row)
+     return visible
+ 
+ 
+ @dataclass(frozen=True)
+ class _OutcomeReviewBlock:
+     row: OutcomeReviewRow
+     lines: list[Text]
+ 
+ 
++def _single_line(value: str) -> str:
++    """Collapse hard line breaks in fields whose viewport contract is one row."""
++
++    return " ".join(value.splitlines())
++
++
+ def _truncated_text(text: Text, width: int) -> Text:
+     fitted = text.copy()
+     fitted.truncate(max(1, width), overflow="ellipsis")
+     return fitted
+ 
+ 
+ def _labelled_wrapped_lines(
+     console: Console,
+     *,
+     indent: str,
+@@ -364,21 +370,21 @@ def _outcome_summary(outcome: Outcome, *, focused: bool, width: int) -> Text:
+     summary = Text.assemble(
+         (_CURSOR if focused else " ", style),
+         " ",
+         ("●" if outcome.included else "○", "green" if outcome.included else "dim"),
+         " ",
+     )
+     if outcome.origin is OutcomeOrigin.USER_ADDED:
+         summary.append("User-added ", style="magenta")
+     if outcome.bucket is OutcomeBucket.UNGROUPED:
+         summary.append("Ungrouped ", style="yellow")
+-    summary.append(outcome.title, style=style)
++    summary.append(_single_line(outcome.title), style=style)
+     return _truncated_text(summary, width)
+ 
+ 
+ def _evidence_detail_lines(console: Console, outcome: Outcome) -> list[Text]:
+     lines: list[Text] = []
+     for reference in outcome.evidence_refs:
+         values = [
+             ("Repository", reference.repository_id),
+             ("Session", reference.session_id),
+             ("Commit", reference.commit),
+@@ -461,23 +467,25 @@ def _review_control_line(
+         assert draft.detail is not None
+         value = f"{draft.report_type.value.title()} │ {draft.detail.value.title()}"
+         text = Text.assemble((f"{cursor} Report       ", style), (value, style))
+     elif row.kind == "more":
+         open_ = _MORE_CANDIDATES_SECTION in expanded_evidence
+         text = Text(f"{cursor} {'▾' if open_ else '▸'} More candidates", style=style)
+     elif row.kind == "ungrouped":
+         open_ = _UNGROUPED_CANDIDATES_SECTION in expanded_evidence
+         text = Text(f"{cursor} {'▾' if open_ else '▸'} Ungrouped candidates", style=style)
+     elif row.kind == "blockers":
+-        text = Text(f"{cursor} Blockers    {draft.blockers or 'Not set'}", style=style)
++        value = _single_line(draft.blockers or "Not set")
++        text = Text(f"{cursor} Blockers    {value}", style=style)
+     elif row.kind == "next_week":
+-        text = Text(f"{cursor} Next week   {draft.next_week or 'Not set'}", style=style)
++        value = _single_line(draft.next_week or "Not set")
++        text = Text(f"{cursor} Next week   {value}", style=style)
+     elif row.kind == "preview":
+         text = Text(f"{cursor} Preview report", style=style or _ACTION_STYLE)
+     elif row.kind == "generate":
+         text = Text(f"{cursor} Generate report", style=style or _ACTION_STYLE)
+     else:
+         raise ValueError(f"Unknown outcome review row: {row.kind}")
+     return _truncated_text(text, width)
+ 
+ 
+ def _build_outcome_review_blocks(
+@@ -599,21 +607,24 @@ def render_outcome_review(
+         ),
+     )
+     _print_viewport_text(
+         console,
+         _truncated_text(Text(_RULE_CHAR * console.size.width, style="dim"), console.size.width),
+     )
+     console.print()
+     if message is not None:
+         _print_viewport_text(
+             console,
+-            _truncated_text(Text(message, style="yellow"), console.size.width),
++            _truncated_text(
++                Text(_single_line(message), style="yellow"),
++                console.size.width,
++            ),
+         )
+     if start > 0:
+         _print_viewport_text(
+             console,
+             _truncated_text(Text(f"↑ {start} more", style="dim"), console.size.width),
+         )
+     for block in blocks[start:end]:
+         for line in block.lines:
+             _print_viewport_text(console, _truncated_text(line, console.size.width))
+     if end < len(blocks):
+diff --git a/tests/unit/interactive/test_outcome_review_render.py b/tests/unit/interactive/test_outcome_review_render.py
+index 18f18cf..048464b 100644
+--- a/tests/unit/interactive/test_outcome_review_render.py
++++ b/tests/unit/interactive/test_outcome_review_render.py
+@@ -1,17 +1,18 @@
+ from __future__ import annotations
+ 
+ from io import StringIO
+ 
+ from rich.console import Console
+ 
+-from iiwi.interactive import render
++from iiwi.interactive import controller, render
++from iiwi.interactive.models import Screen
+ from iiwi.models.outcome import (
+     EvidenceRef,
+     Outcome,
+     OutcomeBucket,
+     OutcomeOrigin,
+     OutcomeReviewDraft,
+     OutcomeStatus,
+ )
+ from iiwi.models.report_options import ReportType
+ 
+@@ -203,10 +204,27 @@ def test_user_added_and_ungrouped_outcomes_are_visibly_labelled() -> None:
+     render.render_outcome_review(
+         console,
+         _review(),
+         cursor=3,
+         expanded_evidence={"__ungrouped_candidates__"},
+     )
+ 
+     text = stream.getvalue()
+     assert "Added release context" in text and "User-added" in text
+     assert "Investigated an unmatched session" in text and "Ungrouped" in text
++
++
++def test_controller_outcome_review_state_renders_quick_review_with_focus() -> None:
++    console, stream = _console()
++    state = controller._State(
++        screen=Screen.OUTCOME_REVIEW,
++        outcome_review=_review(),
++        outcome_cursor=1,
++        expanded_evidence=set(),
++    )
++
++    controller._render_screen(state, console)
++
++    text = stream.getvalue()
++    assert "Quick Review" in text
++    assert "▶" in text
++    assert "Shipped the evidence-first review" in text
+diff --git a/tests/unit/interactive/test_viewport_wrapping_regressions.py b/tests/unit/interactive/test_viewport_wrapping_regressions.py
+index 9f5bf04..b9d50c2 100644
+--- a/tests/unit/interactive/test_viewport_wrapping_regressions.py
++++ b/tests/unit/interactive/test_viewport_wrapping_regressions.py
+@@ -197,44 +197,54 @@ def test_interactive_screens_fit_every_reasonable_terminal_size() -> None:
+                 )
+                 lines = _display_lines(stream)
+                 assert len(lines) <= height - 1, (width, height, cursor)
+                 assert any("▶" in line for line in lines), (width, height, cursor)
+ 
+ 
+ def _long_outcome_review() -> OutcomeReviewDraft:
+     outcomes = [
+         Outcome(
+             id=f"outcome-{index}",
+-            title=f"Outcome {index} " + "very-long-title-" * 10,
++            title=f"Outcome {index}\n\n\n" + "very-long-title-" * 10,
+             status=OutcomeStatus.IN_PROGRESS,
+-            impact="A long impact explanation " + "continues-across-rendered-lines-" * 12,
++            impact=(
++                "A long impact explanation\n"
++                + "continues-across-rendered-lines-" * 12
++            ),
+             rank=index,
+             evidence_refs=[
+                 EvidenceRef(
+                     session_id=f"session-{index}-" + "long-session-id-" * 6,
+-                    repository_id="repository-" + "long-repository-name-" * 8,
++                    repository_id="repository-\n" + "long-repository-name-" * 8,
+                     commit="deadbeef" * 8,
+-                    file="src/" + "deeply-nested-directory/" * 8 + "renderer.py",
++                    file=(
++                        "src/\n" + "deeply-nested-directory/" * 8 + "renderer.py"
++                    ),
+                 )
+             ],
+         )
+         for index in range(12)
+     ]
+-    return OutcomeReviewDraft(outcomes=outcomes, report_type=ReportType.MANAGER)
++    return OutcomeReviewDraft(
++        outcomes=outcomes,
++        report_type=ReportType.MANAGER,
++        blockers="Blocked by\n\n\n" + "long-blocker-detail-" * 12,
++        next_week="Next week\n\n\n" + "long-plan-detail-" * 12,
++    )
+ 
+ 
+ def test_outcome_review_fits_width_height_and_focus_matrix() -> None:
+     review = _long_outcome_review()
+     rows = render.outcome_review_rows(review)
+     focuses = (0, len(rows) // 2, len(rows) - 1)
+     expanded = {outcome.id for outcome in review.outcomes}
+-    error = "Could not refresh review: " + "long-error-detail-" * 20
++    error = "Could not refresh review:\n\n\n" + "long-error-detail-" * 20
+ 
+     for width in (40, 60, 80, 100, 140):
+         for height in (20, 24, 30):
+             for cursor in focuses:
+                 console, stream = _console(width=width, height=height)
+                 render.render_outcome_review(
+                     console,
+                     review,
+                     cursor=cursor,
+                     expanded_evidence=expanded,

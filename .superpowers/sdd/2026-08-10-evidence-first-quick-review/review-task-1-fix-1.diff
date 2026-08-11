@@ -1,0 +1,271 @@
+# Review package: d7e2c4567db357b74009881c1a39c47886c23037..cb7b608285d5a4f8e9092395120572d04c78340a
+
+## Commits
+cb7b608 fix: preserve review draft detail selections
+
+## Files changed
+ src/iiwi/interactive/models.py        | 21 +++++++++++++++------
+ src/iiwi/models/outcome.py            |  4 ++++
+ tests/unit/interactive/test_models.py | 13 +++++++++++++
+ tests/unit/models/test_outcome.py     | 31 +++++++++++++++++++++++++++++++
+ 4 files changed, 63 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/src/iiwi/interactive/models.py b/src/iiwi/interactive/models.py
+index 891f1e8..6527498 100644
+--- a/src/iiwi/interactive/models.py
++++ b/src/iiwi/interactive/models.py
+@@ -1,22 +1,25 @@
+ """Short-lived state for the interactive Iiwi flow."""
+ 
+ from __future__ import annotations
+ 
+ from dataclasses import dataclass, field
+ from enum import StrEnum
++from typing import cast
+ 
+ from iiwi.interactive.selection import noise_reason
+ from iiwi.models.report_options import DetailLevel, ReportType
+ from iiwi.models.time_range import DateRange
+ from iiwi.services.scan import ScanResult
+ 
++_UNSET_DETAIL = cast(DetailLevel, object())
++
+ 
+ class Screen(StrEnum):
+     MAIN = "main"
+     REPORT_SETUP = "report_setup"
+     SESSION_REVIEW = "session_review"
+     SESSION_BROWSER = "session_browser"
+     SESSION_PREVIEW = "session_preview"
+     OUTCOME_REVIEW = "outcome_review"
+     REPORT_RESULT = "report_result"
+     REPORT_PREVIEW = "report_preview"
+@@ -26,27 +29,37 @@ class Screen(StrEnum):
+ 
+ 
+ @dataclass
+ class ReportDraft:
+     harness: str
+     period: DateRange
+     period_label: str | None = None
+     include_subagents: bool = True
+     sanitize: bool = False
+     report_type: ReportType = ReportType.ENGINEERING
+-    detail: DetailLevel = DetailLevel.FULL
++    detail: DetailLevel = _UNSET_DETAIL
+     detail_overridden: bool = False
+     narrative: bool = True
+     dry_run: bool = False
+     scan: ScanResult | None = None
+     selected_session_ids: set[str] = field(default_factory=set)
+ 
++    def __post_init__(self) -> None:
++        if self.detail is _UNSET_DETAIL:
++            self.detail = self.default_detail(self.report_type)
++        else:
++            self.detail_overridden = True
++
++    @staticmethod
++    def default_detail(report_type: ReportType) -> DetailLevel:
++        return DetailLevel.BRIEF if report_type is ReportType.MANAGER else DetailLevel.FULL
++
+     def clear_scan(self) -> None:
+         self.scan = None
+         self.selected_session_ids.clear()
+ 
+     def set_scan(self, scan: ScanResult) -> None:
+         self.scan = scan
+         self.selected_session_ids = {
+             resolved.session.session_id
+             for resolved in scan.resolved_sessions
+             if noise_reason(resolved.session) is None
+@@ -74,21 +87,17 @@ class ReportDraft:
+             self.sanitize = sanitize
+             self.clear_scan()
+ 
+     def set_detail(self, detail: DetailLevel) -> None:
+         self.detail = detail
+         self.detail_overridden = True
+ 
+     def set_report_type(self, report_type: ReportType) -> None:
+         self.report_type = report_type
+         if not self.detail_overridden:
+-            self.detail = (
+-                DetailLevel.BRIEF
+-                if report_type is ReportType.MANAGER
+-                else DetailLevel.FULL
+-            )
++            self.detail = self.default_detail(report_type)
+ 
+     def set_narrative(self, narrative: bool) -> None:
+         self.narrative = narrative
+ 
+     def set_dry_run(self, dry_run: bool) -> None:
+         self.dry_run = dry_run
+diff --git a/src/iiwi/models/outcome.py b/src/iiwi/models/outcome.py
+index 41f06dd..39aa5b5 100644
+--- a/src/iiwi/models/outcome.py
++++ b/src/iiwi/models/outcome.py
+@@ -69,20 +69,22 @@ class OutcomeReviewDraft(BaseModel):
+     report_type: ReportType = ReportType.ENGINEERING
+     detail: DetailLevel | None = None
+     detail_overridden: bool = False
+     blockers: str | None = None
+     next_week: str | None = None
+ 
+     @model_validator(mode="after")
+     def apply_type_default(self) -> OutcomeReviewDraft:
+         if self.detail is None:
+             self.detail = self.default_detail(self.report_type)
++        elif "detail" in self.model_fields_set:
++            self.detail_overridden = True
+         self._normalize_ranks()
+         return self
+ 
+     @staticmethod
+     def default_detail(report_type: ReportType) -> DetailLevel:
+         return DetailLevel.BRIEF if report_type is ReportType.MANAGER else DetailLevel.FULL
+ 
+     def ordered(self) -> list[Outcome]:
+         return sorted(self.outcomes, key=lambda outcome: outcome.rank)
+ 
+@@ -115,20 +117,22 @@ class OutcomeReviewDraft(BaseModel):
+         status: OutcomeStatus,
+         impact: str,
+     ) -> None:
+         outcome = self._outcome(identifier)
+         outcome.title = title
+         outcome.status = status
+         outcome.impact = impact
+ 
+     def split(self, identifier: str) -> None:
+         parent = self._outcome(identifier)
++        if not parent.source_groups:
++            raise ValueError("cannot split outcome without source groups")
+         replacement = [
+             Outcome(
+                 id=f"{parent.id}:{group.id}",
+                 title=group.title,
+                 status=parent.status,
+                 impact=parent.impact,
+                 included=parent.included,
+                 rank=parent.rank + offset,
+                 origin=parent.origin,
+                 bucket=parent.bucket,
+diff --git a/tests/unit/interactive/test_models.py b/tests/unit/interactive/test_models.py
+index 2decb56..87ac664 100644
+--- a/tests/unit/interactive/test_models.py
++++ b/tests/unit/interactive/test_models.py
+@@ -22,20 +22,33 @@ def test_report_type_applies_default_detail_until_detail_is_explicit() -> None:
+     draft = ReportDraft(harness="opencode", period=_period(20))
+     draft.set_report_type(ReportType.MANAGER)
+     assert draft.detail is DetailLevel.BRIEF
+ 
+     draft.set_detail(DetailLevel.FULL)
+     draft.set_report_type(ReportType.ENGINEERING)
+     draft.set_report_type(ReportType.MANAGER)
+     assert draft.detail is DetailLevel.FULL
+ 
+ 
++def test_constructor_detail_remains_explicit_after_report_type_change() -> None:
++    draft = ReportDraft(
++        harness="opencode",
++        period=_period(20),
++        detail=DetailLevel.BRIEF,
++    )
++
++    draft.set_report_type(ReportType.ENGINEERING)
++
++    assert draft.detail is DetailLevel.BRIEF
++    assert draft.detail_overridden is True
++
++
+ def _period(day: int) -> DateRange:
+     return DateRange(
+         since=datetime(2026, 7, day, tzinfo=TZ),
+         until=datetime(2026, 7, day + 1, tzinfo=TZ),
+     )
+ 
+ 
+ def _draft_with_scan() -> ReportDraft:
+     draft = ReportDraft(harness="opencode", period=_period(20))
+     draft.scan = object()  # type: ignore[assignment]
+diff --git a/tests/unit/models/test_outcome.py b/tests/unit/models/test_outcome.py
+index 8d9cff8..1672a0a 100644
+--- a/tests/unit/models/test_outcome.py
++++ b/tests/unit/models/test_outcome.py
+@@ -1,10 +1,12 @@
++import pytest
++
+ from iiwi.models.outcome import (
+     EvidenceRef,
+     Outcome,
+     OutcomeBucket,
+     OutcomeOrigin,
+     OutcomeReviewDraft,
+     OutcomeSourceGroup,
+     OutcomeStatus,
+ )
+ from iiwi.models.report_options import DetailLevel, ReportType
+@@ -30,20 +32,33 @@ def test_manager_defaults_to_brief_and_explicit_detail_survives_type_change() ->
+     assert draft.detail is DetailLevel.BRIEF
+ 
+     draft.set_detail(DetailLevel.FULL)
+     draft.set_report_type(ReportType.ENGINEERING)
+     draft.set_report_type(ReportType.MANAGER)
+ 
+     assert draft.detail is DetailLevel.FULL
+     assert draft.detail_overridden is True
+ 
+ 
++def test_constructor_detail_remains_explicit_after_report_type_change() -> None:
++    draft = OutcomeReviewDraft(
++        outcomes=[outcome("a", 0)],
++        report_type=ReportType.MANAGER,
++        detail=DetailLevel.FULL,
++    )
++
++    draft.set_report_type(ReportType.MANAGER)
++
++    assert draft.detail is DetailLevel.FULL
++    assert draft.detail_overridden is True
++
++
+ def test_reorder_normalizes_ranks_without_dropping_candidates() -> None:
+     draft = OutcomeReviewDraft(outcomes=[outcome("a", 0), outcome("b", 1)])
+     draft.move("b", -1)
+     assert [(item.id, item.rank) for item in draft.ordered()] == [("b", 0), ("a", 1)]
+ 
+ 
+ def test_split_restores_source_groups_and_preserves_evidence() -> None:
+     first = EvidenceRef(session_id="ses-a", repository_id="repo-a")
+     second = EvidenceRef(session_id="ses-b", repository_id="repo-b")
+     merged = Outcome(
+@@ -64,10 +79,26 @@ def test_split_restores_source_groups_and_preserves_evidence() -> None:
+     assert [item.title for item in draft.ordered()] == ["API", "UI"]
+     assert [item.evidence_refs for item in draft.ordered()] == [[first], [second]]
+ 
+ 
+ def test_add_user_outcome_has_no_invented_evidence() -> None:
+     draft = OutcomeReviewDraft(outcomes=[])
+     added = draft.add_user_outcome("Reviewed launch design", "Reduced ambiguity")
+     assert added.origin is OutcomeOrigin.USER_ADDED
+     assert added.evidence_refs == []
+     assert added.bucket is OutcomeBucket.PRIMARY
++
++
++def test_split_without_source_groups_preserves_parent_and_raises_value_error() -> None:
++    parent = Outcome(
++        id="ungrouped",
++        title="Ungrouped outcome",
++        status=OutcomeStatus.IN_PROGRESS,
++        rank=0,
++        origin=OutcomeOrigin.USER_ADDED,
++    )
++    draft = OutcomeReviewDraft(outcomes=[parent])
++
++    with pytest.raises(ValueError, match="cannot split outcome without source groups"):
++        draft.split("ungrouped")
++
++    assert draft.outcomes == [parent]
