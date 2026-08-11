@@ -2,6 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from iiwi.models.report import WorklogReport
+from iiwi.models.report_options import DetailLevel
 from iiwi.models.time_range import DateRange
 from iiwi.renderers.markdown import render_narrative
 
@@ -56,3 +57,21 @@ def test_render_narrative_normalizes_to_a_single_trailing_newline() -> None:
 
     assert out.endswith("\n")
     assert not out.endswith("\n\n")
+
+
+def test_narrative_brief_omits_usage() -> None:
+    report = narrative_report()
+    report.usage_text = "gpt-5 123 tokens"
+
+    assert "## Usage" not in render_narrative(
+        report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF
+    )
+
+
+def test_narrative_full_keeps_usage() -> None:
+    report = narrative_report()
+    report.usage_text = "gpt-5 123 tokens"
+
+    assert "## Usage" in render_narrative(
+        report, timezone="Asia/Taipei", detail=DetailLevel.FULL
+    )

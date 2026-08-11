@@ -5,7 +5,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from iiwi.models.report import WorklogReport
-from iiwi.models.report_options import DetailLevel
+from iiwi.models.report_options import DetailLevel, ReportType
 
 # The renderer is the report's only truncation point. Both summarizers now emit
 # complete lists, so the omitted-item count is always the real remainder.
@@ -29,6 +29,7 @@ class MarkdownRenderer:
             keep_trailing_newline=True,
         )
         self._template = environment.get_template("worklog.md.j2")
+        self._outcomes_template = environment.get_template("outcomes.md.j2")
 
     def render(
         self,
@@ -53,7 +54,38 @@ class MarkdownRenderer:
         return f"{output.rstrip()}\n"
 
 
-def render_narrative(report: WorklogReport, *, timezone: str) -> str:
+    def render_outcomes(
+        self,
+        report: WorklogReport,
+        *,
+        detail: DetailLevel = DetailLevel.FULL,
+    ) -> str:
+        """Render an outcome review using the report-type-specific template."""
+
+        detail = DetailLevel(detail)
+        timezone = getattr(report.period.since.tzinfo, "key", str(report.period.since.tzinfo))
+        evidence_by_repository: dict[str, list] = {}
+        for outcome in report.outcomes:
+            if not outcome.included:
+                continue
+            for reference in outcome.evidence_refs:
+                evidence_by_repository.setdefault(reference.repository_id, []).append(reference)
+        output = self._outcomes_template.render(
+            report=report,
+            report_type=report.report_type or ReportType.ENGINEERING,
+            timezone=timezone,
+            full=detail is DetailLevel.FULL,
+            evidence_by_repository=evidence_by_repository,
+        )
+        return f"{output.rstrip()}\n"
+
+
+def render_narrative(
+    report: WorklogReport,
+    *,
+    timezone: str,
+    detail: DetailLevel = DetailLevel.FULL,
+) -> str:
     """Wrap a narrative body under the standard worklog header.
 
     The narrative prose from `opencode run` is rendered verbatim below the
@@ -61,6 +93,7 @@ def render_narrative(report: WorklogReport, *, timezone: str) -> str:
     artifact; usage and warnings render in the same positions as the template.
     """
 
+    detail = DetailLevel(detail)
     lines = [
         "# Engineering Worklog",
         "",
@@ -72,7 +105,7 @@ def render_narrative(report: WorklogReport, *, timezone: str) -> str:
         "",
         report.narrative_text or "",
     ]
-    if report.usage_text:
+    if detail is DetailLevel.FULL and report.usage_text:
         lines += ["", "## Usage"]
         if report.usage_days:
             lines += [

@@ -11,6 +11,7 @@ from typing import Protocol, cast
 from iiwi.errors import HarnessSourceError, ReportAlreadyExistsError
 from iiwi.extraction.pipeline import extract_evidence
 from iiwi.models.evidence import RepositoryEvidence, SessionEvidence
+from iiwi.models.outcome import OutcomeReviewDraft
 from iiwi.models.report import RepositorySummary, WorklogReport
 from iiwi.models.time_range import DateRange
 from iiwi.progress import NullProgressReporter, ProgressReporter, ProgressStage
@@ -34,6 +35,13 @@ from iiwi.summarizers.transcript import build_grouped_transcript
 
 class Renderer(Protocol):
     def render(
+        self,
+        report: WorklogReport,
+        *,
+        detail: DetailLevel = DetailLevel.FULL,
+    ) -> str: ...
+
+    def render_outcomes(
         self,
         report: WorklogReport,
         *,
@@ -189,7 +197,7 @@ class ReportService:
         days = self._usage_days or max(1, (self._period.until - self._period.since).days)
         narrative = self._opencode_runner.run(
             transcript=transcript,
-            prompt=build_summary_prompt(days),
+            prompt=build_summary_prompt(days, detail=self._detail),
             title=(
                 f"Iiwi - {self._period.since.date().isoformat()} "
                 f"to {self._period.until.date().isoformat()}"
@@ -237,9 +245,56 @@ class ReportService:
             timezone = getattr(
                 self._period.since.tzinfo, "key", str(self._period.since.tzinfo)
             )
-            content = redact_text(render_narrative(report, timezone=timezone))
+            content = redact_text(
+                render_narrative(report, timezone=timezone, detail=self._detail)
+            )
         else:
             content = redact_text(self._renderer.render(report, detail=self._detail))
+        if not dry_run:
+            self._progress.start(ProgressStage.WRITING_REPORT)
+            atomic_secure_write(self._output_path, content, force=force)
+        return ReportGenerationResult(
+            report=report,
+            content=content,
+            output_path=self._output_path,
+            scan=scan,
+        )
+
+    def generate_reviewed(
+        self,
+        review: OutcomeReviewDraft,
+        *,
+        scan: ScanResult | None = None,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> ReportGenerationResult:
+        """Render a reviewed outcome draft without invoking repository summarization."""
+
+        destination = self._output_path.expanduser()
+        if not dry_run and not force and destination.exists():
+            raise ReportAlreadyExistsError(f"report already exists: {destination}")
+        if scan is None:
+            scan = self._scan_service.scan()
+        warnings = [*self._initial_warnings, *scan.warnings]
+        reviewed = OutcomeReviewDraft.model_validate(
+            redact_value(review.model_copy(deep=True).model_dump(mode="json"))
+        )
+        detail = DetailLevel(reviewed.detail)
+        usage_text = self._collect_usage(scan, warnings) if detail is DetailLevel.FULL else None
+        report = WorklogReport(
+            generated_at=self._now_factory(),
+            period=self._period,
+            repositories=[],
+            report_type=reviewed.report_type,
+            outcomes=reviewed.ordered(),
+            blockers=reviewed.blockers,
+            next_week=reviewed.next_week,
+            usage_text=usage_text,
+            usage_days=self._usage_days if usage_text else None,
+            warnings=[redact_text(warning) for warning in warnings],
+        )
+        self._progress.start(ProgressStage.RENDERING_REPORT)
+        content = redact_text(self._renderer.render_outcomes(report, detail=detail))
         if not dry_run:
             self._progress.start(ProgressStage.WRITING_REPORT)
             atomic_secure_write(self._output_path, content, force=force)
