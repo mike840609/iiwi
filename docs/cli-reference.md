@@ -2,7 +2,8 @@
 
 Every command, option, and exit code. For a guided tour instead, see the
 [README](../README.md); for settings, the
-[configuration guide](configuration.md).
+[configuration guide](configuration.md); and for outcome review, the
+[evidence-first Quick Review guide](evidence-first-quick-review.md).
 
 ## Commands
 
@@ -40,8 +41,9 @@ toggles the whole repository and `Enter` expands or collapses it. Inside an expa
 repository, `Space` toggles an individual session and `p` opens a scrollable preview of
 that session's transcript (redacted before display). The repository marker is derived from
 its children: `●` means all selected, `○` means none selected, and `◐` means partially
-selected. `a` selects all sessions, `n` selects none, `g` generates, and `b` returns to
-the setup summary. A report cannot be generated with zero selected sessions. Long session
+selected. `a` selects all sessions, `n` selects none, `g` synthesizes the selected
+sessions and opens Quick Review, and `b` returns to the setup summary. A report cannot
+be generated with zero selected sessions. Long session
 lists use the terminal height as a viewport, keeping the active row visible and showing
 `↑ N more` / `↓ N more` when rows exist outside the current window. Browse Sessions also
 answers to `p` on a session row.
@@ -50,6 +52,33 @@ The selection is remembered per harness, period, and subagent setting in a local
 file. A rescan — including one triggered by changing a setting that clears the scan —
 restores the previous selection, with session ids that no longer exist dropped
 automatically; periods with no stored selection start from the noise-free default.
+
+### Quick Review
+
+Quick Review is outcome-first and targets a 30–60 second review. It preselects up
+to five synthesized outcomes. Every additional result remains available under
+**More candidates**; a reviewer can exclude a primary outcome and include one of
+these candidates instead. A session whose evidence could not be synthesized stays
+visible under **Ungrouped candidates** rather than disappearing.
+
+The review keys are:
+
+```text
+Space Include/exclude │ e Edit │ J/K Reorder │ v Evidence │ s Split │ a Add
+p Preview │ g Generate │ b Back
+```
+
+`Space` includes or excludes the focused outcome. `e` edits its title, status, and
+Impact. `J/K` reorders it, `v` expands its evidence, and `s` splits a merged
+cross-repository outcome back into its traceable source groups. `a` creates a
+User-added outcome. Blockers and Next week are optional editable rows.
+
+`p Preview` renders the current in-memory draft without writing a file; `b` returns
+from the preview with edits intact. `g Generate` writes the reviewed draft. A
+recoverable preview or output error returns to the same draft. A complete synthesis
+failure offers Retry and an explicit, labeled session-based report fallback. Partial
+synthesis opens Quick Review with the successful outcomes and the remaining
+Ungrouped candidates.
 
 On a repository row, `e` adds the repository to the persistent
 `report.exclude_repositories` setting and rescans, so the repository vanishes from the
@@ -150,10 +179,12 @@ report data the tool could not read rather than work you did.
 
 ## run
 
-`run` accepts `--verbose` and `--dry-run`. It asks the harness, the period, the detail
-level, and the pruning questions one at a time, previews the scan for approval, and only
-then writes the report. `--dry-run` prints the report instead of writing a file, and
-skips the output-path question since nothing is written for it to answer.
+`run` accepts `--verbose`, `--dry-run`, and `--detail brief|full`. When `--detail`
+is omitted, it asks the harness, the period, the detail level, and the pruning
+questions one at a time, previews the scan for approval, and only then writes the
+session-based report. `--detail` supplies that answer without a prompt; it does not
+invoke outcome synthesis. `--dry-run` prints the report instead of writing a file,
+and skips the output-path question since nothing is written for it to answer.
 
 `run` and `config init` need an interactive terminal, so they refuse to run when stdin
 is not a terminal; `scan` and `report` cover the non-interactive route.

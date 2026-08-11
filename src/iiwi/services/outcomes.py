@@ -102,6 +102,7 @@ class OutcomeSynthesisService:
         for rank, outcome in enumerate(outcomes):
             outcome.rank = rank
             outcome.bucket = OutcomeBucket.PRIMARY if rank < 5 else OutcomeBucket.MORE
+            outcome.included = rank < 5
 
         ungrouped = self._ungrouped_outcomes(failed_sessions, rank_start=len(outcomes))
         return OutcomeSynthesisResult(
@@ -230,6 +231,7 @@ class OutcomeSynthesisService:
                 title=resolved.session.title or resolved.session.session_id,
                 status=OutcomeStatus.IN_PROGRESS,
                 impact="",
+                included=False,
                 rank=rank_start + index,
                 bucket=OutcomeBucket.UNGROUPED,
                 evidence_refs=[

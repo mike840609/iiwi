@@ -151,6 +151,7 @@ iiwi doctor --harness codex
 | `IIWI_REPORT__TIMEZONE` | `Asia/Taipei` | Calendar-week and naive ISO timestamp timezone. |
 | `IIWI_REPORT__OUTPUT_DIRECTORY` | `reports` | Default Markdown output directory. |
 | `IIWI_REPORT__EXCLUDE_REPOSITORIES` | `""` | Comma-separated repository ids to permanently leave out of every scan and report. |
+| `IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE` | `manager` | Default Quick Review audience: `manager` or `engineering`. Manager defaults to Brief; Engineering defaults to Full unless Detail was explicitly changed. |
 
 The `--output` CLI option overrides the configured output directory for one invocation.
 
@@ -163,6 +164,16 @@ instead of reporting "no activity found".
 ```bash
 iiwi config set report.exclude_repositories "dotfiles,notes-vault"
 ```
+
+The exact Quick Review key is `report.quick_review_report_type`, and its
+environment variable is `IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE`. For example:
+
+```bash
+iiwi config set report.quick_review_report_type manager
+```
+
+Changing the Report row during Quick Review also saves this default for the next
+interactive report.
 
 ## OpenCode run settings
 

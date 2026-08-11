@@ -1092,6 +1092,135 @@ def test_run_scans_once_then_generates(
     assert seen["root_only"] is True
 
 
+def test_run_detail_flags_keep_session_reports_and_bypass_outcome_synthesis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ),
+        until=datetime(2026, 7, 27, tzinfo=TZ),
+    )
+    mode = {"narrative": True}
+    built: list[tuple[cli.DetailLevel, bool]] = []
+
+    class StubScanService:
+        def scan(self):
+            return SimpleNamespace(
+                loaded_session_count=1,
+                sessions_by_repository={
+                    "repo-a": [
+                        SimpleNamespace(
+                            repository=SimpleNamespace(display_name="repo-a")
+                        )
+                    ]
+                },
+                warnings=[],
+            )
+
+    class CompatibilityReportService:
+        def __init__(
+            self,
+            output_path: Path,
+            detail: cli.DetailLevel,
+            no_llm: bool,
+        ) -> None:
+            self.output_path = output_path
+            self.detail = detail
+            self.no_llm = no_llm
+
+        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+            del force, dry_run
+            if self.no_llm:
+                content = "# Engineering Worklog\n\n#### Completed\n#### Sessions\n"
+                narrative_text = None
+            else:
+                content = "# Engineering Worklog\n\nNarrative summary\n"
+                narrative_text = "Narrative summary"
+            if self.detail is cli.DetailLevel.BRIEF:
+                content = content.replace("#### Sessions\n", "")
+            self.output_path.write_text(content, encoding="utf-8")
+            return SimpleNamespace(
+                output_path=self.output_path,
+                content=content,
+                report=WorklogReport(
+                    generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+                    period=period,
+                    repositories=[
+                        RepositorySummary(
+                            repository_id="repo-a",
+                            display_name="repo-a",
+                        )
+                    ],
+                    narrative_text=narrative_text,
+                ),
+                scan=scan,
+            )
+
+        def generate_reviewed(self, *args, **kwargs):
+            pytest.fail("legacy run must not invoke outcome synthesis or reviewed output")
+
+    def ask_yes(prompt: str, *, default: bool) -> bool:
+        del default
+        if "narrative review" in prompt:
+            return mode["narrative"]
+        return "Generate the report" in prompt
+
+    def build_report(
+        settings,
+        asked_period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness,
+        sanitize,
+        detail,
+        progress,
+    ):
+        del settings, asked_period, root_only, now, harness, sanitize, progress
+        built.append((detail, no_llm))
+        return CompatibilityReportService(output_path, detail, no_llm)
+
+    outputs = iter([tmp_path / "brief.md", tmp_path / "full.md"])
+    monkeypatch.setattr(cli, "_ask_yes", ask_yes)
+    monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.OPENCODE)
+    monkeypatch.setattr(cli, "_ask_period", lambda timezone, now: period)
+    monkeypatch.setattr(
+        cli,
+        "_ask_detail",
+        lambda: pytest.fail("an explicit --detail must not prompt for detail"),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_ask_output_path",
+        lambda settings, asked_period: (next(outputs), False),
+    )
+    monkeypatch.setattr(cli, "_build_scan_service", lambda *args, **kwargs: StubScanService())
+    monkeypatch.setattr(cli, "_build_report_service", build_report)
+    monkeypatch.setattr(
+        cli,
+        "build_interactive_actions",
+        lambda: pytest.fail("the legacy run command must not enter Quick Review"),
+    )
+    _as_a_terminal(monkeypatch)
+
+    brief = runner.invoke(cli.app, ["run", "--detail", "brief"])
+    mode["narrative"] = False
+    full = runner.invoke(cli.app, ["run", "--detail", "full"])
+
+    assert brief.exit_code == 0, brief.stdout
+    assert full.exit_code == 0, full.stdout
+    assert built == [
+        (cli.DetailLevel.BRIEF, False),
+        (cli.DetailLevel.FULL, True),
+    ]
+    assert "Narrative summary" in (tmp_path / "brief.md").read_text(encoding="utf-8")
+    full_content = (tmp_path / "full.md").read_text(encoding="utf-8")
+    assert "#### Completed" in full_content
+    assert "#### Sessions" in full_content
+
+
 def test_run_aborts_when_the_preview_is_declined(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1505,9 +1634,12 @@ def test_a_dry_run_does_not_ask_where_to_write(
 def test_bare_invocation_runs_the_report_wizard(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
-    def stub_run(*, verbose: bool, dry_run: bool) -> None:
+    def stub_run(
+        *, verbose: bool, dry_run: bool, detail: cli.DetailLevel | None
+    ) -> None:
         seen["verbose"] = verbose
         seen["dry_run"] = dry_run
+        seen["detail"] = detail
 
     monkeypatch.setattr(cli, "run", stub_run)
     _as_a_terminal(monkeypatch)
@@ -1516,7 +1648,7 @@ def test_bare_invocation_runs_the_report_wizard(monkeypatch: pytest.MonkeyPatch)
     result = runner.invoke(cli.app, [], input="1\nn\n")
 
     assert result.exit_code == 0, result.stdout
-    assert seen == {"verbose": False, "dry_run": False}
+    assert seen == {"verbose": False, "dry_run": False, "detail": None}
 
 
 def test_bare_invocation_can_ask_the_report_wizard_for_a_dry_run(
@@ -1524,8 +1656,11 @@ def test_bare_invocation_can_ask_the_report_wizard_for_a_dry_run(
 ) -> None:
     seen: dict[str, object] = {}
 
-    def stub_run(*, verbose: bool, dry_run: bool) -> None:
+    def stub_run(
+        *, verbose: bool, dry_run: bool, detail: cli.DetailLevel | None
+    ) -> None:
         seen["dry_run"] = dry_run
+        seen["detail"] = detail
 
     monkeypatch.setattr(cli, "run", stub_run)
     _as_a_terminal(monkeypatch)
@@ -1534,6 +1669,7 @@ def test_bare_invocation_can_ask_the_report_wizard_for_a_dry_run(
 
     assert result.exit_code == 0, result.stdout
     assert seen["dry_run"] is True
+    assert seen["detail"] is None
 
 
 def test_bare_invocation_runs_the_settings_walk(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1886,7 +2022,11 @@ def test_the_menu_passes_every_parameter_of_the_commands_it_dispatches() -> None
         "quiet",
         "json",
     }
-    assert set(inspect.signature(cli.run).parameters) == {"verbose", "dry_run"}
+    assert set(inspect.signature(cli.run).parameters) == {
+        "verbose",
+        "dry_run",
+        "detail",
+    }
 
 
 def test_the_menu_reports_a_configuration_error_from_the_harness_question(
