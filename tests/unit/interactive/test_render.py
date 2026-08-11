@@ -1043,10 +1043,11 @@ def test_main_menu_omits_the_version_on_a_narrow_terminal() -> None:
     assert f"v{iiwi.__version__}" not in text
 
 
-def test_main_menu_fits_the_version_at_exactly_eleven_cells() -> None:
+def test_main_menu_fits_the_version_at_exact_width() -> None:
     import iiwi
     from iiwi.interactive.render import render_main_menu
-    console, stream = _console(width=11)
+    width = cell_len("Iiwi") + 1 + cell_len(f"v{iiwi.__version__}")
+    console, stream = _console(width=width)
     render_main_menu(console, selected=0)
     title_line = _row(stream.getvalue(), "Iiwi")
     assert f"v{iiwi.__version__}" in title_line
