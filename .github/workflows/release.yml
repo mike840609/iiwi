@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -11,10 +13,16 @@ permissions:
 
 jobs:
   build:
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore: publish v0.10.0'))
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore: publish v0.10.0') && 'v0.10.0' || github.ref }}
 
       - uses: actions/setup-python@v5
         with:
@@ -25,11 +33,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Verify tag matches package version
-        if: github.event_name == 'push'
+      - name: Verify release ref matches package version
+        if: >-
+          startsWith(github.ref, 'refs/tags/v') ||
+          (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore: publish v0.10.0'))
         run: |
           version="$(python -c 'from pathlib import Path; import tomllib; print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])')"
-          test "v${version}" = "${GITHUB_REF_NAME}"
+          release_tag="${GITHUB_REF_NAME}"
+          if test "${GITHUB_REF}" = "refs/heads/main"; then
+            release_tag="v0.10.0"
+          fi
+          test "v${version}" = "${release_tag}"
 
       - name: Verify package
         run: |
@@ -46,7 +60,9 @@ jobs:
 
   publish:
     needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore: publish v0.10.0'))
     runs-on: ubuntu-latest
     environment: pypi
 
@@ -65,6 +81,8 @@ jobs:
   release:
     needs: publish
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v0.10.0' }}
 
     permissions:
       contents: write
@@ -79,23 +97,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "${GITHUB_REF_NAME}" \
+          if ! gh release view "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release create "${GITHUB_REF_NAME}" \
+            gh release create "${RELEASE_TAG}" \
               --repo "${GITHUB_REPOSITORY}" \
               --draft \
-              --title "${GITHUB_REF_NAME}" \
+              --title "${RELEASE_TAG}" \
               --generate-notes \
               --verify-tag
           fi
 
-          is_draft="$(gh release view "${GITHUB_REF_NAME}" \
+          is_draft="$(gh release view "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
             --json isDraft \
             --jq .isDraft)"
           if test "${is_draft}" = "false"; then
             for artifact in dist/*; do
-              gh release view "${GITHUB_REF_NAME}" \
+              gh release view "${RELEASE_TAG}" \
                 --repo "${GITHUB_REPOSITORY}" \
                 --json assets \
                 --jq '.assets[].name' |
@@ -104,9 +122,9 @@ jobs:
             exit 0
           fi
 
-          gh release upload "${GITHUB_REF_NAME}" dist/* \
+          gh release upload "${RELEASE_TAG}" dist/* \
             --repo "${GITHUB_REPOSITORY}" \
             --clobber
-          gh release edit "${GITHUB_REF_NAME}" \
+          gh release edit "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
             --draft=false
