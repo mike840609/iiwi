@@ -48,6 +48,8 @@ def review_report(*, report_type: ReportType = ReportType.ENGINEERING) -> Worklo
         ],
         blockers="Need final review.",
         next_week="Exercise the reviewed path.",
+        usage_text="gpt-5 123 tokens",
+        usage_days=7,
     )
 
 
@@ -65,20 +67,33 @@ def render_without_gaps() -> str:
 
 
 @pytest.mark.parametrize(
-    ("report_type", "heading"),
+    ("report_type", "heading", "completed_heading", "progress_heading"),
     [
-        (ReportType.MANAGER, "# Weekly Work Update"),
-        (ReportType.ENGINEERING, "# Engineering Worklog"),
+        (
+            ReportType.MANAGER,
+            "# Weekly Work Update",
+            "## Outcomes and Impact",
+            "## Priorities in Progress",
+        ),
+        (
+            ReportType.ENGINEERING,
+            "# Engineering Worklog",
+            "## Engineering Outcomes",
+            "## Implementation Progress",
+        ),
     ],
 )
 def test_report_type_controls_heading_and_sections(
-    report_type: ReportType, heading: str
+    report_type: ReportType,
+    heading: str,
+    completed_heading: str,
+    progress_heading: str,
 ) -> None:
     output = render(report_type=report_type, detail=DetailLevel.BRIEF)
 
     assert output.startswith(heading)
-    assert "## Outcomes" in output
-    assert "## In Progress" in output
+    assert completed_heading in output
+    assert progress_heading in output
     assert "## Blockers" in output
     assert "## Next Week" in output
 
@@ -98,6 +113,42 @@ def test_report_type_renders_audience_specific_status_view() -> None:
 
     assert "**Status view:** Decisions, blockers, and next steps" in manager
     assert "**Status view:** Implementation progress and verification" in engineering
+
+
+def test_report_type_and_detail_have_independent_rendering_responsibilities() -> None:
+    outputs = {
+        (report_type, detail): render(report_type=report_type, detail=detail)
+        for report_type in ReportType
+        for detail in DetailLevel
+    }
+
+    for detail in DetailLevel:
+        manager = outputs[(ReportType.MANAGER, detail)]
+        engineering = outputs[(ReportType.ENGINEERING, detail)]
+        assert "## Outcomes and Impact" in manager
+        assert "## Priorities in Progress" in manager
+        assert "## Engineering Outcomes" not in manager
+        assert "## Implementation Progress" not in manager
+        assert "## Engineering Outcomes" in engineering
+        assert "## Implementation Progress" in engineering
+        assert "## Outcomes and Impact" not in engineering
+        assert "## Priorities in Progress" not in engineering
+
+    for report_type in ReportType:
+        brief = outputs[(report_type, DetailLevel.BRIEF)]
+        full = outputs[(report_type, DetailLevel.FULL)]
+        assert brief == full.partition("### Evidence")[0].rstrip() + "\n"
+        assert "### Evidence" not in brief
+        assert "## Usage" not in brief
+        assert "### Evidence" in full
+        assert "## Usage" in full
+
+    for output in outputs.values():
+        assert "Delivered reviewed report rendering" in output
+        assert "Made weekly updates reviewable." in output
+        assert "Finish parity coverage" in output
+        assert "Need final review." in output
+        assert "Exercise the reviewed path." in output
 
 
 def test_empty_impact_is_marked_as_unsupported() -> None:

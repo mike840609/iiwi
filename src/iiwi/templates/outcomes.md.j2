@@ -8,7 +8,7 @@
 
 {% set completed = report.outcomes | selectattr("included") | selectattr("status", "equalto", "completed") | list %}
 {% if completed %}
-## Outcomes
+## {{ "Outcomes and Impact" if report_type.value == "manager" else "Engineering Outcomes" }}
 {% for outcome in completed %}
 - {{ outcome.title }}{% if outcome.origin.value == "user_added" %} _(User added)_{% endif %}
 {% if outcome.impact %}
@@ -21,7 +21,7 @@
 {% endif %}
 {% set in_progress = report.outcomes | selectattr("included") | selectattr("status", "equalto", "in_progress") | list %}
 {% if in_progress %}
-## In Progress
+## {{ "Priorities in Progress" if report_type.value == "manager" else "Implementation Progress" }}
 {% for outcome in in_progress %}
 - {{ outcome.title }}{% if outcome.origin.value == "user_added" %} _(User added)_{% endif %}
 {% if outcome.impact %}

@@ -18,7 +18,9 @@ _BRIEF_NARRATIVE_ALLOWED_HEADINGS = frozenset(
     {"outcomes", "in progress", "blockers", "next week", "warnings"}
 )
 _FILE_PATH_PATTERN = re.compile(r"\b[\w.-]+/[\w./-]+\.[A-Za-z0-9]{1,12}\b")
-_SESSION_LINE_PATTERN = re.compile(r"\bsession(?: id)?:\s*\S+", re.IGNORECASE)
+_SESSION_LINE_PATTERN = re.compile(
+    r"\bsession(?: id)?(?:\s*:\s*|\s+)\S+", re.IGNORECASE
+)
 _EVIDENCE_LINE_PATTERN = re.compile(
     r"\b(?:branch|commit|command|file|path|revision)(?:\s*:|\s+)", re.IGNORECASE
 )

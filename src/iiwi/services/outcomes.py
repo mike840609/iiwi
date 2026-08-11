@@ -112,9 +112,15 @@ class OutcomeSynthesisService:
         payload = self._parse_payload(output)
         outcomes: list[Outcome] = []
         used_session_ids: set[str] = set()
-        for proposal_index, proposal in enumerate(payload.outcomes):
+        seen_proposals: set[tuple[object, ...]] = set()
+        for proposal in payload.outcomes:
             selected = self._selected_evidence(proposal, evidence_by_session)
             used_session_ids.update(item.session_id for item in selected)
+            signature = _proposal_signature(proposal, selected)
+            if signature in seen_proposals:
+                continue
+            proposal_index = len(seen_proposals)
+            seen_proposals.add(signature)
             outcomes.extend(
                 self._outcomes_for_proposal(
                     proposal,
@@ -374,6 +380,28 @@ def _strip_json_fence(output: str) -> str:
     if value.startswith("```json") and value.endswith("```"):
         return value[len("```json") : -len("```")].strip()
     return value
+
+
+def _proposal_signature(
+    proposal: _ProposedOutcome,
+    selected: list[SessionEvidence],
+) -> tuple[object, ...]:
+    def normalize(value: str) -> str:
+        return " ".join(value.split()).casefold()
+
+    return (
+        normalize(proposal.title),
+        proposal.status,
+        normalize(proposal.impact),
+        tuple(sorted(item.session_id for item in selected)),
+        proposal.confidence,
+        tuple(
+            sorted(
+                (signal.kind, normalize(signal.value))
+                for signal in proposal.linkage_signals
+            )
+        ),
+    )
 
 
 def _synthesized_id(

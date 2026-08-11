@@ -12,6 +12,7 @@ import typer
 from rich.console import Console
 
 from iiwi.errors import (
+    ConfigurationError,
     IiwiError,
     OutcomeSynthesisError,
     ReportAlreadyExistsError,
@@ -988,7 +989,20 @@ def _cycle_report_type(state: _State, actions: InteractiveActions) -> None:
     state.draft.report_type = review.report_type
     state.draft.detail = review.detail
     state.draft.detail_overridden = review.detail_overridden
-    actions.save_report_type(report_type)
+    if state.outcome_review_selection_key is not None:
+        selected_session_ids, _ = state.outcome_review_selection_key
+        state.outcome_review_selection_key = (
+            selected_session_ids,
+            state.draft.detail,
+        )
+    state.outcome_message = None
+    try:
+        actions.save_report_type(report_type)
+    except ConfigurationError as exc:
+        state.outcome_message = (
+            "Report type changed, but the preference could not be remembered: "
+            f"{exc}"
+        )
 
 
 def _move_reviewed_outcome(

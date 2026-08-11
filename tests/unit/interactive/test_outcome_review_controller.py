@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -9,6 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from rich.console import Console
 
+from iiwi.errors import ConfigurationError
 from iiwi.interactive import controller
 from iiwi.interactive.controller import (
     InteractiveActions,
@@ -274,25 +276,7 @@ def test_reentering_quick_review_with_unchanged_selection_preserves_existing_dra
         log.synthesis_scans.append(selected_scan)
         return next(syntheses)
 
-    actions = _actions(draft, log)
-    actions = InteractiveActions(
-        new_draft=actions.new_draft,
-        choose_harness=actions.choose_harness,
-        choose_period=actions.choose_period,
-        scan=actions.scan,
-        generate=actions.generate,
-        synthesize=synthesize,
-        generate_reviewed=actions.generate_reviewed,
-        edit_outcome=actions.edit_outcome,
-        add_outcome=actions.add_outcome,
-        edit_gap=actions.edit_gap,
-        save_report_type=actions.save_report_type,
-        doctor=actions.doctor,
-        edit_settings=actions.edit_settings,
-        restore_selection=actions.restore_selection,
-        save_selection=actions.save_selection,
-        exclude_repository=actions.exclude_repository,
-    )
+    actions = replace(_actions(draft, log), synthesize=synthesize)
     screens: list[Screen] = []
     monkeypatch.setattr(
         controller,
@@ -324,6 +308,73 @@ def test_reentering_quick_review_with_unchanged_selection_preserves_existing_dra
     ]
     assert log.reviewed_calls[0][2].outcomes[0].included is False
     assert Screen.OUTCOME_REVIEW in screens
+
+
+def test_report_type_default_change_preserves_review_when_reentering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = ReportDraft(
+        harness="opencode",
+        period=_period(),
+        report_type=ReportType.MANAGER,
+    )
+    original = _review(_outcome("edited", 0))
+    replacement = _review(_outcome("replacement", 0))
+    syntheses = iter([original, replacement])
+    log = ActionLog(original)
+
+    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+        log.synthesis_scans.append(selected_scan)
+        return next(syntheses)
+
+    actions = _actions(draft, log)
+    actions = InteractiveActions(
+        new_draft=actions.new_draft,
+        choose_harness=actions.choose_harness,
+        choose_period=actions.choose_period,
+        scan=actions.scan,
+        generate=actions.generate,
+        synthesize=synthesize,
+        generate_reviewed=actions.generate_reviewed,
+        edit_outcome=actions.edit_outcome,
+        add_outcome=actions.add_outcome,
+        edit_gap=actions.edit_gap,
+        save_report_type=actions.save_report_type,
+        doctor=actions.doctor,
+        edit_settings=actions.edit_settings,
+        restore_selection=actions.restore_selection,
+        save_selection=actions.save_selection,
+        exclude_repository=actions.exclude_repository,
+    )
+    monkeypatch.setattr(controller, "_render_screen", lambda state, console: None)
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput(
+            [
+                *_open_review_keys(),
+                char("j"),
+                KeyPress(key=Key.SPACE),
+                char("k"),
+                KeyPress(key=Key.ENTER),
+                char("b"),
+                char("g"),
+                char("g"),
+                char("q"),
+                char("q"),
+            ]
+        ),
+        console=Console(file=StringIO(), color_system=None, force_terminal=False),
+    )
+
+    assert len(log.synthesis_scans) == 1
+    reviewed = log.reviewed_calls[0][2]
+    assert reviewed is original
+    assert reviewed.outcomes[0].included is False
+    assert reviewed.report_type is ReportType.ENGINEERING
+    assert reviewed.detail is DetailLevel.FULL
+    assert draft.report_type is ReportType.ENGINEERING
+    assert draft.detail is DetailLevel.FULL
 
 
 def test_changing_detail_in_setup_regenerates_quick_review_draft(
@@ -605,6 +656,62 @@ def test_report_type_persists_and_detail_defaults_stop_after_an_override(
         ReportType.ENGINEERING,
         ReportType.MANAGER,
     ]
+
+
+def test_report_type_persistence_failure_keeps_the_edited_review_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = ReportDraft(
+        harness="opencode",
+        period=_period(),
+        report_type=ReportType.MANAGER,
+    )
+    review = _review(_outcome("edited", 0))
+    log = ActionLog(review)
+
+    def fail_to_save(_report_type: ReportType) -> None:
+        raise ConfigurationError("settings file is read-only")
+
+    actions = replace(_actions(draft, log), save_report_type=fail_to_save)
+    rendered_states: list[tuple[Screen, str | None]] = []
+    monkeypatch.setattr(
+        controller,
+        "_render_screen",
+        lambda state, console: rendered_states.append(
+            (state.screen, state.outcome_message)
+        ),
+    )
+
+    try:
+        run_interactive(
+            actions=actions,
+            input_source=ScriptedInput(
+                [
+                    *_open_review_keys(),
+                    char("j"),
+                    KeyPress(key=Key.SPACE),
+                    char("k"),
+                    KeyPress(key=Key.ENTER),
+                    char("b"),
+                    char("q"),
+                    char("q"),
+                ]
+            ),
+            console=Console(file=StringIO(), color_system=None, force_terminal=False),
+        )
+    except ConfigurationError as exc:
+        pytest.fail(f"Quick Review terminated after preference failure: {exc}")
+
+    assert (
+        Screen.OUTCOME_REVIEW,
+        "Report type changed, but the preference could not be remembered: "
+        "settings file is read-only",
+    ) in rendered_states
+    assert review.outcomes[0].included is False
+    assert review.report_type is ReportType.ENGINEERING
+    assert review.detail is DetailLevel.FULL
+    assert draft.report_type is ReportType.ENGINEERING
+    assert draft.detail is DetailLevel.FULL
 
 
 def test_preview_and_write_use_the_same_review_draft_and_back_restores_it(

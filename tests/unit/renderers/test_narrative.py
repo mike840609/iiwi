@@ -144,6 +144,29 @@ gpt-5 123 tokens
     assert "gpt-5 123 tokens" not in output
 
 
+def test_narrative_brief_rejects_whitespace_delimited_session_evidence() -> None:
+    report = narrative_report()
+    report.narrative_text = """## Outcomes
+
+- Session ses_abc
+- Safe reader-facing summary.
+- Session ID arbitrary-id
+"""
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "Safe reader-facing summary." in output
+    assert "Session ses_abc" not in output
+    assert "Session ID arbitrary-id" not in output
+
+    full_output = render_narrative(
+        report, timezone="Asia/Taipei", detail=DetailLevel.FULL
+    )
+
+    assert "Session ses_abc" in full_output
+    assert "Session ID arbitrary-id" in full_output
+
+
 def test_narrative_brief_rejects_setext_technical_sections_and_space_delimited_evidence() -> None:
     report = narrative_report()
     report.narrative_text = """Outcomes

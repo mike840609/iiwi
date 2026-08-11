@@ -295,7 +295,7 @@ def test_model_omission_preserves_extracted_session_as_ungrouped_candidate() -> 
     assert result.outcomes[1].included is False
 
 
-def test_duplicate_model_proposals_keep_stable_unique_candidate_ids() -> None:
+def test_exact_duplicate_model_proposals_share_one_traceable_candidate() -> None:
     result = service_for_json(
         {
             "outcomes": [
@@ -319,7 +319,12 @@ def test_duplicate_model_proposals_keep_stable_unique_candidate_ids() -> None:
         }
     ).synthesize(one_scan())
 
-    assert len({outcome.id for outcome in result.outcomes}) == 2
+    assert len(result.outcomes) == 1
+    outcome = result.outcomes[0]
+    assert outcome.rank == 0
+    assert outcome.bucket is OutcomeBucket.PRIMARY
+    assert outcome.included is True
+    assert [reference.session_id for reference in outcome.evidence_refs] == ["ses-a"]
 
 
 def test_high_confidence_cross_repo_merge_requires_two_independent_signals() -> None:

@@ -45,9 +45,9 @@ material is rendered. They are separate responsibilities:
 
 | Setting | Owns | Default relationship |
 |---|---|---|
-| **Manager** | A concise weekly-update heading and audience. | Defaults to **Brief** until Detail is explicitly changed. |
-| **Engineering** | An engineering-worklog heading and audience. | Defaults to **Full** until Detail is explicitly changed. |
-| **Brief** | Outcomes, In Progress, Blockers, Next week, and warnings. | Omits the Evidence and Usage sections. |
+| **Manager** | Concise Outcomes and Impact plus Priorities in Progress. | Defaults to **Brief** until Detail is explicitly changed. |
+| **Engineering** | Engineering Outcomes plus Implementation Progress. | Defaults to **Full** until Detail is explicitly changed. |
+| **Brief** | The selected reader-specific outcome sections, Blockers, Next week, and warnings. | Omits the Evidence and Usage sections. |
 | **Full** | The same reviewed outcome prose. | Also includes traceable Evidence and available Usage. |
 
 Enter on the Report row to switch Manager or Engineering. An explicit Detail
