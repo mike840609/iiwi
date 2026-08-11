@@ -480,16 +480,24 @@ def test_blank_cross_repo_linkage_signals_cannot_authorize_merge(signals) -> Non
 
 
 def test_model_cannot_attach_evidence_from_an_unknown_session() -> None:
-    with pytest.raises(OutcomeSynthesisError, match="unknown session"):
-        service_for_json(payload_for_sessions(["invented-session"])).synthesize(one_scan())
+    result = service_for_json(
+        payload_for_sessions(["ses-a", "invented-session"])
+    ).synthesize(one_scan())
+
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
+        "ses-a"
+    ]
 
 
 def test_model_cannot_supply_repository_references() -> None:
     model_output = payload_for_sessions(["ses-a"])
     model_output["outcomes"][0]["repository_id"] = "invented-repository"
 
-    with pytest.raises(OutcomeSynthesisError, match="valid outcome JSON"):
-        service_for_json(model_output).synthesize(one_scan())
+    result = service_for_json(model_output).synthesize(one_scan())
+
+    assert [
+        reference.repository_id for reference in result.outcomes[0].evidence_refs
+    ] == ["repo-a"]
 
 
 def test_unsupported_impact_is_left_empty() -> None:
@@ -547,6 +555,111 @@ def test_all_extraction_failures_raise_complete_synthesis_error(monkeypatch) -> 
 def test_invalid_or_empty_model_output_is_a_complete_synthesis_error() -> None:
     with pytest.raises(OutcomeSynthesisError, match="valid outcome JSON"):
         service_for_raw("not-json").synthesize(one_scan())
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "```\n{payload}\n```",
+        "Here is the summary:\n\n```json\n{payload}\n```\n\nLet me know if that helps.",
+        "{payload}",
+    ],
+)
+def test_outcome_json_is_read_through_surrounding_output(template) -> None:
+    output = template.format(payload=json.dumps(payload_for_sessions(["ses-a"])))
+
+    result = service_for_raw(output).synthesize(one_scan())
+
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
+        "ses-a"
+    ]
+
+
+def test_output_without_any_json_object_is_a_complete_synthesis_error() -> None:
+    with pytest.raises(OutcomeSynthesisError, match="valid outcome JSON"):
+        service_for_raw("I could not find any outcomes to report.").synthesize(one_scan())
+
+
+def test_unknown_outcome_field_is_ignored_and_the_outcome_still_builds() -> None:
+    model_output = payload_for_sessions(["ses-a"])
+    model_output["outcomes"][0]["reasoning"] = "invented commentary"
+
+    result = service_for_json(model_output).synthesize(one_scan())
+
+    assert [outcome.bucket for outcome in result.outcomes] == [OutcomeBucket.PRIMARY]
+    assert result.outcomes[0].title == "Session ses-a"
+
+
+def test_unrecognized_linkage_kind_cannot_authorize_cross_repo_merge() -> None:
+    result = service_for_json(
+        cross_repo_payload(
+            confidence="high",
+            linkage_signals=[{"kind": "vibes", "value": "IIWI-42"}],
+        )
+    ).synthesize(two_repo_scan_with_linkage_evidence())
+
+    assert len(result.outcomes) == 2
+
+
+def test_proposal_keeping_one_known_session_builds_from_that_session_only() -> None:
+    result = service_for_json(
+        payload_for_sessions(["ses-a", "invented-session"])
+    ).synthesize(two_session_scan())
+
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
+        "ses-a"
+    ]
+    assert result.outcomes[1].bucket is OutcomeBucket.UNGROUPED
+    assert result.outcomes[1].title == "Session ses-b"
+
+
+def test_proposal_without_a_known_session_is_skipped_beside_valid_proposals() -> None:
+    result = service_for_json(
+        {
+            "outcomes": [
+                {
+                    "title": "Known outcome",
+                    "status": "in_progress",
+                    "impact": "",
+                    "source_session_ids": ["ses-a"],
+                    "confidence": "high",
+                    "linkage_signals": [],
+                },
+                {
+                    "title": "Invented outcome",
+                    "status": "in_progress",
+                    "impact": "",
+                    "source_session_ids": ["invented-session"],
+                    "confidence": "high",
+                    "linkage_signals": [],
+                },
+            ]
+        }
+    ).synthesize(two_session_scan())
+
+    assert [outcome.bucket for outcome in result.outcomes] == [
+        OutcomeBucket.PRIMARY,
+        OutcomeBucket.UNGROUPED,
+    ]
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
+        "ses-a"
+    ]
+    assert result.outcomes[1].title == "Session ses-b"
+
+
+def test_all_proposals_skipped_returns_ungrouped_candidates_without_raising() -> None:
+    result = service_for_json(payload_for_sessions(["invented-session"])).synthesize(
+        two_session_scan()
+    )
+
+    assert [outcome.bucket for outcome in result.outcomes] == [
+        OutcomeBucket.UNGROUPED,
+        OutcomeBucket.UNGROUPED,
+    ]
+    assert [outcome.title for outcome in result.outcomes] == [
+        "Session ses-a",
+        "Session ses-b",
+    ]
 
 
 def test_evidence_inside_the_budget_is_sent_whole_and_warns_about_nothing() -> None:
