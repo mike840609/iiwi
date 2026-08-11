@@ -27,3 +27,7 @@ class ReportAlreadyExistsError(ReportOutputError):
 
 class NoSessionsError(IiwiError):
     """Raised when no session activity matches the requested period."""
+
+
+class OutcomeSynthesisError(IiwiError):
+    """Raised when outcome synthesis cannot produce valid evidence-backed output."""
