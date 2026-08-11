@@ -14,6 +14,7 @@ from uuid import uuid4
 import typer
 
 from iiwi import config_store
+from iiwi.errors import OutcomeSynthesisError
 from iiwi.history import HistoryEntry, append_history
 from iiwi.interactive.controller import (
     InteractiveActions,
@@ -33,7 +34,7 @@ from iiwi.process import CommandRunner
 from iiwi.security.redactor import redact_text
 from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.scan import ScanResult
-from iiwi.summarizers.opencode_run import OpenCodeRunner
+from iiwi.summarizers.opencode_run import OpenCodeRunError, OpenCodeRunner
 
 
 def _new_draft() -> ReportDraft:
@@ -183,7 +184,10 @@ def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
         executable=cli_settings.executable,
         model=cli_settings.model,
     )
-    result = OutcomeSynthesisService(runner).synthesize(scan)
+    try:
+        result = OutcomeSynthesisService(runner).synthesize(scan)
+    except OpenCodeRunError as exc:
+        raise OutcomeSynthesisError(str(exc)) from exc
     arguments: dict[str, object] = {
         "outcomes": result.outcomes,
         "report_type": draft.report_type,

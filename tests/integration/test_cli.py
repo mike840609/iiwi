@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from itertools import count
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -14,9 +15,16 @@ from typer.testing import CliRunner
 import iiwi.cli as cli
 from iiwi import config_store
 from iiwi.errors import ConfigurationError, ReportOutputError
+from iiwi.history import read_history
 from iiwi.models.report import RepositorySummary, WorklogReport
 from iiwi.models.time_range import DateRange
 from iiwi.progress import NullProgressReporter, ProgressStage
+from iiwi.renderers.markdown import MarkdownRenderer
+from iiwi.services.report import ReportService
+from iiwi.services.scan import ScanService
+from iiwi.summarizers.opencode_run import OpenCodeRunner
+from iiwi.summarizers.rule_based import RuleBasedSummarizer
+from tests.integration.test_scan_service import FakeSource, StaticResolver
 
 runner = CliRunner()
 TZ = ZoneInfo("Asia/Taipei")
@@ -1102,62 +1110,14 @@ def test_run_detail_flags_keep_session_reports_and_bypass_outcome_synthesis(
     )
     mode = {"narrative": True}
     built: list[tuple[cli.DetailLevel, bool]] = []
+    narrative_calls: list[dict[str, str]] = []
 
-    class StubScanService:
-        def scan(self):
-            return SimpleNamespace(
-                loaded_session_count=1,
-                sessions_by_repository={
-                    "repo-a": [
-                        SimpleNamespace(
-                            repository=SimpleNamespace(display_name="repo-a")
-                        )
-                    ]
-                },
-                warnings=[],
+    class StaticNarrativeRunner:
+        def run(self, *, transcript: str, prompt: str, title: str) -> str:
+            narrative_calls.append(
+                {"transcript": transcript, "prompt": prompt, "title": title}
             )
-
-    class CompatibilityReportService:
-        def __init__(
-            self,
-            output_path: Path,
-            detail: cli.DetailLevel,
-            no_llm: bool,
-        ) -> None:
-            self.output_path = output_path
-            self.detail = detail
-            self.no_llm = no_llm
-
-        def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
-            del force, dry_run
-            if self.no_llm:
-                content = "# Engineering Worklog\n\n#### Completed\n#### Sessions\n"
-                narrative_text = None
-            else:
-                content = "# Engineering Worklog\n\nNarrative summary\n"
-                narrative_text = "Narrative summary"
-            if self.detail is cli.DetailLevel.BRIEF:
-                content = content.replace("#### Sessions\n", "")
-            self.output_path.write_text(content, encoding="utf-8")
-            return SimpleNamespace(
-                output_path=self.output_path,
-                content=content,
-                report=WorklogReport(
-                    generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
-                    period=period,
-                    repositories=[
-                        RepositorySummary(
-                            repository_id="repo-a",
-                            display_name="repo-a",
-                        )
-                    ],
-                    narrative_text=narrative_text,
-                ),
-                scan=scan,
-            )
-
-        def generate_reviewed(self, *args, **kwargs):
-            pytest.fail("legacy run must not invoke outcome synthesis or reviewed output")
+            return "Narrative summary"
 
     def ask_yes(prompt: str, *, default: bool) -> bool:
         del default
@@ -1178,9 +1138,29 @@ def test_run_detail_flags_keep_session_reports_and_bypass_outcome_synthesis(
         detail,
         progress,
     ):
-        del settings, asked_period, root_only, now, harness, sanitize, progress
+        del settings, harness, progress
         built.append((detail, no_llm))
-        return CompatibilityReportService(output_path, detail, no_llm)
+        return ReportService(
+            scan_service=ScanService(
+                source=FakeSource(),
+                period=asked_period,
+                resolver=StaticResolver(),
+            ),
+            summarizer=RuleBasedSummarizer(),
+            renderer=MarkdownRenderer(),
+            period=asked_period,
+            output_path=output_path,
+            now_factory=lambda: now,
+            detail=detail,
+            narrative=not no_llm,
+            opencode_runner=(
+                None
+                if no_llm
+                else cast(OpenCodeRunner, StaticNarrativeRunner())
+            ),
+            include_subagents=not root_only,
+            sanitized=sanitize,
+        )
 
     outputs = iter([tmp_path / "brief.md", tmp_path / "full.md"])
     monkeypatch.setattr(cli, "_ask_yes", ask_yes)
@@ -1196,7 +1176,15 @@ def test_run_detail_flags_keep_session_reports_and_bypass_outcome_synthesis(
         "_ask_output_path",
         lambda settings, asked_period: (next(outputs), False),
     )
-    monkeypatch.setattr(cli, "_build_scan_service", lambda *args, **kwargs: StubScanService())
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        lambda *args, **kwargs: ScanService(
+            source=FakeSource(),
+            period=period,
+            resolver=StaticResolver(),
+        ),
+    )
     monkeypatch.setattr(cli, "_build_report_service", build_report)
     monkeypatch.setattr(
         cli,
@@ -1216,9 +1204,17 @@ def test_run_detail_flags_keep_session_reports_and_bypass_outcome_synthesis(
         (cli.DetailLevel.FULL, True),
     ]
     assert "Narrative summary" in (tmp_path / "brief.md").read_text(encoding="utf-8")
+    assert "Do not include session IDs, file lists, command lists, or Usage." in (
+        narrative_calls[0]["prompt"]
+    )
     full_content = (tmp_path / "full.md").read_text(encoding="utf-8")
-    assert "#### Completed" in full_content
     assert "#### Sessions" in full_content
+    assert "Narrative summary" not in full_content
+    history = read_history(path=tmp_path / "history.jsonl")
+    assert [(entry.narrative, entry.detail) for entry in history] == [
+        (True, "brief"),
+        (False, "full"),
+    ]
 
 
 def test_run_aborts_when_the_preview_is_declined(

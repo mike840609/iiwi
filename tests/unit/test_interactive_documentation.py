@@ -54,3 +54,10 @@ def test_quick_review_guide_states_scope_and_version_one_exclusions() -> None:
     assert "Brief" in guide and "Full" in guide
     assert "No persistent drafts" in guide
     assert "No manual merge" in guide
+
+
+def test_readme_distinguishes_transcript_reading_from_quick_review_synthesis() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "Claude Code / Codex (no CLI" not in readme
+    assert "Quick Review outcome synthesis still uses your local `opencode run`" in readme

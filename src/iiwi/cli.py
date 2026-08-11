@@ -1119,7 +1119,7 @@ def run(
                 progress=progress,
             )
             result = service.generate(force=force, dry_run=dry_run, scan=scan)
-            if not result.report.repositories:
+            if not result.report.repositories and not result.report.narrative_text:
                 raise NoSessionsError(
                     _no_sessions_message(
                         harness,

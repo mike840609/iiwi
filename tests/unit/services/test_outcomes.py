@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from iiwi.errors import OutcomeSynthesisError
-from iiwi.models import OutcomeBucket
+from iiwi.models import OutcomeBucket, OutcomeReviewDraft
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -168,6 +168,27 @@ def test_high_confidence_cross_repo_merge_requires_two_independent_signals() -> 
         "repo-a",
         "repo-b",
     }
+
+
+def test_real_cross_repo_merge_splits_into_named_repository_outcomes() -> None:
+    result = service_for_json(
+        cross_repo_payload(
+            confidence="high",
+            linkage_signals=[
+                {"kind": "branch_or_issue", "value": "IIWI-42"},
+                {"kind": "direct_reference", "value": "same feature rollout"},
+            ],
+        )
+    ).synthesize(two_repo_scan())
+    draft = OutcomeReviewDraft(outcomes=result.outcomes)
+
+    draft.split(result.outcomes[0].id)
+
+    assert [outcome.title for outcome in draft.ordered()] == ["repo-a", "repo-b"]
+    assert [
+        [reference.repository_id for reference in outcome.evidence_refs]
+        for outcome in draft.ordered()
+    ] == [["repo-a"], ["repo-b"]]
 
 
 @pytest.mark.parametrize(

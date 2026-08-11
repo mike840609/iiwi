@@ -28,9 +28,12 @@ Claude Code, and Codex.
 
 ## Quick start
 
-Needs Python 3.11+ and `git`. Plus one harness: OpenCode (the default, needs an
-`opencode` executable) or Claude Code / Codex (no CLI, just a readable transcript
-store at `~/.claude/projects` or `~/.codex`).
+Needs Python 3.11+ and `git`. Plus one transcript source: OpenCode (the default,
+needs an `opencode` executable) or a readable Claude Code / Codex transcript store
+at `~/.claude/projects` or `~/.codex` (their CLIs are not needed for reading).
+Quick Review outcome synthesis still uses your local `opencode run` for every
+transcript source; if it is unavailable, the recovery screen offers Retry and an
+explicit session-based report fallback.
 
 ```bash
 pipx install iiwi                 # or: pip install iiwi

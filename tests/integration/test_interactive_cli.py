@@ -455,6 +455,100 @@ def test_quick_review_writes_the_exact_reviewed_draft(tmp_path: Path) -> None:
     assert review_calls[0][0] is review_calls[1][0]
 
 
+def test_quick_review_splits_a_real_cross_repository_merge(tmp_path: Path) -> None:
+    repositories = [
+        RepositoryIdentity(
+            repository_id=f"repo-{suffix}",
+            display_name=f"repo-{suffix}",
+            identity_type=RepositoryIdentityType.GIT_REMOTE,
+            resolution_method="test",
+        )
+        for suffix in ("a", "b")
+    ]
+    resolved = [
+        ResolvedSession(
+            session=AgentSession(
+                harness="opencode",
+                session_id=f"ses-{suffix}",
+                title=f"Session {suffix}",
+                activities=[
+                    SessionActivity(
+                        activity_id=f"ses-{suffix}-act-{index}",
+                        activity_type=ActivityType.USER_MESSAGE,
+                    )
+                    for index in range(5)
+                ],
+            ),
+            repository=repository,
+        )
+        for suffix, repository in zip(("a", "b"), repositories, strict=True)
+    ]
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=2,
+        loaded_session_count=2,
+        failed_session_count=0,
+        resolved_sessions=resolved,
+        sessions_by_repository={
+            repository.repository_id: [item]
+            for repository, item in zip(repositories, resolved, strict=True)
+        },
+    )
+    output_path = tmp_path / "split.md"
+    review_calls: list[tuple[OutcomeReviewDraft, bool]] = []
+    actions = _quick_review_actions(
+        draft=ReportDraft(harness="opencode", period=_period()),
+        scan=scan,
+        payload={
+            "outcomes": [
+                {
+                    "title": "Shared rollout",
+                    "status": "completed",
+                    "impact": "Verified shared delivery",
+                    "source_session_ids": ["ses-a", "ses-b"],
+                    "confidence": "high",
+                    "linkage_signals": [
+                        {"kind": "branch_or_issue", "value": "IIWI-42"},
+                        {"kind": "direct_reference", "value": "same rollout"},
+                    ],
+                }
+            ]
+        },
+        output_path=output_path,
+        review_calls=review_calls,
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput(
+            [
+                char("2"),
+                char("r"),
+                char("g"),
+                char("j"),
+                char("s"),
+                char("g"),
+                char("q"),
+                char("q"),
+            ]
+        ),
+        console=Console(
+            file=StringIO(),
+            color_system=None,
+            force_terminal=False,
+            width=100,
+            height=30,
+        ),
+    )
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "- repo-a" in content
+    assert "- repo-b" in content
+    assert "Session: `ses-a`" in content
+    assert "Session: `ses-b`" in content
+    assert "Shared rollout" not in content
+
+
 def test_twenty_line_quick_review_expands_more_evidence_and_recovers_preview(
     tmp_path: Path,
 ) -> None:

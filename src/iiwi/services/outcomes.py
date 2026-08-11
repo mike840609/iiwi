@@ -205,6 +205,7 @@ class OutcomeSynthesisService:
         return [
             OutcomeSourceGroup(
                 id=repository_id,
+                title=repository_id,
                 evidence_refs=[
                     EvidenceRef(
                         session_id=item.session_id,

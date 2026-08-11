@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from iiwi import cli
+from iiwi.errors import OutcomeSynthesisError
 from iiwi.interactive import cli_actions
 from iiwi.interactive.models import ReportDraft
 from iiwi.models.outcome import (
@@ -17,8 +18,15 @@ from iiwi.models.outcome import (
     OutcomeStatus,
 )
 from iiwi.models.report_options import DetailLevel, ReportType
+from iiwi.models.repository import (
+    RepositoryIdentity,
+    RepositoryIdentityType,
+    ResolvedSession,
+)
+from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
 from iiwi.services.scan import ScanResult
+from iiwi.summarizers.opencode_run import OpenCodeRunError
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -137,6 +145,66 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
     assert review.report_type is ReportType.MANAGER
     assert review.detail is DetailLevel.BRIEF
     assert review.detail_overridden is False
+
+
+def test_synthesize_translates_real_opencode_failure_for_controller_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = RepositoryIdentity(
+        repository_id="repo-a",
+        display_name="repo-a",
+        identity_type=RepositoryIdentityType.PATH_FALLBACK,
+        working_directory="/tmp/repo-a",
+        resolution_method="test",
+    )
+    resolved = ResolvedSession(
+        session=AgentSession(
+            harness="codex",
+            session_id="ses-a",
+            working_directory="/tmp/repo-a",
+        ),
+        repository=repository,
+    )
+    scan = ScanResult(
+        period=_period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=[resolved],
+        sessions_by_repository={"repo-a": [resolved]},
+    )
+    settings = SimpleNamespace(
+        harnesses=SimpleNamespace(
+            opencode=SimpleNamespace(
+                cli=SimpleNamespace(
+                    executable="missing-opencode",
+                    model="",
+                    run_timeout_seconds=1.0,
+                )
+            )
+        )
+    )
+
+    class FailingOpenCodeRunner:
+        def run(self, *, transcript: str, prompt: str, title: str) -> str:
+            del transcript, prompt, title
+            raise OpenCodeRunError("missing-opencode: executable not found")
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli_actions,
+        "OpenCodeRunner",
+        lambda **kwargs: FailingOpenCodeRunner(),
+    )
+
+    with pytest.raises(
+        OutcomeSynthesisError,
+        match="missing-opencode: executable not found",
+    ):
+        cli_actions._synthesize(
+            ReportDraft(harness="codex", period=_period()),
+            scan,
+        )
 
 
 def test_generate_reviewed_passes_the_same_review_object_to_report_service(
