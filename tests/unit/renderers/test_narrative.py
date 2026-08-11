@@ -144,6 +144,41 @@ gpt-5 123 tokens
     assert "gpt-5 123 tokens" not in output
 
 
+def test_narrative_brief_rejects_setext_technical_sections_and_space_delimited_evidence() -> None:
+    report = narrative_report()
+    report.narrative_text = """Outcomes
+========
+
+- Shipped the reviewed change.
+- Commit deadbeef
+- Branch feature/internal-rollout
+
+Deployment Trace
+----------------
+
+Internal deployment evidence.
+
+In Progress
+-----------
+
+- Complete the next reviewed change.
+"""
+
+    output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.BRIEF)
+
+    assert "Shipped the reviewed change." in output
+    assert "Complete the next reviewed change." in output
+    assert "Commit deadbeef" not in output
+    assert "Branch feature/internal-rollout" not in output
+    assert "Deployment Trace" not in output
+    assert "Internal deployment evidence." not in output
+
+    full_output = render_narrative(report, timezone="Asia/Taipei", detail=DetailLevel.FULL)
+
+    assert "Deployment Trace" in full_output
+    assert "Commit deadbeef" in full_output
+
+
 def test_narrative_full_keeps_usage() -> None:
     report = narrative_report()
     report.usage_text = "gpt-5 123 tokens"

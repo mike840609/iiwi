@@ -20,7 +20,7 @@ _BRIEF_NARRATIVE_ALLOWED_HEADINGS = frozenset(
 _FILE_PATH_PATTERN = re.compile(r"\b[\w.-]+/[\w./-]+\.[A-Za-z0-9]{1,12}\b")
 _SESSION_LINE_PATTERN = re.compile(r"\bsession(?: id)?:\s*\S+", re.IGNORECASE)
 _EVIDENCE_LINE_PATTERN = re.compile(
-    r"\b(?:branch|commit|command|file|path|revision)\s*:", re.IGNORECASE
+    r"\b(?:branch|commit|command|file|path|revision)(?:\s*:|\s+)", re.IGNORECASE
 )
 _SESSION_ID_PATTERN = re.compile(r"\bses-[\w-]+\b", re.IGNORECASE)
 _COMMAND_LINE_PATTERN = re.compile(
@@ -28,6 +28,12 @@ _COMMAND_LINE_PATTERN = re.compile(
     r"make\b|npm\b|pnpm\b|pytest\b|python\b|sh\b|uv\b|yarn\b|zsh\b)",
     re.IGNORECASE,
 )
+
+
+def _is_setext_underline(value: str) -> bool:
+    """Return whether a stripped line is a Setext heading underline."""
+
+    return bool(re.fullmatch(r"(?:={3,}|-{3,})", value.strip()))
 
 
 class MarkdownRenderer:
@@ -143,24 +149,57 @@ def render_narrative(
 def _brief_narrative_body(value: str) -> str:
     """Keep only reader-facing sections without technical evidence details."""
 
+    lines = value.splitlines()
     kept: list[str] = []
-    has_headings = any(line.strip().startswith("#") for line in value.splitlines())
-    allowed_section = not has_headings
+    has_headings = False
     in_code_block = False
-    for line in value.splitlines():
+    for index, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith("```"):
             in_code_block = not in_code_block
             continue
         if in_code_block:
             continue
+        if stripped.startswith("#") or (
+            stripped
+            and index + 1 < len(lines)
+            and _is_setext_underline(lines[index + 1])
+        ):
+            has_headings = True
+            break
+
+    allowed_section = not has_headings
+    in_code_block = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            index += 1
+            continue
+        if in_code_block:
+            index += 1
+            continue
         if stripped.startswith("#"):
             heading = stripped.lstrip("#").strip().casefold()
             allowed_section = heading in _BRIEF_NARRATIVE_ALLOWED_HEADINGS
             if allowed_section:
                 kept.append(line)
+            index += 1
+            continue
+        if (
+            stripped
+            and index + 1 < len(lines)
+            and _is_setext_underline(lines[index + 1])
+        ):
+            allowed_section = stripped.casefold() in _BRIEF_NARRATIVE_ALLOWED_HEADINGS
+            if allowed_section:
+                kept.extend((line, lines[index + 1]))
+            index += 2
             continue
         if not allowed_section:
+            index += 1
             continue
         if (
             _FILE_PATH_PATTERN.search(line)
@@ -169,6 +208,8 @@ def _brief_narrative_body(value: str) -> str:
             or _EVIDENCE_LINE_PATTERN.search(line)
             or _COMMAND_LINE_PATTERN.search(line)
         ):
+            index += 1
             continue
         kept.append(line)
+        index += 1
     return "\n".join(kept).strip()
