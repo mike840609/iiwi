@@ -1104,6 +1104,8 @@ def render_settings(
     previous_section = ""
     for index, row in enumerate(rows):
         if row.section and row.section != previous_section:
+            if previous_section:
+                console.print()
             _print_viewport_line(console, f"  {row.section}", style="bright_black")
             previous_section = row.section
         focused = selected == index

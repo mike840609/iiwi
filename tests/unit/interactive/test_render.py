@@ -1110,11 +1110,13 @@ def test_settings_renders_section_headers() -> None:
     render_settings(console, rows=rows, selected=0, file_path="/tmp/config.env")
 
     text = stream.getvalue()
-    # Each section header appears once, before its first row.
+    # Each section header appears once, before its first row, with a blank
+    # line separating blocks.
     assert text.count("OpenCode") == 1
     assert text.count("General") == 1
     assert text.index("  OpenCode") < text.index("opencode.enabled")
     assert text.index("  General") < text.index("timezone")
+    assert "\n\n  General" in text
 
 
 def test_settings_renders_choice_rows_with_every_option() -> None:
