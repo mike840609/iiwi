@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 from hashlib import sha256
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -28,20 +28,16 @@ from iiwi.summarizers.outcome_prompt import build_outcome_prompt
 
 
 class _LinkSignal(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # Unknown fields are ignored, never read: only kinds this module recognizes
+    # can gate anything, so an invented kind simply never matches.
+    model_config = ConfigDict(extra="ignore")
 
-    kind: Literal[
-        "shared_work_id",
-        "branch_or_issue",
-        "direct_reference",
-        "similar_wording",
-        "timestamp_proximity",
-    ]
+    kind: str
     value: str
 
 
 class _ProposedOutcome(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     title: str
     status: OutcomeStatus
@@ -52,7 +48,7 @@ class _ProposedOutcome(BaseModel):
 
 
 class _SynthesisPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     outcomes: list[_ProposedOutcome]
 
@@ -139,6 +135,10 @@ class OutcomeSynthesisService:
         seen_proposals: set[tuple[object, ...]] = set()
         for proposal in payload.outcomes:
             selected = self._selected_evidence(proposal, sent_by_session)
+            if not selected:
+                # No known session survived: skip the proposal and leave its
+                # sessions available as ungrouped candidates.
+                continue
             used_session_ids.update(item.session_id for item in selected)
             signature = _proposal_signature(proposal, selected)
             if signature in seen_proposals:
@@ -179,7 +179,7 @@ class OutcomeSynthesisService:
 
     @staticmethod
     def _parse_payload(output: str) -> _SynthesisPayload:
-        raw = _strip_json_fence(output)
+        raw = _extract_json_object(output)
         if not raw:
             raise OutcomeSynthesisError("model did not return valid outcome JSON")
         try:
@@ -195,14 +195,12 @@ class OutcomeSynthesisService:
         proposal: _ProposedOutcome,
         evidence_by_session: dict[str, SessionEvidence],
     ) -> list[SessionEvidence]:
-        if not proposal.source_session_ids:
-            raise OutcomeSynthesisError("outcome must reference at least one source session")
         selected = []
         for session_id in proposal.source_session_ids:
+            # Unknown ids are dropped rather than fatal: the surviving sessions
+            # still bound every claim, so a narrower selection is only safer.
             evidence = evidence_by_session.get(session_id)
-            if evidence is None:
-                raise OutcomeSynthesisError(f"unknown session: {session_id}")
-            if evidence not in selected:
+            if evidence is not None and evidence not in selected:
                 selected.append(evidence)
         return selected
 
@@ -436,11 +434,18 @@ def _sessions_within_budget(
     return selected
 
 
-def _strip_json_fence(output: str) -> str:
-    value = output.strip()
-    if value.startswith("```json") and value.endswith("```"):
-        return value[len("```json") : -len("```")].strip()
-    return value
+def _extract_json_object(output: str) -> str:
+    """Return the first JSON object in the output, ignoring fences and prose."""
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(output):
+        if character != "{":
+            continue
+        try:
+            _, end = decoder.raw_decode(output, index)
+        except ValueError:
+            continue
+        return output[index:end]
+    return ""
 
 
 def _proposal_signature(
