@@ -460,7 +460,7 @@ def _compact_session(evidence: SessionEvidence, *, branch: str | None) -> _Compa
         title=_omit_if_blank(evidence.title),
         branch=_omit_if_blank(redact_text(branch) if branch else None),
         goal=_first_text(evidence.goals),
-        outcome=_first_text(evidence.outcomes),
+        outcome=_claimed_outcome_text(evidence.outcomes),
     )
 
 
@@ -481,6 +481,22 @@ def _first_text(items: list[EvidenceItem]) -> str | None:
         if text is not None:
             return text
     return None
+
+
+def _claimed_outcome_text(items: list[EvidenceItem]) -> str | None:
+    """The session's own claim about what it accomplished, when it made one.
+
+    Outcomes are appended in activity order, and the mechanical ones land first:
+    a passing verification command reads "Verification passed: pytest …" whatever
+    the work was. Sending that would give every session in a repository running
+    one test command an identical outcome — similar wording, to a model whose one
+    job is to group by wording — while the claim that distinguishes them, which
+    extraction appends later, never arrives at all. Goals stay first-wins: they
+    come from user messages in activity order, where first is genuinely first.
+    """
+
+    claims = [item for item in items if item.extraction_method == "assistant_claim"]
+    return _first_text(claims) or _first_text(items)
 
 
 def _sessions_within_budget(

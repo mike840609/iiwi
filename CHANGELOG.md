@@ -4,25 +4,21 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
-- Quick Review sends each session's goal and outcome whole. They were cut to
-  120 characters on the way to the model, which saved about 30% of the payload
-  by discarding most of nearly every goal — measured against a real store, the
-  median first goal runs 299 characters and 87% ran past the limit — and that
-  text is exactly what the model reads to decide whether two sessions are the
-  same work. Extraction already caps evidence text, so the second cut bought
-  nothing but lost signal. Sessions now cost about 580 bytes each instead of
-  400, so a given `report.quick_review_max_evidence_bytes` covers fewer of
-  them; the ones it does cover arrive intact. The default budget sits close to
-  what a local model of the default class can still answer, so covering more
-  sessions is not simply a matter of raising the number.
 - Quick Review works on a full week again. Synthesis sent every selected
   session's evidence in one `opencode run` and demanded strict JSON back, so a
   realistic selection — over a hundred sessions, more than a megabyte — came
   back as prose or as nothing, and the only way out was the session-based
-  fallback. Synthesis now sends the most recent sessions that fit
-  `report.quick_review_max_evidence_bytes` (default `40000`); the rest skip the
-  model and stay as ungrouped candidates, with a warning naming how many were
-  held back on screen and in the report.
+  fallback. The model now gets a compact index instead — session id,
+  repository, title, branch, the first goal and one outcome, each whole, since
+  that text is exactly what it reads to decide whether two sessions are the
+  same work. At about 580 bytes a session rather than several kilobytes, the
+  default `report.quick_review_max_evidence_bytes` of `40000` carries around 70
+  of the most recent sessions instead of seventeen; the rest skip the model and
+  stay as ungrouped candidates, with a warning naming how many were held back
+  on screen and in the report. Raising that budget is not simply a matter of a
+  larger number: measured over a real week, `40000` returns grouped outcomes,
+  `80000` comes back without valid JSON, and `120000` runs past the 600-second
+  timeout.
 - **The default Detail for interactive reports changes from Full to Brief.**
   `Generate report` now routes through Quick Review, Quick Review opens on the
   report type saved in `report.quick_review_report_type`, and that setting

@@ -4,9 +4,10 @@ _OUTCOME_PROMPT = """Synthesize evidence-backed work outcomes from the attached
 redacted session index. Return JSON only; do not wrap it in prose.
 
 The attachment is a compact index of sessions. Each entry carries at most
-session_id, repository_id, title, branch, goal, and outcome; goal and outcome
-are truncated, and empty fields are omitted. Group these sessions by the work
-they describe.
+session_id, repository_id, title, branch, goal, and outcome: goal is the
+session's first stated goal, outcome is one outcome recorded in it, and both
+arrive in full. Empty fields are omitted, so an entry may carry nothing beyond
+session_id and repository_id. Group these sessions by the work they describe.
 
 Aim for 3–5 ranked outcomes when the evidence supports that many. You may emit
 more candidates when they are independently meaningful. Each response must use

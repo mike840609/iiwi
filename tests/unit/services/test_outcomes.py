@@ -774,10 +774,27 @@ def detailed(
     file: str = "src/checkout/render.py",
     command: str = "npm run deploy-preview",
     failing_command: str = "cargo build --release",
-    claim: str = "Completed the checkout regression fix.",
+    verification_command: str | None = None,
+    claim: str | None = "Completed the checkout regression fix.",
 ) -> ResolvedSession:
-    """One session carrying every kind of evidence the extractor recognizes."""
+    """One session carrying every kind of evidence the extractor recognizes.
 
+    A passing `verification_command` becomes an outcome ahead of the claim, which
+    is how real sessions order them.
+    """
+
+    verification = (
+        [
+            activity(
+                f"{session_id}-verification",
+                ActivityType.COMMAND,
+                verification_command,
+                metadata={"exit_code": 0},
+            )
+        ]
+        if verification_command
+        else []
+    )
     return resolved(
         session_id,
         repository_id,
@@ -797,7 +814,12 @@ def detailed(
                 metadata={"exit_code": 1},
             ),
             activity(f"{session_id}-file", ActivityType.FILE_CHANGE, file),
-            activity(f"{session_id}-claim", ActivityType.ASSISTANT_MESSAGE, claim),
+            *verification,
+            *(
+                [activity(f"{session_id}-claim", ActivityType.ASSISTANT_MESSAGE, claim)]
+                if claim
+                else []
+            ),
         ],
     )
 
@@ -820,14 +842,110 @@ def test_the_model_receives_only_the_fields_grouping_needs() -> None:
 
 
 def test_commands_files_and_errors_never_reach_the_model() -> None:
+    """Including the passing verification command, which the outcome field carried."""
+
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
 
-    OutcomeSynthesisService(runner).synthesize(scan_with([detailed("ses-a")]))
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with(
+            [
+                detailed(
+                    "ses-a",
+                    verification_command="pytest -q tests/unit/checkout/test_render.py",
+                )
+            ]
+        )
+    )
 
     transcript = runner.calls[0]["transcript"]
     assert "npm run deploy-preview" not in transcript
     assert "cargo build --release" not in transcript
     assert "src/checkout/render.py" not in transcript
+    assert "tests/unit/checkout/test_render.py" not in transcript
+    assert sent_sessions(runner)[0]["outcome"] == "Completed the checkout regression fix."
+
+
+def test_the_session_claim_is_sent_rather_than_the_verification_that_precedes_it() -> None:
+    """Every session running one test command would otherwise send one outcome."""
+
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with(
+            [
+                resolved(
+                    "ses-a",
+                    activities=[
+                        activity("a-goal", ActivityType.USER_MESSAGE, "Fix the parser."),
+                        activity(
+                            "a-verify-1",
+                            ActivityType.COMMAND,
+                            "pytest -q tests/unit/parser",
+                            metadata={"exit_code": 0},
+                        ),
+                        activity(
+                            "a-verify-2",
+                            ActivityType.COMMAND,
+                            "ruff check .",
+                            metadata={"exit_code": 0},
+                        ),
+                        activity(
+                            "a-claim",
+                            ActivityType.ASSISTANT_MESSAGE,
+                            "Fixed the nested-quote parser bug.",
+                        ),
+                    ],
+                )
+            ]
+        )
+    )
+
+    assert sent_sessions(runner)[0]["outcome"] == "Fixed the nested-quote parser bug."
+
+
+def test_a_session_without_a_claim_still_sends_its_first_outcome() -> None:
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with([detailed("ses-a", verification_command="pytest -q", claim=None)])
+    )
+
+    assert sent_sessions(runner)[0]["outcome"] == "Verification passed: pytest -q"
+
+
+def test_the_goal_field_still_takes_the_first_goal() -> None:
+    """Goals come from user messages in order, so first is genuinely first."""
+
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with(
+            [
+                resolved(
+                    "ses-a",
+                    activities=[
+                        activity(
+                            "a-goal-1",
+                            ActivityType.USER_MESSAGE,
+                            "Investigate the checkout regression.",
+                        ),
+                        activity(
+                            "a-goal-2",
+                            ActivityType.USER_MESSAGE,
+                            "Also rename the pricing module.",
+                        ),
+                        activity(
+                            "a-claim",
+                            ActivityType.ASSISTANT_MESSAGE,
+                            "Completed the checkout regression fix.",
+                        ),
+                    ],
+                )
+            ]
+        )
+    )
+
+    assert sent_sessions(runner)[0]["goal"] == "Investigate the checkout regression."
 
 
 def test_branch_is_redacted_before_it_reaches_the_model() -> None:
