@@ -473,7 +473,6 @@ idle-interrupt handler must send the flow to MAIN, after which `b` is a
 no-op on MAIN and `q` exits. `run_interactive` returning at all is the core
 assertion — a Ctrl-C that exited the app would raise Typer.Abort and fail
 the test.
-```
 
 Add imports to `tests/unit/interactive/test_controller.py`:
 
