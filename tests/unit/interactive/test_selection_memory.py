@@ -154,7 +154,6 @@ class Recorder:
             edit_gap=lambda label, current: current,
             save_report_type=lambda report_type: None,
             doctor=lambda harness: ["ok"],
-            edit_settings=lambda: None,
             restore_selection=self.restore_selection,
             save_selection=self.save_selection,
             exclude_repository=self.exclude_repository,

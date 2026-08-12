@@ -141,7 +141,6 @@ def _actions() -> InteractiveActions:
         edit_gap=lambda label, current: current,
         save_report_type=lambda report_type: None,
         doctor=lambda harness: ["OK opencode version: 1.0", "OK git: git version 2.0"],
-        edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
         save_selection=lambda harness, period, include_subagents, selected: None,
         exclude_repository=lambda repository_id, display_name: "excluded",
@@ -163,18 +162,27 @@ def test_doctor_result_uses_a_persistent_result_screen() -> None:
     assert "OK git: git version 2.0" in text
 
 
-def test_settings_completion_returns_through_a_visible_result_screen() -> None:
+def test_settings_entry_opens_the_settings_editor() -> None:
     console, stream = _console()
 
     run_interactive(
         actions=_actions(),
-        input_source=ScriptedInput([char("4"), KeyPress(key=Key.ENTER), char("q")]),
+        input_source=ScriptedInput(
+            [
+                char("4"),
+                KeyPress(key=Key.ENTER),
+                char("q"),
+                char("q"),
+            ]
+        ),
         console=console,
     )
 
     text = stream.getvalue()
     assert "Settings" in text
-    assert "Settings editor finished." in text
+    assert "Settings file:" in text
+    assert "opencode.enabled" in text
+    assert "true / false" in text
 
 
 def test_print_report_path_opens_a_persistent_path_screen() -> None:
