@@ -48,12 +48,13 @@ class OutcomeReviewRow:
     outcome_id: str | None = None
 
 
-_MAIN_OPTIONS = ["Review Activity", "Generate Report", "Check Setup", "Settings"]
+_MAIN_OPTIONS = ["Review Activity", "Generate Report", "History", "Check Setup", "Settings"]
 # The main menu explains what each option does, the way mole's menu does: one
 # dim clause per row, aligned under the widest label.
 _MAIN_DESCRIPTIONS = {
     "Review Activity": "Explore sessions by repository",
     "Generate Report": "Configure and produce a report",
+    "History": "List past reports and their paths",
     "Check Setup": "Diagnose the harness setup",
     "Settings": "Edit saved settings",
 }
@@ -937,7 +938,7 @@ def render_main_menu(console: Console, *, selected: int) -> None:
     console.print()
     _print_hints(
         console,
-        ["↑↓ jk", "Enter Select", "1-4", "? Help", "q Quit"],
+        ["↑↓ jk", "Enter Select", "1-5", "? Help", "q Quit"],
     )
 
 

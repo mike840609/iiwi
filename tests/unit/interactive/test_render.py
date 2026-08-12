@@ -156,6 +156,28 @@ def test_main_menu_describes_each_option() -> None:
     assert settings.index("Edit saved settings") == column
 
 
+def test_main_menu_orders_history_before_the_non_functional_rows() -> None:
+    console, stream = _console()
+
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert "1-5" in text
+    assert text.index("History") < text.index("Check Setup")
+    assert text.index("Check Setup") < text.index("Settings")
+
+
+def test_main_menu_describes_history() -> None:
+    console, stream = _console()
+
+    render_main_menu(console, selected=0)
+
+    history = next(
+        line for line in stream.getvalue().splitlines() if "History" in line
+    )
+    assert "List past reports and their paths" in history
+
+
 def test_main_menu_drops_descriptions_on_a_narrow_terminal() -> None:
     console, stream = _console(width=30)
 
