@@ -100,7 +100,10 @@ _SETTINGS_HELP = {
     "harnesses.codex.enabled": "False forbids reading ~/.codex.",
     "harnesses.codex.home_directory": "Directory holding the Codex state database and sessions.",
     "report.timezone": "Calendar-week and timestamp timezone; Enter types any IANA zone.",
-    "report.output_directory": "Default Markdown output directory.",
+    "report.output_directory": (
+        "Default Markdown output directory; relative paths resolve against "
+        "where Iiwi runs."
+    ),
     "report.exclude_repositories": "Comma-separated repository ids left out of every scan.",
     "report.quick_review_report_type": "Default Quick Review audience.",
     "report.quick_review_max_evidence_bytes": (
