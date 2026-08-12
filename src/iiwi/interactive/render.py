@@ -1101,7 +1101,11 @@ def render_settings(
         )
     console.print()
     label_cells = max((cell_len(row.label) for row in rows), default=0)
+    previous_section = ""
     for index, row in enumerate(rows):
+        if row.section and row.section != previous_section:
+            _print_viewport_line(console, f"  {row.section}", style="bright_black")
+            previous_section = row.section
         focused = selected == index
         lead = Text(_CURSOR if focused else " ", style=_CURSOR_STYLE if focused else "")
         label = Text(f"{row.label:<{label_cells}}", style=_CURSOR_STYLE if focused else "")

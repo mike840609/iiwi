@@ -41,6 +41,18 @@ def _row(**overrides: object) -> SettingsRow:
     return SettingsRow(**fields)
 
 
+def test_sections_group_each_setting() -> None:
+    rows = {row.key: row for row in build_settings_rows()}
+    assert rows["harnesses.opencode.enabled"].section == "OpenCode"
+    assert rows["harnesses.opencode.cli.model"].section == "OpenCode"
+    assert rows["harnesses.claude_code.enabled"].section == "Claude Code"
+    assert rows["harnesses.claude_code.projects_directory"].section == "Claude Code"
+    assert rows["harnesses.codex.enabled"].section == "Codex"
+    assert rows["harnesses.codex.home_directory"].section == "Codex"
+    assert rows["report.timezone"].section == "General"
+    assert rows["report.quick_review_max_evidence_bytes"].section == "General"
+
+
 def test_choices_follow_each_setting_annotation() -> None:
     rows = {row.key: row for row in build_settings_rows()}
     assert rows["harnesses.opencode.enabled"].choices == ("true", "false")

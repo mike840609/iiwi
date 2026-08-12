@@ -28,6 +28,15 @@ _KEY_CHOICES = {
     "report.timezone": TIMEZONE_CHOICES,
 }
 
+# Display names for the editor's section headers, keyed by the dotted prefix
+# that starts every setting key in the section.
+_SECTION_LABELS = {
+    "harnesses.opencode.": "OpenCode",
+    "harnesses.claude_code.": "Claude Code",
+    "harnesses.codex.": "Codex",
+    "report.": "General",
+}
+
 
 @dataclass(frozen=True)
 class SettingsRow:
@@ -42,6 +51,7 @@ class SettingsRow:
     show_all: bool
     locked: bool
     variable: str
+    section: str = ""
 
     @property
     def editable(self) -> bool:
@@ -52,6 +62,14 @@ class SettingsRow:
 def _label(key: str) -> str:
     """The row label: the dotted key without the `harnesses.` prefix."""
     return key.removeprefix("harnesses.")
+
+
+def _section_for(key: str) -> str:
+    """The editor section the key belongs to, or "" for an unknown key."""
+    for prefix, label in _SECTION_LABELS.items():
+        if key.startswith(prefix):
+            return label
+    return ""
 
 
 def _choices_for(annotation: type, key: str) -> tuple[str, ...]:
@@ -88,6 +106,7 @@ def build_settings_rows() -> list[SettingsRow]:
                 show_all=_show_all(row.key, choices),
                 locked=row.source == "environment",
                 variable=setting.variable,
+                section=_section_for(row.key),
             )
         )
     return rows

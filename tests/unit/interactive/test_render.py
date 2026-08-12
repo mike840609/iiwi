@@ -1082,6 +1082,41 @@ def _settings_row(**overrides: object) -> SettingsRow:
     return SettingsRow(**fields)
 
 
+def test_settings_renders_section_headers() -> None:
+    console, stream = _console()
+    rows = [
+        _settings_row(section="OpenCode"),
+        _settings_row(
+            key="harnesses.opencode.cli.model",
+            label="opencode.cli.model",
+            value="",
+            default="",
+            choices=(),
+            show_all=False,
+            section="OpenCode",
+        ),
+        _settings_row(
+            key="report.timezone",
+            label="timezone",
+            value="UTC",
+            default="Asia/Taipei",
+            choices=TIMEZONE_CHOICES,
+            show_all=False,
+            locked=True,
+            section="General",
+        ),
+    ]
+
+    render_settings(console, rows=rows, selected=0, file_path="/tmp/config.env")
+
+    text = stream.getvalue()
+    # Each section header appears once, before its first row.
+    assert text.count("OpenCode") == 1
+    assert text.count("General") == 1
+    assert text.index("  OpenCode") < text.index("opencode.enabled")
+    assert text.index("  General") < text.index("timezone")
+
+
 def test_settings_renders_choice_rows_with_every_option() -> None:
     console, stream = _console()
     rows = [
