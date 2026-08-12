@@ -1277,14 +1277,15 @@ def test_the_anchor_is_the_richest_session_not_the_widest_one() -> None:
         _weighted("ses-feature", "The feature", files=3, goals=8),
     ]
 
-    # 50 evidence items versus 11, so a ref count would pick the sweep
-    assert _fallback_title(group).startswith("Rename sweep")
+    # files_changed carries no weight: 50 files score 0 against 8 goals
+    assert _fallback_title(group).startswith("The feature")
 
-    richer = [
-        _weighted("ses-sweep", "Rename sweep", files=4),
+    tied_on_goals = [
+        _weighted("ses-sweep", "Rename sweep", files=50, goals=8),
         _weighted("ses-feature", "The feature", files=3, goals=8),
     ]
-    assert _fallback_title(richer).startswith("The feature")
+    # Files still don't break the tie: list order decides, not file count
+    assert _fallback_title(tied_on_goals).startswith("Rename sweep")
 
 
 def test_ties_take_the_first_session_in_the_group() -> None:

@@ -15,7 +15,8 @@ full, including the ones that apply only to a specific harness.
 - Repository grouping uses the Git information available when the report is created.
 - Older OpenCode sessions may use a backup ID if their working folders have been deleted.
 - Sessions iiwi's own `opencode run` creates are excluded from every scan, so
-  generating a report never adds to the activity the next one reports on.
+  they are absent from outcomes, session lists, and counts — except the Usage
+  section, an external `opencode stats` aggregate the scan cannot filter.
 
 ## Usage statistics
 

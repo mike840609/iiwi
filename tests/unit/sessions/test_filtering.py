@@ -170,3 +170,18 @@ def test_absent_titles_are_not_iiwi_authored(title: str | None) -> None:
 
 def test_prefix_constant_matches_what_the_predicate_accepts() -> None:
     assert is_iiwi_authored(_titled(f"{IIWI_SESSION_TITLE_PREFIX}anything")) is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Iiwi outcome synthesis",
+        "Iiwi narrative summary",
+        "Iiwi - 2026-08-05 to 2026-08-12",
+    ],
+)
+def test_legacy_titles_on_other_harnesses_are_not_iiwi_authored(title: str) -> None:
+    # The legacy titles are strings only `opencode run` ever wrote; a Claude
+    # Code or Codex session that happens to share one is real, human work.
+    session = AgentSession(harness="claude-code", session_id="s1", title=title)
+    assert is_iiwi_authored(session) is False

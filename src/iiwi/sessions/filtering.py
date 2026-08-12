@@ -62,8 +62,10 @@ def is_iiwi_authored(session: AgentSession) -> bool:
     title = (session.title or "").strip()
     if not title:
         return False
-    return (
-        title.startswith(IIWI_SESSION_TITLE_PREFIX)
-        or title in _LEGACY_IIWI_TITLES
-        or _LEGACY_IIWI_NARRATIVE.match(title) is not None
+    if title.startswith(IIWI_SESSION_TITLE_PREFIX):
+        return True
+    # The legacy titles are strings only `opencode run` ever wrote, so a Claude
+    # Code or Codex session titled the same way is not iiwi's own.
+    return session.harness == "opencode" and (
+        title in _LEGACY_IIWI_TITLES or _LEGACY_IIWI_NARRATIVE.match(title) is not None
     )

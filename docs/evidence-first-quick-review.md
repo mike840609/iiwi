@@ -11,8 +11,9 @@ sessions that belong in the update, then press `g` to generate outcome candidate
 Iiwi synthesizes only that selection.
 
 Quick Review never sees the sessions iiwi's own `opencode run` leaves behind;
-they are dropped during the scan, so generating a report does not add to the
-activity the next report describes.
+they are dropped during the scan, so they are absent from outcomes, session
+lists, and counts — except the Usage section, an external `opencode stats`
+aggregate the scan cannot filter.
 
 Up to five outcomes are selected initially. All additional results remain under
 **More candidates**. Open that section, exclude a primary outcome with `Space`,

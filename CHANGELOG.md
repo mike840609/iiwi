@@ -8,18 +8,21 @@ All notable changes to this project are documented in this file.
   is not supported by the evidence, the fallback used to join every session
   title in the group with slashes, so a group of eleven rendered as eleven
   clauses. It now names the session with the most extracted evidence and counts
-  the rest: `The real work and 10 more sessions`.
+  the rest: `The real work and 10 more sessions`. A multi-repository group
+  still joins repository ids with ` / `, unchanged.
 - A proposed title survives when the evidence substantively supports it. The
   check required every word longer than two characters to appear in the
   evidence; across one real synthesis that refused five of ten proposals over
   words like `polish` and `housekeeping` while every substantive term matched.
-  Eighty percent of the words now suffice. Status and impact keep their
-  existing, stricter checks.
+  Eighty percent of the words now suffice, recovering four of the five — the
+  66.7% case is still refused. Status and impact keep their existing, stricter
+  checks.
 - Iiwi no longer reports on itself. Every `opencode run` iiwi invokes leaves a
   session in the OpenCode store, and the next scan was picking those up as
   work — fifteen of them in one real 30-day window. They are dropped during the
   scan now, so they are absent from Quick Review, Browse Activity, the
-  session-based report, and every session count.
+  session-based report, and every session count — except the Usage section,
+  an external `opencode stats` aggregate the scan cannot filter.
 - Quick Review works on a full week again. Synthesis sent every selected
   session's evidence in one `opencode run` and demanded strict JSON back, so a
   realistic selection — over a hundred sessions, more than a megabyte — came

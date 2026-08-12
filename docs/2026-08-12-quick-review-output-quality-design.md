@@ -150,7 +150,7 @@ multi-session, single-repository branch becomes:
 with the singular `and 1 more session` at N = 1.
 
 **Anchor.** The session with the most extracted evidence items, counting
-`goals + commands + files_changed + errors + outcomes`. Ties resolve to whichever
+`goals + commands + errors + outcomes`. Ties resolve to whichever
 comes first in the `selected` list `_fallback_title` was given, which preserves
 the caller's order and keeps the result deterministic.
 

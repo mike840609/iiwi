@@ -94,9 +94,10 @@ def _index_json(sessions: list[_CompactSession]) -> str:
 
 # Measured, not guessed: across one live synthesis the all-or-nothing gate
 # refused five of ten proposals at 84.6%, 66.7%, 85.7%, 90.9% and 90.0% word
-# support, and the words that missed were "improvements", "wave", "polish" and
-# "housekeeping" — summarizing vocabulary, not claims about the work. Status and
-# impact keep their own, stricter gates.
+# support, and the words that missed were "selection", "improvements",
+# "feature", "wave", "polish", "bars" and "housekeeping" — summarizing
+# vocabulary, not claims about the work. Status and impact keep their own,
+# stricter gates.
 _TITLE_SUPPORT_RATIO = 0.8
 
 _ALLOWED_LINKAGE_KINDS = frozenset({"branch_or_issue", "direct_reference"})
@@ -715,10 +716,13 @@ def _supported_title(
 
 
 def _evidence_weight(evidence: SessionEvidence) -> int:
-    """Count everything extraction found, as a proxy for how substantive a session is.
+    """Count what extraction learned about a session: goals, commands, errors,
+    and outcomes.
 
     Not the evidence-reference count: references are one per changed file, so a
     rename sweep across fifty files would outrank the feature work beside it.
+    `files_changed` is excluded for the same reason — how much a session touched
+    is not how substantive it was.
     """
 
     return sum(
@@ -726,7 +730,6 @@ def _evidence_weight(evidence: SessionEvidence) -> int:
         for collection in (
             evidence.goals,
             evidence.commands,
-            evidence.files_changed,
             evidence.errors,
             evidence.outcomes,
         )
