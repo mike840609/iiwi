@@ -52,6 +52,31 @@ def test_constructor_detail_remains_explicit_after_report_type_change() -> None:
     assert draft.detail_overridden is True
 
 
+def test_round_trip_keeps_default_detail_linked_to_report_type() -> None:
+    draft = OutcomeReviewDraft(
+        outcomes=[outcome("a", 0)], report_type=ReportType.MANAGER
+    )
+
+    restored = OutcomeReviewDraft.model_validate(draft.model_dump(mode="json"))
+
+    assert restored.detail_overridden is False
+    restored.set_report_type(ReportType.ENGINEERING)
+    assert restored.detail is DetailLevel.FULL
+
+
+def test_round_trip_preserves_explicit_detail_override() -> None:
+    draft = OutcomeReviewDraft(
+        outcomes=[outcome("a", 0)], report_type=ReportType.MANAGER
+    )
+    draft.set_detail(DetailLevel.FULL)
+
+    restored = OutcomeReviewDraft.model_validate(draft.model_dump(mode="json"))
+
+    assert restored.detail_overridden is True
+    restored.set_report_type(ReportType.MANAGER)
+    assert restored.detail is DetailLevel.FULL
+
+
 def test_reorder_normalizes_ranks_without_dropping_candidates() -> None:
     draft = OutcomeReviewDraft(outcomes=[outcome("a", 0), outcome("b", 1)])
     draft.move("b", -1)

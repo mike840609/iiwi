@@ -79,7 +79,10 @@ class OutcomeReviewDraft(BaseModel):
     def apply_type_default(self) -> OutcomeReviewDraft:
         if self.detail is None:
             self.detail = self.default_detail(self.report_type)
-        elif "detail" in self.model_fields_set:
+        elif (
+            "detail" in self.model_fields_set
+            and "detail_overridden" not in self.model_fields_set
+        ):
             self.detail_overridden = True
         self._normalize_ranks()
         return self
