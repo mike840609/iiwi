@@ -7,13 +7,16 @@
 The interactive mode writes every generated report to the append-only history
 log (`iiwi.history.append_history`) but has no way to read it back. Finding a
 past report's path forces the user to leave the TUI and run `iiwi history` on
-the CLI. This design adds a read-only history list to the Generate Report
-result screen, without touching the deliberately minimal four-option main menu.
+the CLI. This design adds a read-only history list to the main menu, named
+`History` to match the CLI command.
 
 ## Goals
 
 - View all past report entries (and their output paths) from inside the TUI.
-- Keep the main menu unchanged at four options.
+- Entry point lives on the main menu, always reachable — a user who has not
+  just generated a report must still be able to find past reports.
+- Name the menu item `History`, matching the CLI command `iiwi history`, so
+  knowledge transfers between the two surfaces.
 - Reuse existing history data (`read_history`) and existing screen mechanisms
   (RECOVERABLE_ERROR path display, viewport scrolling) rather than new
   infrastructure.
@@ -24,19 +27,24 @@ result screen, without touching the deliberately minimal four-option main menu.
 - No report preview from the history list. The list only reveals paths.
 - No path absolutization; recorded paths display as stored, matching the CLI.
 - No editing, deleting, or retrying past reports from the list.
+- No entry on the report result screen: one entry point keeps the navigation
+  graph small, and the main menu is reachable from the result screen anyway.
 
 ## Design
 
 ### 1. Menu entry
 
-`_RESULT_OPTIONS` (src/iiwi/interactive/render.py:83) gains a fourth option:
+`_MAIN_OPTIONS` (src/iiwi/interactive/render.py:51) gains a fifth option.
+Settings stays last, per the common convention that configuration screens
+close the menu:
 
 ```
-["Back to main menu", "Generate another report", "Print report path", "View past reports"]
+["Review Activity", "Generate Report", "Check Setup", "History", "Settings"]
 ```
 
-The result screen renders four options automatically through
-`report_result_options()`, so no render change is needed for the menu itself.
+The main menu renders options automatically through
+`main_menu_options()`, so no render change is needed for the menu itself.
+`_MAIN_DESCRIPTIONS` gains a `History` row explaining what the screen shows.
 
 ### 2. New screen
 
@@ -45,10 +53,9 @@ The result screen renders four options automatically through
 - `_State` gains `history_cursor: int = 0` (selected entry) and
   `history_offset: int = 0` (viewport scroll), both reset to 0 on entry.
 - `_dispatch` routes `Screen.HISTORY` to a new `_history_key` handler; the
-  Ctrl-C `_idle_interrupt` branch returns to `Screen.REPORT_RESULT` (the
-  screen history was launched from).
-- The result screen's Enter dispatch (`_result_key`) gains a branch: selecting
-  "View past reports" sets `state.screen = Screen.HISTORY` and
+  Ctrl-C `_idle_interrupt` branch returns to `Screen.MAIN`.
+- The main menu's Enter dispatch (`_main_key`) gains a branch: selecting
+  "History" sets `state.screen = Screen.HISTORY` and
   `state.history_offset = state.history_cursor = 0`.
 
 ### 3. Data
@@ -96,11 +103,11 @@ same one "Print report path" uses) with the entry's `output_path`, title
 
 ## Testing
 
-- Result screen shows four options; Enter on "View past reports" opens
-  `Screen.HISTORY` with cursor at 0.
+- Main menu shows five options; Enter on "History" opens `Screen.HISTORY`
+  with cursor at 0.
 - History rows render newest first; cursor moves and wraps across entries.
 - Enter on a row shows the entry's output path via RECOVERABLE_ERROR; Back
-  returns to HISTORY; `q`/Esc/b return to REPORT_RESULT.
+  returns to HISTORY; `q`/Esc/b return to MAIN.
 - Empty history renders the empty-state line and Enter does nothing.
 - Scroll bounds: offset clamps at both ends; `g`/`G` jump to top/bottom.
-- Ctrl-C on HISTORY returns to REPORT_RESULT.
+- Ctrl-C on HISTORY returns to MAIN.
