@@ -2,6 +2,44 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Quick Review works on a full week again. Synthesis sent every selected
+  session's evidence in one `opencode run` and demanded strict JSON back, so a
+  realistic selection — over a hundred sessions, more than a megabyte — came
+  back as prose or as nothing, and the only way out was the session-based
+  fallback. Synthesis now sends the most recent sessions that fit
+  `report.quick_review_max_evidence_bytes` (default `40000`); the rest skip the
+  model and stay as ungrouped candidates, with a warning naming how many were
+  held back on screen and in the report.
+- **The default Detail for interactive reports changes from Full to Brief.**
+  `Generate report` now routes through Quick Review, Quick Review opens on the
+  report type saved in `report.quick_review_report_type`, and that setting
+  defaults to `manager` — which defaults to Brief. Brief drops the files,
+  sessions and usage sections. To keep the old output, either press Enter on
+  the Quick Review `Report` row to switch to Engineering, set
+  `iiwi config set report.quick_review_report_type engineering`, or change
+  Detail under Advanced settings, which is remembered for the run.
+- Quick Review no longer overflows the terminal. With both disclosure sections
+  open on a short, narrow terminal the focused outcome's block was printed in
+  full regardless of the budget, so the frame ran one row past the last line
+  and the paint left a torn screen behind. The body is clamped where it is
+  printed: the scroll indicators go first, then the focused block's trailing
+  detail lines, and its summary row always stays visible.
+- `J`/`K` reorders within the outcome's own section. Quick Review lists
+  primary, more, and ungrouped outcomes separately, but reordering worked on
+  the global rank, so moving a primary outcome past a candidate hidden behind a
+  disclosure row changed nothing on screen. Reordering now swaps with the
+  adjacent outcome in the same section and stops at either end of it.
+- The help screen documents Quick Review. `Space`, `e`, `J`/`K`, `v`, `s`, `a`,
+  `p` and `g` are listed with what they do on that screen, and the four keys
+  that mean something else there — `a`, `e`, `p`, `g` — are marked in the
+  general list. The reference scrolls with `↑↓`/`jk` rather than running off a
+  short terminal.
+- The report result screen dropped its unreachable **Preview report** option.
+  Interactive generation always writes a file, so the dry-run variant of that
+  screen could no longer be reached.
+
 ## 0.9.1 - 2026-08-10
 
 Documentation only; no functional change. PyPI renders the description that

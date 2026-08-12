@@ -4,6 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from iiwi.interactive.models import ReportDraft
+from iiwi.models.report_options import ReportType
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -15,6 +16,30 @@ from iiwi.renderers.markdown import DetailLevel
 from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
+
+
+def test_report_type_applies_default_detail_until_detail_is_explicit() -> None:
+    draft = ReportDraft(harness="opencode", period=_period(20))
+    draft.set_report_type(ReportType.MANAGER)
+    assert draft.detail is DetailLevel.BRIEF
+
+    draft.set_detail(DetailLevel.FULL)
+    draft.set_report_type(ReportType.ENGINEERING)
+    draft.set_report_type(ReportType.MANAGER)
+    assert draft.detail is DetailLevel.FULL
+
+
+def test_constructor_detail_remains_explicit_after_report_type_change() -> None:
+    draft = ReportDraft(
+        harness="opencode",
+        period=_period(20),
+        detail=DetailLevel.BRIEF,
+    )
+
+    draft.set_report_type(ReportType.ENGINEERING)
+
+    assert draft.detail is DetailLevel.BRIEF
+    assert draft.detail_overridden is True
 
 
 def _period(day: int) -> DateRange:

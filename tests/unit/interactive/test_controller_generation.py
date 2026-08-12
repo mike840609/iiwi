@@ -16,6 +16,12 @@ from iiwi.interactive.controller import (
 )
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft
+from iiwi.models.outcome import (
+    EvidenceRef,
+    Outcome,
+    OutcomeReviewDraft,
+    OutcomeStatus,
+)
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -26,6 +32,20 @@ from iiwi.models.time_range import DateRange
 from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
+
+
+def _synthesized_outcomes() -> list[Outcome]:
+    """Quick Review declines to generate with nothing included, so stub one outcome."""
+    return [
+        Outcome(
+            id="outcome-1",
+            title="Outcome 1",
+            status=OutcomeStatus.IN_PROGRESS,
+            impact="Impact",
+            rank=0,
+            evidence_refs=[EvidenceRef(session_id="ses-0", repository_id="repo-a")],
+        )
+    ]
 
 
 def char(value: str) -> KeyPress:
@@ -139,6 +159,16 @@ def _actions(
         choose_period=lambda current: ("Last week", _period()),
         scan=do_scan,
         generate=generate,
+        synthesize=lambda draft, scan: OutcomeReviewDraft(
+            outcomes=_synthesized_outcomes(), report_type=draft.report_type
+        ),
+        generate_reviewed=lambda draft, scan, review, force: generate(
+            draft, scan, force
+        ),
+        edit_outcome=lambda outcome: outcome,
+        add_outcome=lambda: None,
+        edit_gap=lambda label, current: current,
+        save_report_type=lambda report_type: None,
         doctor=lambda harness: [],
         edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
@@ -160,6 +190,7 @@ def test_repository_and_individual_toggles_filter_generation_without_rescan() ->
             KeyPress(key=Key.ENTER),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.SPACE),
+            char("g"),
             char("g"),
             char("q"),
             char("q"),
@@ -198,6 +229,7 @@ def test_zero_selection_blocks_generate_until_sessions_are_selected() -> None:
             char("n"),
             char("g"),
             char("a"),
+            char("g"),
             char("g"),
             char("q"),
             char("q"),
@@ -239,6 +271,7 @@ def test_existing_output_requires_explicit_overwrite_once() -> None:
             char("2"),
             char("r"),
             char("g"),
+            char("g"),
             KeyPress(key=Key.ENTER),
             char("q"),
             char("q"),
@@ -269,6 +302,7 @@ def test_generate_another_preserves_options_but_clears_scan_and_selection() -> N
         [
             char("2"),
             char("r"),
+            char("g"),
             char("g"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
@@ -301,6 +335,7 @@ def test_result_print_path_action_keeps_result_screen_active() -> None:
         [
             char("2"),
             char("r"),
+            char("g"),
             char("g"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),

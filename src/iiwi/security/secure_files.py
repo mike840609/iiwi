@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from iiwi.errors import ReportOutputError
+from iiwi.errors import ReportAlreadyExistsError, ReportOutputError
 
 
 @contextmanager
@@ -30,7 +30,7 @@ def atomic_secure_write(path: Path, content: str, *, force: bool = False) -> Non
 
     destination = path.expanduser()
     if destination.exists() and not force:
-        raise ReportOutputError(f"report already exists: {destination}")
+        raise ReportAlreadyExistsError(f"report already exists: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     descriptor: int | None = None
@@ -50,7 +50,16 @@ def atomic_secure_write(path: Path, content: str, *, force: bool = False) -> Non
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_path, destination)
+        if force:
+            os.replace(temporary_path, destination)
+        else:
+            try:
+                os.link(temporary_path, destination)
+            except FileExistsError as exc:
+                raise ReportAlreadyExistsError(
+                    f"report already exists: {destination}"
+                ) from exc
+            temporary_path.unlink()
         temporary_path = None
         if os.name == "posix":
             destination.chmod(0o600)

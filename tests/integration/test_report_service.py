@@ -5,7 +5,15 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from iiwi.errors import HarnessSourceError, ReportOutputError
+from iiwi.errors import HarnessSourceError, ReportAlreadyExistsError, ReportOutputError
+from iiwi.models.outcome import (
+    EvidenceRef,
+    Outcome,
+    OutcomeOrigin,
+    OutcomeReviewDraft,
+    OutcomeStatus,
+)
+from iiwi.models.report_options import ReportType
 from iiwi.models.session import (
     ActivityType,
     AgentSession,
@@ -72,12 +80,52 @@ class FakeOpenCodeRunner:
         return self._narrative
 
 
+def reviewed_draft(*, detail: DetailLevel = DetailLevel.FULL) -> OutcomeReviewDraft:
+    return OutcomeReviewDraft(
+        report_type=ReportType.MANAGER,
+        detail=detail,
+        outcomes=[
+            Outcome(
+                id="reviewed",
+                title="Reviewed delivery",
+                status=OutcomeStatus.COMPLETED,
+                impact="Kept the update focused.",
+                rank=0,
+                evidence_refs=[
+                    EvidenceRef(
+                        session_id="ses-reviewed",
+                        repository_id="repo-reviewed",
+                        commit="abc123",
+                    )
+                ],
+            ),
+            Outcome(
+                id="user-added",
+                title="User-authored follow-up",
+                status=OutcomeStatus.IN_PROGRESS,
+                impact="Carries the review decision forward.",
+                rank=1,
+                origin=OutcomeOrigin.USER_ADDED,
+            ),
+        ],
+        blockers="Await stakeholder confirmation.",
+        next_week="Ship the reviewed output.",
+    )
+
+
+class ExplodingSummarizer:
+    def summarize(self, evidence):
+        del evidence
+        raise AssertionError("reviewed reports must not invoke the repository summarizer")
+
+
 def narrative_service(
     source: FakeSource,
     output: Path,
     *,
     runner: FakeOpenCodeRunner,
     usage_provider: Callable[[ScanResult], str] | None = None,
+    detail: DetailLevel = DetailLevel.FULL,
 ) -> ReportService:
     return ReportService(
         scan_service=ScanService(
@@ -92,6 +140,7 @@ def narrative_service(
         now_factory=lambda: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
         usage_provider=usage_provider,
         usage_days=10 if usage_provider is not None else None,
+        detail=detail,
         narrative=True,
         opencode_runner=runner,
         include_subagents=True,
@@ -451,6 +500,31 @@ def test_narrative_mode_render_usage_and_warnings(tmp_path: Path) -> None:
     assert "gpt-5-mini  1234 tokens" in content
 
 
+def test_narrative_brief_detail_changes_the_prompt_and_wrapper(tmp_path: Path) -> None:
+    runner = FakeOpenCodeRunner()
+    usage_calls: list[ScanResult] = []
+
+    def usage_provider(scan: ScanResult) -> str:
+        usage_calls.append(scan)
+        return "gpt-5-mini  1234 tokens"
+
+    result = narrative_service(
+        FakeSource(),
+        tmp_path / "report.md",
+        runner=runner,
+        usage_provider=usage_provider,
+        detail=DetailLevel.BRIEF,
+    ).generate()
+
+    assert (
+        "Do not include session IDs, file lists, command lists, or Usage."
+        in runner.calls[0]["prompt"]
+    )
+    assert "## Usage" not in result.content
+    assert result.report.usage_text is None
+    assert usage_calls == []
+
+
 def test_narrative_mode_is_off_by_default(tmp_path: Path) -> None:
     source = FakeSource()
     output = tmp_path / "report.md"
@@ -460,3 +534,136 @@ def test_narrative_mode_is_off_by_default(tmp_path: Path) -> None:
     assert result.report.narrative_text is None
     assert result.report.repositories
     assert "## Repositories" in output.read_text()
+
+
+def test_reviewed_report_uses_the_supplied_draft_and_returns_the_same_scan(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "reviewed.md"
+    report_service = service(FakeSource(), output)
+    report_service._summarizer = ExplodingSummarizer()
+    scan = ScanResult(
+        period=period(),
+        candidate_session_count=4,
+        loaded_session_count=3,
+        failed_session_count=1,
+    )
+
+    result = report_service.generate_reviewed(reviewed_draft(), scan=scan)
+
+    assert result.scan is scan
+    assert result.scan.loaded_session_count == 3
+    assert "Reviewed delivery" in result.content
+    assert "User-authored follow-up" in result.content
+    assert "(User added)" in result.content
+
+
+def test_reviewed_report_carries_the_draft_warnings(tmp_path: Path) -> None:
+    draft = reviewed_draft()
+    draft.warnings = ["4 older session(s) did not fit the Quick Review evidence budget"]
+    scan = ScanResult(
+        period=period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+    )
+
+    result = service(FakeSource(), tmp_path / "reviewed.md").generate_reviewed(
+        draft, scan=scan
+    )
+
+    assert result.warnings == [
+        "4 older session(s) did not fit the Quick Review evidence budget"
+    ]
+
+
+def test_reviewed_report_preserves_dry_run_and_output_conflict_behavior(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "reviewed.md"
+    output.write_text("existing", encoding="utf-8")
+    report_service = service(FakeSource(), output)
+    scan = ScanResult(
+        period=period(),
+        candidate_session_count=0,
+        loaded_session_count=0,
+        failed_session_count=0,
+    )
+
+    with pytest.raises(ReportAlreadyExistsError, match=f"report already exists: {output}"):
+        report_service.generate_reviewed(reviewed_draft(), scan=scan)
+
+    result = report_service.generate_reviewed(reviewed_draft(), scan=scan, dry_run=True)
+
+    assert "Reviewed delivery" in result.content
+    assert output.read_text(encoding="utf-8") == "existing"
+
+
+def test_reviewed_report_redacts_draft_text_and_evidence_before_rendering(
+    tmp_path: Path,
+) -> None:
+    draft = reviewed_draft()
+    draft.outcomes[0].title = "Delivered token=title-secret"
+    draft.outcomes[0].impact = "Impact token=impact-secret"
+    draft.outcomes[0].evidence_refs[0] = EvidenceRef(
+        session_id="token=session-secret",
+        repository_id="token=repository-secret",
+        commit="token=commit-secret",
+        file="token=file-secret",
+    )
+    draft.blockers = "Blocked by token=blockers-secret"
+    draft.next_week = "Next token=next-week-secret"
+
+    result = service(FakeSource(), tmp_path / "reviewed.md").generate_reviewed(
+        draft,
+        scan=ScanResult(
+            period=period(),
+            candidate_session_count=0,
+            loaded_session_count=0,
+            failed_session_count=0,
+        ),
+    )
+
+    for secret in (
+        "title-secret",
+        "impact-secret",
+        "session-secret",
+        "repository-secret",
+        "commit-secret",
+        "file-secret",
+        "blockers-secret",
+        "next-week-secret",
+    ):
+        assert secret not in result.content
+    assert "[REDACTED]" in result.content
+
+
+def test_reviewed_report_collects_usage_only_for_full_detail(tmp_path: Path) -> None:
+    usage_calls: list[ScanResult] = []
+
+    def usage_provider(scan: ScanResult) -> str:
+        usage_calls.append(scan)
+        return "gpt-5 123 tokens"
+
+    scan = ScanResult(
+        period=period(),
+        candidate_session_count=0,
+        loaded_session_count=0,
+        failed_session_count=0,
+    )
+    brief_result = service(
+        FakeSource(),
+        tmp_path / "brief.md",
+        usage_provider=usage_provider,
+    ).generate_reviewed(reviewed_draft(detail=DetailLevel.BRIEF), scan=scan)
+    full_result = service(
+        FakeSource(),
+        tmp_path / "full.md",
+        usage_provider=usage_provider,
+    ).generate_reviewed(reviewed_draft(detail=DetailLevel.FULL), scan=scan)
+
+    assert brief_result.report.usage_text is None
+    assert "## Usage" not in brief_result.content
+    assert full_result.report.usage_text == "gpt-5 123 tokens"
+    assert "## Usage" in full_result.content
+    assert usage_calls == [scan]

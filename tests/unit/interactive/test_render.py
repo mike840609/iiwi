@@ -18,6 +18,9 @@ from iiwi.interactive.render import (
     render_report_setup,
     render_session_browser,
     render_session_review,
+    report_generate_row,
+    report_result_options,
+    report_setup_rows,
 )
 from iiwi.interactive.selection import SelectionState
 from iiwi.models.repository import (
@@ -178,7 +181,7 @@ def test_report_setup_renders_settings_as_the_navigable_list() -> None:
     assert "Subagents" in text and "Included" in text
     assert "Narrative" in text and "Enabled" in text
     assert "Sanitize" in text and "Off" in text
-    assert "Preview report" in text
+    assert "Preview report" not in text
     assert "Dry run" not in text
     assert "▶ Generate report" in text
     assert "  Settings" in text
@@ -801,17 +804,25 @@ def test_report_setup_separates_the_generate_action_from_the_settings() -> None:
     render_report_setup(console, draft, selected=0)
     lines = stream.getvalue().splitlines()
     action = next(i for i, line in enumerate(lines) if "Generate report" in line)
-    preview = next(i for i, line in enumerate(lines) if "Preview report" in line)
     harness = next(i for i, line in enumerate(lines) if "Harness" in line)
-    assert action < preview < harness
-    assert lines[preview + 1].strip() == ""
+    assert action < harness
+    assert lines[action + 1].strip() == ""
     assert lines[action].startswith("▶")
+
+
+def test_setup_leaves_previewing_to_quick_review() -> None:
+    rows = report_setup_rows()
+    assert rows[0] == report_generate_row()
+    assert "Preview report" not in rows
+    # Quick Review owns previewing outright: the result screen has already
+    # written the file, so it never offers one.
+    assert "Preview report" not in report_result_options()
 
 
 def test_report_setup_describes_the_row_under_the_cursor() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
-    render_report_setup(console, draft, selected=5)
+    render_report_setup(console, draft, selected=4)
     detail_help = stream.getvalue()
     console, stream = _console()
     render_report_setup(console, draft, selected=0)
@@ -824,7 +835,7 @@ def test_report_setup_describes_the_row_under_the_cursor() -> None:
 def test_report_setup_explains_why_sanitize_is_unavailable() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="claude-code", period=_period())
-    render_report_setup(console, draft, selected=8)
+    render_report_setup(console, draft, selected=7)
     text = stream.getvalue()
     assert "Sanitize" in text and "N/A" in text
     assert "Only OpenCode can redact on export" in text

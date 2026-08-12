@@ -16,6 +16,12 @@ from iiwi.interactive.controller import (
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.render import render_report_setup, report_setup_rows
+from iiwi.models.outcome import (
+    EvidenceRef,
+    Outcome,
+    OutcomeReviewDraft,
+    OutcomeStatus,
+)
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -26,6 +32,20 @@ from iiwi.models.time_range import DateRange
 from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
+
+
+def _synthesized_outcomes() -> list[Outcome]:
+    """Quick Review declines to generate with nothing included, so stub one outcome."""
+    return [
+        Outcome(
+            id="outcome-1",
+            title="Outcome 1",
+            status=OutcomeStatus.IN_PROGRESS,
+            impact="Impact",
+            rank=0,
+            evidence_refs=[EvidenceRef(session_id="ses-0", repository_id="repo-a")],
+        )
+    ]
 
 
 class ScriptedInput:
@@ -127,6 +147,16 @@ def _actions(
         choose_period=lambda current: ("Last 7 days", _period()),
         scan=lambda draft_value: scan,
         generate=generate,
+        synthesize=lambda draft, scan: OutcomeReviewDraft(
+            outcomes=_synthesized_outcomes(), report_type=draft.report_type
+        ),
+        generate_reviewed=lambda draft, scan, review, force: generate(
+            draft, scan, force
+        ),
+        edit_outcome=lambda outcome: outcome,
+        add_outcome=lambda: None,
+        edit_gap=lambda label, current: current,
+        save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
         edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: {"ses-1"},
@@ -138,7 +168,6 @@ def _actions(
 def test_setup_rows_hide_advanced_fields_by_default() -> None:
     assert report_setup_rows(advanced=False) == [
         "Generate report",
-        "Preview report",
         "Harness",
         "Period",
         "Advanced settings",
@@ -148,14 +177,13 @@ def test_setup_rows_hide_advanced_fields_by_default() -> None:
 def test_setup_rows_show_advanced_fields_when_expanded() -> None:
     rows = report_setup_rows(advanced=True)
 
-    assert rows[:5] == [
+    assert rows[:4] == [
         "Generate report",
-        "Preview report",
         "Harness",
         "Period",
         "Advanced settings",
     ]
-    assert rows[5:] == ["Detail", "Subagents", "Narrative", "Sanitize"]
+    assert rows[4:] == ["Detail", "Subagents", "Narrative", "Sanitize"]
 
 
 def test_collapsed_setup_renders_actions_and_primary_controls() -> None:
@@ -166,7 +194,7 @@ def test_collapsed_setup_renders_actions_and_primary_controls() -> None:
 
     text = stream.getvalue()
     assert "Generate report" in text
-    assert "Preview report" in text
+    assert "Preview report" not in text
     assert "Harness" in text
     assert "Period" in text
     assert "Advanced settings" in text
@@ -181,7 +209,7 @@ def test_advanced_children_are_indented_when_expanded() -> None:
     console, stream = _console()
     draft = ReportDraft(harness="opencode", period=_period())
 
-    render_report_setup(console, draft, selected=5, advanced=True)
+    render_report_setup(console, draft, selected=4, advanced=True)
 
     text = stream.getvalue()
     assert "▶   Detail" in text
@@ -214,15 +242,17 @@ def test_enter_on_advanced_settings_expands_instead_of_editing_detail() -> None:
     assert draft.detail.value == "full"
 
 
-def test_preview_report_runs_as_dry_run_and_returns_to_setup() -> None:
+def test_preview_report_runs_as_dry_run_from_quick_review() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     generation_modes: list[bool] = []
     console, stream = _console()
     input_source = ScriptedInput(
         [
             char("2"),
-            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
+            char("p"),
+            char("b"),
+            char("b"),
             char("b"),
             char("q"),
             char("q"),
@@ -248,6 +278,7 @@ def test_generate_report_forces_real_output_mode() -> None:
         [
             char("2"),
             KeyPress(key=Key.ENTER),
+            char("g"),
             char("q"),
             char("q"),
         ]
