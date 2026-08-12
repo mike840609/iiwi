@@ -18,6 +18,7 @@ from iiwi.errors import (
     ReportAlreadyExistsError,
     ReportOutputError,
 )
+from iiwi.history import HistoryEntry, read_history
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.interactive.render import (
@@ -29,9 +30,11 @@ from iiwi.interactive.render import (
     build_visible_rows,
     help_capacity,
     help_lines,
+    history_capacity,
     main_menu_options,
     recoverable_error_detail_capacity,
     render_help,
+    render_history,
     render_main_menu,
     render_outcome_review,
     render_recoverable_error,
@@ -121,6 +124,8 @@ class _State:
     browser_cursor: int = 0
     review_cursor: int = 0
     result_cursor: int = 0
+    history_cursor: int = 0
+    history_offset: int = 0
     preview_offset: int = 0
     draft: ReportDraft | None = None
     browser_scan: ScanResult | None = None
@@ -381,7 +386,7 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
     if key.key is Key.ESCAPE or _char(key, "q"):
         state.screen = Screen.EXIT
         return
-    if key.char in {"1", "2", "3", "4"}:
+    if key.char in {"1", "2", "3", "4", "5"}:
         state.main_cursor = int(key.char) - 1
         activate = True
     else:
@@ -394,6 +399,10 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
     elif state.main_cursor == 1:
         _new_report(state, actions)
     elif state.main_cursor == 2:
+        state.history_cursor = 0
+        state.history_offset = 0
+        state.screen = Screen.HISTORY
+    elif state.main_cursor == 3:
         draft = actions.new_draft()
         try:
             lines = actions.doctor(draft.harness)
@@ -1093,6 +1102,8 @@ def _error_options(error: _ErrorState) -> list[str]:
         return ["Main menu"]
     if error.kind == "report-path":
         return ["Back"]
+    if error.kind == "history-path":
+        return ["Back"]
     if error.kind in {"report-empty", "browse-empty"}:
         return ["Change period", "Change harness", "Back", "Main menu"]
     if error.kind == "outcome-synthesis":
@@ -1113,6 +1124,8 @@ def _error_options(error: _ErrorState) -> list[str]:
 def _error_back_screen(error: _ErrorState) -> Screen:
     if error.kind == "report-path":
         return Screen.REPORT_RESULT
+    if error.kind == "history-path":
+        return Screen.HISTORY
     if error.kind in {"doctor-result", "settings-result"}:
         return Screen.MAIN
     if error.kind == "outcome-synthesis":
@@ -1221,6 +1234,48 @@ def _error_key(
         state.error = None
         state.expanded_repositories = set()
         state.screen = Screen.REPORT_SETUP
+
+
+def _history_entries() -> list[HistoryEntry]:
+    """The generated-report log, newest first, as the history screen shows it."""
+
+    return list(reversed(read_history()))
+
+
+def _history_key(state: _State, key: KeyPress, console: Console) -> None:
+    if key.key is Key.ESCAPE or _char(key, "q") or _char(key, "b"):
+        state.screen = Screen.MAIN
+        return
+    entries = _history_entries()
+    count = len(entries)
+    if not count:
+        return
+    capacity = history_capacity(console.size.height)
+    page = max(1, capacity)
+    state.history_cursor = _move(state.history_cursor, key, count)
+    if key.key is Key.PAGE_UP:
+        state.history_cursor = max(0, state.history_cursor - page)
+    elif key.key is Key.PAGE_DOWN:
+        state.history_cursor = min(count - 1, state.history_cursor + page)
+    elif key.key is Key.HOME or _exact_char(key, "g"):
+        state.history_cursor = 0
+    elif key.key is Key.END or _exact_char(key, "G"):
+        state.history_cursor = count - 1
+    state.history_offset = min(state.history_offset, max(0, count - capacity))
+    if state.history_cursor < state.history_offset:
+        state.history_offset = state.history_cursor
+    if state.history_cursor >= state.history_offset + capacity:
+        state.history_offset = max(0, state.history_cursor - capacity + 1)
+    if key.key is not Key.ENTER:
+        return
+
+    entry = entries[state.history_cursor]
+    state.error = _ErrorState(
+        kind="history-path",
+        title="Report path",
+        detail=str(entry.output_path),
+    )
+    state.screen = Screen.RECOVERABLE_ERROR
 
 
 def _result_key(state: _State, key: KeyPress) -> None:
@@ -1401,6 +1456,13 @@ def _render_screen(state: _State, console: Console) -> None:
             selected=state.result_cursor,
             dry_run=state.draft.dry_run,
         )
+    elif state.screen is Screen.HISTORY:
+        render_history(
+            console,
+            entries=_history_entries(),
+            selected=state.history_cursor,
+            offset=state.history_offset,
+        )
     elif state.screen is Screen.REPORT_PREVIEW:
         assert state.result is not None
         render_report_preview(
@@ -1435,7 +1497,7 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
         state.screen = Screen.MAIN if state.review_from_main else Screen.REPORT_SETUP
     elif state.screen is Screen.OUTCOME_REVIEW:
         state.screen = Screen.SESSION_REVIEW
-    elif state.screen is Screen.REPORT_RESULT:
+    elif state.screen in {Screen.REPORT_RESULT, Screen.HISTORY}:
         state.screen = Screen.MAIN
     elif state.screen is Screen.REPORT_PREVIEW:
         state.screen = state.preview_return_screen or Screen.REPORT_RESULT
@@ -1470,6 +1532,8 @@ def _dispatch(
         _outcome_review_key(state, key, actions)
     elif state.screen is Screen.REPORT_RESULT:
         _result_key(state, key)
+    elif state.screen is Screen.HISTORY:
+        _history_key(state, key, console)
     elif state.screen is Screen.REPORT_PREVIEW:
         _preview_key(state, key, console)
     elif state.screen is Screen.SESSION_PREVIEW:
