@@ -5,10 +5,10 @@ def test_readmes_show_key_driven_bare_command_menu() -> None:
     for path in (Path("README.md"), Path("README.zh-TW.md")):
         text = path.read_text(encoding="utf-8")
         assert "↑↓ jk │ Enter Select" in text
-        assert "▶ Generate Report" in text
+        assert "▶ Review Activity" in text
         assert "═" in text
         assert "████" in text
-        assert "Browse Sessions" in text
+        assert "History" in text
         assert "Review sessions" in text
 
 
