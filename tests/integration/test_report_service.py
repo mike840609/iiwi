@@ -25,6 +25,7 @@ from iiwi.progress import ProgressReporter, ProgressStage
 from iiwi.renderers.markdown import DetailLevel, MarkdownRenderer
 from iiwi.services.report import ReportService
 from iiwi.services.scan import ScanResult, ScanService
+from iiwi.sessions.filtering import is_iiwi_authored
 from iiwi.summarizers.opencode_run import OpenCodeRunError
 from iiwi.summarizers.rule_based import RuleBasedSummarizer
 from tests.integration.test_scan_service import FakeSource, StaticResolver
@@ -667,3 +668,15 @@ def test_reviewed_report_collects_usage_only_for_full_detail(tmp_path: Path) -> 
     assert full_result.report.usage_text == "gpt-5 123 tokens"
     assert "## Usage" in full_result.content
     assert usage_calls == [scan]
+
+
+def test_the_narrative_session_title_is_filtered_back_out(tmp_path: Path) -> None:
+    runner = FakeOpenCodeRunner()
+    service = narrative_service(FakeSource(), tmp_path / "report.md", runner=runner)
+
+    service.generate()
+
+    title = runner.calls[0]["title"]
+    assert is_iiwi_authored(
+        AgentSession(harness="opencode", session_id="x", title=title)
+    ), title

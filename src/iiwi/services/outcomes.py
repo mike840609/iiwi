@@ -28,6 +28,7 @@ from iiwi.models.evidence import (
 )
 from iiwi.security.redactor import redact_text, redact_value
 from iiwi.services.scan import ScanResult
+from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.summarizers.opencode_run import OpenCodeRunner
 from iiwi.summarizers.outcome_prompt import build_outcome_prompt
 
@@ -90,6 +91,14 @@ def _index_json(sessions: list[_CompactSession]) -> str:
 
     return _CompactIndex(sessions=sessions).model_dump_json(indent=2, exclude_none=True)
 
+
+# Measured, not guessed: across one live synthesis the all-or-nothing gate
+# refused five of ten proposals at 84.6%, 66.7%, 85.7%, 90.9% and 90.0% word
+# support, and the words that missed were "selection", "improvements",
+# "feature", "wave", "polish", "bars" and "housekeeping" — summarizing
+# vocabulary, not claims about the work. Status and impact keep their own,
+# stricter gates.
+_TITLE_SUPPORT_RATIO = 0.8
 
 _ALLOWED_LINKAGE_KINDS = frozenset({"branch_or_issue", "direct_reference"})
 _COMMIT_PATTERN = re.compile(
@@ -180,7 +189,7 @@ class OutcomeSynthesisService:
             output = self._runner.run(
                 transcript=_index_json(sent),
                 prompt=build_outcome_prompt(),
-                title="Iiwi outcome synthesis",
+                title=f"{IIWI_SESSION_TITLE_PREFIX}outcome synthesis",
             )
         except OSError as exc:
             raise OutcomeSynthesisError(str(exc)) from exc
@@ -697,10 +706,34 @@ def _supported_title(
         for word in re.findall(r"[a-z0-9]+", proposed.casefold())
         if len(word) > 2
     ]
+    if not words:
+        return _fallback_title(selected)
     corpus = _corpus(selected, local_texts_by_session)
-    if words and all(word in corpus for word in words):
+    supported = sum(1 for word in words if word in corpus)
+    if supported / len(words) >= _TITLE_SUPPORT_RATIO:
         return proposed
     return _fallback_title(selected)
+
+
+def _evidence_weight(evidence: SessionEvidence) -> int:
+    """Count what extraction learned about a session: goals, commands, errors,
+    and outcomes.
+
+    Not the evidence-reference count: references are one per changed file, so a
+    rename sweep across fifty files would outrank the feature work beside it.
+    `files_changed` is excluded for the same reason — how much a session touched
+    is not how substantive it was.
+    """
+
+    return sum(
+        len(collection)
+        for collection in (
+            evidence.goals,
+            evidence.commands,
+            evidence.errors,
+            evidence.outcomes,
+        )
+    )
 
 
 def _fallback_title(selected: list[SessionEvidence]) -> str:
@@ -709,7 +742,10 @@ def _fallback_title(selected: list[SessionEvidence]) -> str:
     repositories = sorted({item.repository_id for item in selected})
     if len(repositories) > 1:
         return " / ".join(repositories)
-    return " / ".join(item.title or item.session_id for item in selected)
+    anchor = max(selected, key=_evidence_weight)
+    others = len(selected) - 1
+    plural = "session" if others == 1 else "sessions"
+    return f"{anchor.title or anchor.session_id} and {others} more {plural}"
 
 
 def _supported_status(

@@ -124,7 +124,7 @@ class StaticSynthesisRunner:
     def run(self, *, transcript: str, prompt: str, title: str) -> str:
         assert transcript
         assert prompt
-        assert title == "Iiwi outcome synthesis"
+        assert title == "iiwi-internal: outcome synthesis"
         return self.output
 
 
