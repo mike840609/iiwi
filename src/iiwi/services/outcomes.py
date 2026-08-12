@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from hashlib import sha256
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from iiwi.config import DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES
 from iiwi.errors import OutcomeSynthesisError
 from iiwi.extraction.pipeline import extract_evidence
 from iiwi.models import (
@@ -69,12 +71,19 @@ _COMMIT_PATTERN = re.compile(
 class OutcomeSynthesisService:
     """Turn model-selected session ids into traceable, deterministic outcomes."""
 
-    def __init__(self, runner: OpenCodeRunner) -> None:
+    def __init__(
+        self,
+        runner: OpenCodeRunner,
+        *,
+        max_evidence_bytes: int = DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES,
+    ) -> None:
         self._runner = runner
+        self._max_evidence_bytes = max_evidence_bytes
 
     def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
         evidence_by_session: dict[str, SessionEvidence] = {}
         local_texts_by_session: dict[str, list[str]] = {}
+        started_at: dict[str, datetime] = {}
         failed_sessions = []
         for resolved in scan.resolved_sessions:
             try:
@@ -82,6 +91,8 @@ class OutcomeSynthesisService:
                 redacted = redact_value(extracted.model_dump(mode="json"))
                 evidence = SessionEvidence.model_validate(redacted)
                 evidence_by_session[extracted.session_id] = evidence
+                if resolved.session.created_at is not None:
+                    started_at[extracted.session_id] = resolved.session.created_at
                 local_texts_by_session[evidence.session_id] = _local_texts(
                     evidence,
                     extra_values=[
@@ -99,11 +110,24 @@ class OutcomeSynthesisService:
                 "could not extract evidence from any selected session"
             )
 
+        sent = _sessions_within_budget(
+            _most_recent_first(evidence_by_session, started_at),
+            max_bytes=self._max_evidence_bytes,
+        )
+        sent_by_session = {evidence.session_id: evidence for evidence in sent}
+        held_back = len(evidence_by_session) - len(sent_by_session)
+        warnings = (
+            [
+                f"{held_back} older session(s) did not fit the Quick Review "
+                "evidence budget and were left as ungrouped candidates"
+            ]
+            if held_back
+            else []
+        )
+
         try:
             output = self._runner.run(
-                transcript=_EvidencePayload(
-                    sessions=list(evidence_by_session.values())
-                ).model_dump_json(indent=2),
+                transcript=_EvidencePayload(sessions=sent).model_dump_json(indent=2),
                 prompt=build_outcome_prompt(),
                 title="Iiwi outcome synthesis",
             )
@@ -114,7 +138,7 @@ class OutcomeSynthesisService:
         used_session_ids: set[str] = set()
         seen_proposals: set[tuple[object, ...]] = set()
         for proposal in payload.outcomes:
-            selected = self._selected_evidence(proposal, evidence_by_session)
+            selected = self._selected_evidence(proposal, sent_by_session)
             used_session_ids.update(item.session_id for item in selected)
             signature = _proposal_signature(proposal, selected)
             if signature in seen_proposals:
@@ -150,6 +174,7 @@ class OutcomeSynthesisService:
         return OutcomeSynthesisResult(
             outcomes=[*outcomes, *ungrouped],
             failed_session_ids=[item.session.session_id for item in failed_sessions],
+            warnings=warnings,
         )
 
     @staticmethod
@@ -373,6 +398,42 @@ class OutcomeSynthesisService:
             )
             for index, evidence in enumerate(omitted)
         ]
+
+
+def _most_recent_first(
+    evidence_by_session: dict[str, SessionEvidence],
+    started_at: dict[str, datetime],
+) -> list[SessionEvidence]:
+    """Order evidence newest first, leaving undated sessions in scan order."""
+
+    scanned = list(evidence_by_session.values())
+    dated = [item for item in scanned if item.session_id in started_at]
+    # Python's sort keeps equal timestamps in scan order, both ways round.
+    dated.sort(key=lambda item: started_at[item.session_id], reverse=True)
+    return [*dated, *(item for item in scanned if item.session_id not in started_at)]
+
+
+def _sessions_within_budget(
+    ordered: list[SessionEvidence],
+    *,
+    max_bytes: int,
+) -> list[SessionEvidence]:
+    """Take sessions in order while the serialized payload stays in budget.
+
+    The first session is always taken: a payload the model can refuse is still
+    worth more than an empty one, and the sessions left behind stay visible as
+    ungrouped candidates either way.
+    """
+
+    selected: list[SessionEvidence] = []
+    total = 0
+    for evidence in ordered:
+        size = len(evidence.model_dump_json(indent=2).encode())
+        if selected and total + size > max_bytes:
+            break
+        selected.append(evidence)
+        total += size
+    return selected
 
 
 def _strip_json_fence(output: str) -> str:

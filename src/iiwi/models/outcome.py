@@ -73,6 +73,7 @@ class OutcomeReviewDraft(BaseModel):
     detail_overridden: bool = False
     blockers: str | None = None
     next_week: str | None = None
+    warnings: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def apply_type_default(self) -> OutcomeReviewDraft:

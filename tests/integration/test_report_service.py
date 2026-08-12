@@ -558,6 +558,25 @@ def test_reviewed_report_uses_the_supplied_draft_and_returns_the_same_scan(
     assert "(User added)" in result.content
 
 
+def test_reviewed_report_carries_the_draft_warnings(tmp_path: Path) -> None:
+    draft = reviewed_draft()
+    draft.warnings = ["4 older session(s) did not fit the Quick Review evidence budget"]
+    scan = ScanResult(
+        period=period(),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+    )
+
+    result = service(FakeSource(), tmp_path / "reviewed.md").generate_reviewed(
+        draft, scan=scan
+    )
+
+    assert result.warnings == [
+        "4 older session(s) did not fit the Quick Review evidence budget"
+    ]
+
+
 def test_reviewed_report_preserves_dry_run_and_output_conflict_behavior(
     tmp_path: Path,
 ) -> None:

@@ -185,12 +185,16 @@ def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
         model=cli_settings.model,
     )
     try:
-        result = OutcomeSynthesisService(runner).synthesize(scan)
+        result = OutcomeSynthesisService(
+            runner,
+            max_evidence_bytes=settings.report.quick_review_max_evidence_bytes,
+        ).synthesize(scan)
     except (OpenCodeRunError, OSError) as exc:
         raise OutcomeSynthesisError(str(exc)) from exc
     arguments: dict[str, object] = {
         "outcomes": result.outcomes,
         "report_type": draft.report_type,
+        "warnings": result.warnings,
     }
     if draft.detail_overridden:
         arguments["detail"] = draft.detail

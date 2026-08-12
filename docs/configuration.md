@@ -152,6 +152,7 @@ iiwi doctor --harness codex
 | `IIWI_REPORT__OUTPUT_DIRECTORY` | `reports` | Default Markdown output directory. |
 | `IIWI_REPORT__EXCLUDE_REPOSITORIES` | `""` | Comma-separated repository ids to permanently leave out of every scan and report. |
 | `IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE` | `manager` | Default Quick Review audience: `manager` or `engineering`. Manager defaults to Brief; Engineering defaults to Full unless Detail was explicitly changed. |
+| `IIWI_REPORT__QUICK_REVIEW_MAX_EVIDENCE_BYTES` | `40000` | Largest evidence payload one Quick Review synthesis run may send to `opencode run`. |
 
 The `--output` CLI option overrides the configured output directory for one invocation.
 
@@ -174,6 +175,13 @@ iiwi config set report.quick_review_report_type manager
 
 Changing the Report row during Quick Review also saves this default for the next
 interactive report.
+
+`report.quick_review_max_evidence_bytes` bounds the evidence Quick Review sends to
+one `opencode run`. Past roughly this size the model stops returning the strict
+JSON synthesis needs — a full week of sessions used to return nothing at all, and
+Quick Review always fell back to the session-based report. Synthesis sends the
+most recent sessions that fit; the sessions beyond the budget become ungrouped
+candidates in the review, and a warning names how many were held back.
 
 ## OpenCode run settings
 

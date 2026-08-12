@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Quick Review works on a full week again. Synthesis sent every selected
+  session's evidence in one `opencode run` and demanded strict JSON back, so a
+  realistic selection — over a hundred sessions, more than a megabyte — came
+  back as prose or as nothing, and the only way out was the session-based
+  fallback. Synthesis now sends the most recent sessions that fit
+  `report.quick_review_max_evidence_bytes` (default `40000`); the rest skip the
+  model and stay as ungrouped candidates, with a warning naming how many were
+  held back on screen and in the report.
 - **The default Detail for interactive reports changes from Full to Brief.**
   `Generate report` now routes through Quick Review, Quick Review opens on the
   report type saved in `report.quick_review_report_type`, and that setting

@@ -97,11 +97,13 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
                     run_timeout_seconds=321.0,
                 )
             )
-        )
+        ),
+        report=SimpleNamespace(quick_review_max_evidence_bytes=4321),
     )
     runner_timeouts: list[float] = []
     opencode_arguments: list[dict[str, object]] = []
     synthesized_scans: list[ScanResult] = []
+    evidence_budgets: list[int] = []
 
     class FakeCommandRunner:
         def __init__(self, *, timeout_seconds: float) -> None:
@@ -112,12 +114,16 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
             opencode_arguments.append(kwargs)
 
     class FakeSynthesisService:
-        def __init__(self, runner: object) -> None:
+        def __init__(self, runner: object, *, max_evidence_bytes: int) -> None:
             assert isinstance(runner, FakeOpenCodeRunner)
+            evidence_budgets.append(max_evidence_bytes)
 
         def synthesize(self, received: ScanResult) -> SimpleNamespace:
             synthesized_scans.append(received)
-            return SimpleNamespace(outcomes=_review().outcomes)
+            return SimpleNamespace(
+                outcomes=_review().outcomes,
+                warnings=["3 older session(s) did not fit"],
+            )
 
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
     monkeypatch.setattr(cli_actions, "CommandRunner", FakeCommandRunner)
@@ -142,6 +148,8 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
     assert opencode_arguments[0]["model"] == "review-model"
     assert synthesized_scans == [scan]
     assert synthesized_scans[0] is scan
+    assert evidence_budgets == [4321]
+    assert review.warnings == ["3 older session(s) did not fit"]
     assert review.report_type is ReportType.MANAGER
     assert review.detail is DetailLevel.BRIEF
     assert review.detail_overridden is False
@@ -182,7 +190,8 @@ def test_synthesize_translates_real_opencode_failure_for_controller_recovery(
                     run_timeout_seconds=1.0,
                 )
             )
-        )
+        ),
+        report=SimpleNamespace(quick_review_max_evidence_bytes=40000),
     )
 
     class FailingOpenCodeRunner:
@@ -219,12 +228,13 @@ def test_synthesize_translates_temp_io_failure_for_controller_recovery(
                     run_timeout_seconds=1.0,
                 )
             )
-        )
+        ),
+        report=SimpleNamespace(quick_review_max_evidence_bytes=40000),
     )
 
     class BrokenSynthesisService:
-        def __init__(self, runner: object) -> None:
-            del runner
+        def __init__(self, runner: object, *, max_evidence_bytes: int) -> None:
+            del runner, max_evidence_bytes
 
         def synthesize(self, scan: ScanResult) -> object:
             del scan

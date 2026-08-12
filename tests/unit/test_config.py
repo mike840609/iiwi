@@ -37,6 +37,16 @@ def test_quick_review_report_type_defaults_to_manager() -> None:
     assert settings.report.quick_review_report_type is ReportType.MANAGER
 
 
+def test_quick_review_evidence_budget_defaults_and_is_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert AppSettings().report.quick_review_max_evidence_bytes == 40000
+
+    monkeypatch.setenv("IIWI_REPORT__QUICK_REVIEW_MAX_EVIDENCE_BYTES", "12000")
+
+    assert AppSettings().report.quick_review_max_evidence_bytes == 12000
+
+
 def test_quick_review_report_type_is_configurable_from_the_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

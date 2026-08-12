@@ -115,6 +115,7 @@ def resolved(
     title: str | None = None,
     branch: str | None = None,
     activities: list[SessionActivity] | None = None,
+    created_at: datetime | None = None,
 ) -> ResolvedSession:
     return ResolvedSession(
         session=AgentSession(
@@ -122,6 +123,7 @@ def resolved(
             session_id=session_id,
             title=title or f"Session {session_id}",
             branch=branch,
+            created_at=created_at,
             activities=activities or [],
         ),
         repository=RepositoryIdentity(
@@ -190,6 +192,35 @@ def two_repo_scan_with_linkage_evidence() -> ScanResult:
             ),
         ]
     )
+
+
+def dated(session_id: str, *, day: int) -> ResolvedSession:
+    """One session with enough evidence to measure and a distinct start time."""
+
+    return resolved(
+        session_id,
+        created_at=datetime(2026, 8, day, tzinfo=UTC),
+        activities=[
+            activity(
+                f"{session_id}-{index}",
+                ActivityType.USER_MESSAGE,
+                f"Investigate the {session_id} regression, step {index}. "
+                + "Describe the failing path in detail. " * 5,
+            )
+            for index in range(4)
+        ],
+    )
+
+
+def evidence_size(session: ResolvedSession) -> int:
+    """The payload cost of one session, measured the way the service measures it."""
+
+    return len(outcomes.extract_evidence(session).model_dump_json(indent=2).encode())
+
+
+def sent_session_ids(runner: StaticRunner) -> list[str]:
+    transcript = json.loads(runner.calls[0]["transcript"])
+    return [session["session_id"] for session in transcript["sessions"]]
 
 
 def fail_only(session_id: str):
@@ -516,3 +547,89 @@ def test_all_extraction_failures_raise_complete_synthesis_error(monkeypatch) -> 
 def test_invalid_or_empty_model_output_is_a_complete_synthesis_error() -> None:
     with pytest.raises(OutcomeSynthesisError, match="valid outcome JSON"):
         service_for_raw("not-json").synthesize(one_scan())
+
+
+def test_evidence_inside_the_budget_is_sent_whole_and_warns_about_nothing() -> None:
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a", "ses-b"])))
+
+    result = OutcomeSynthesisService(runner, max_evidence_bytes=100_000).synthesize(
+        scan_with(sessions)
+    )
+
+    assert sent_session_ids(runner) == ["ses-a", "ses-b"]
+    assert result.warnings == []
+
+
+def test_sessions_past_the_budget_never_reach_the_model() -> None:
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8), dated("ses-c", day=7)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(
+        runner,
+        max_evidence_bytes=evidence_size(sessions[0]) + evidence_size(sessions[1]),
+    ).synthesize(scan_with(sessions))
+
+    assert sent_session_ids(runner) == ["ses-a", "ses-b"]
+
+
+def test_sessions_past_the_budget_remain_excluded_ungrouped_candidates() -> None:
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    result = OutcomeSynthesisService(
+        runner,
+        max_evidence_bytes=evidence_size(sessions[0]),
+    ).synthesize(scan_with(sessions))
+
+    held_back = next(
+        item for item in result.outcomes if item.bucket is OutcomeBucket.UNGROUPED
+    )
+    assert held_back.title == "Session ses-b"
+    assert held_back.included is False
+    assert [reference.session_id for reference in held_back.evidence_refs] == ["ses-b"]
+
+
+def test_budget_warning_names_how_many_sessions_were_held_back() -> None:
+    sessions = [dated(f"ses-{index}", day=9 - index) for index in range(3)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-0"])))
+
+    result = OutcomeSynthesisService(
+        runner,
+        max_evidence_bytes=evidence_size(sessions[0]),
+    ).synthesize(scan_with(sessions))
+
+    assert len(result.warnings) == 1
+    assert result.warnings[0].startswith("2 older session(s) did not fit")
+
+
+def test_the_most_recent_sessions_are_the_ones_synthesized() -> None:
+    sessions = [dated("ses-old", day=3), dated("ses-new", day=9), dated("ses-mid", day=6)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-new"])))
+
+    OutcomeSynthesisService(
+        runner,
+        max_evidence_bytes=evidence_size(sessions[0]) + evidence_size(sessions[1]),
+    ).synthesize(scan_with(sessions))
+
+    assert sent_session_ids(runner) == ["ses-new", "ses-mid"]
+
+
+def test_a_session_larger_than_the_whole_budget_is_still_sent() -> None:
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner, max_evidence_bytes=1).synthesize(scan_with(sessions))
+
+    assert sent_session_ids(runner) == ["ses-a"]
+
+
+def test_undated_sessions_keep_their_scan_order_behind_dated_ones() -> None:
+    sessions = [resolved("ses-first"), resolved("ses-second"), dated("ses-dated", day=1)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-first"])))
+
+    OutcomeSynthesisService(runner, max_evidence_bytes=100_000).synthesize(
+        scan_with(sessions)
+    )
+
+    assert sent_session_ids(runner) == ["ses-dated", "ses-first", "ses-second"]

@@ -862,7 +862,11 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         return
     state.outcome_review_selection_key = selection_key
     state.outcome_cursor = 0
-    state.outcome_message = None
+    # Anything synthesis had to hold back is on screen as the review opens,
+    # not only in the written report.
+    state.outcome_message = (
+        state.outcome_review.warnings[0] if state.outcome_review.warnings else None
+    )
     state.expanded_evidence = set()
     state.review_message = None
     state.error = None

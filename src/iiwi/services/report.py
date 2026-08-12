@@ -283,6 +283,7 @@ class ReportService:
         reviewed = OutcomeReviewDraft.model_validate(
             redact_value(review.model_copy(deep=True).model_dump(mode="json"))
         )
+        warnings.extend(reviewed.warnings)
         detail = DetailLevel(reviewed.detail)
         usage_text = self._collect_usage(scan, warnings) if detail is DetailLevel.FULL else None
         report = WorklogReport(

@@ -16,6 +16,12 @@ and include a stronger candidate with `Space` to replace it. If evidence
 extraction fails for a session while other synthesis succeeds, that work remains
 under **Ungrouped candidates** for an explicit reviewer decision.
 
+Synthesis reads the most recent sessions of the selection that fit a size budget
+(`report.quick_review_max_evidence_bytes`), because one model run can only answer
+so much evidence at a time. Anything beyond the budget is never lost: those
+sessions skip synthesis and stay under **Ungrouped candidates**, and Quick Review
+opens with a message naming how many were held back.
+
 ## Review keys
 
 ```text
