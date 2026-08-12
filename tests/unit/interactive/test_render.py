@@ -949,7 +949,7 @@ def test_main_menu_paints_every_wordmark_row_iiwi_scarlet() -> None:
     # Exact escape, so a stray `bold` cannot creep back in: terminals render it
     # as their bright variant, which is the glare this colour exists to avoid.
     for line in _WORDMARK:
-        assert "\x1b[38;2;224;48;30m" in _row(text, line)
+        assert "\x1b[38;2;217;59;40m" in _row(text, line)
 
 
 def test_main_menu_keeps_the_version_dim_beside_the_scarlet_wordmark() -> None:
