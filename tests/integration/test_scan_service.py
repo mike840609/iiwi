@@ -459,3 +459,93 @@ def test_scan_with_nothing_to_reattach_behaves_like_the_baseline(fake_runner) ->
 
     assert with_runner == baseline
     assert not any("Reattached" in warning for warning in baseline.warnings)
+
+
+class IiwiAuthoredSource:
+    """One human session beside two sessions iiwi's own runs left behind."""
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return [
+            SessionDescriptor(harness="opencode", session_id="human"),
+            SessionDescriptor(harness="opencode", session_id="synthesis"),
+            SessionDescriptor(harness="opencode", session_id="narrative"),
+        ]
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        titles = {
+            "human": "Add weekly report generation",
+            "synthesis": "iiwi-internal: outcome synthesis",
+            "narrative": "Iiwi - 2026-07-20 to 2026-07-27",
+        }
+        return AgentSession(
+            harness="opencode",
+            session_id=descriptor.session_id,
+            title=titles[descriptor.session_id],
+            activities=[
+                SessionActivity(
+                    activity_id=f"{descriptor.session_id}:a1",
+                    activity_type=ActivityType.USER_MESSAGE,
+                    timestamp=datetime(2026, 7, 22, tzinfo=TZ),
+                    content="Add weekly report generation",
+                )
+            ],
+        )
+
+
+def test_scan_excludes_the_sessions_iiwi_itself_created() -> None:
+    result = ScanService(
+        source=IiwiAuthoredSource(),
+        resolver=StaticResolver(),
+        period=period(),
+    ).scan()
+
+    assert [item.session.session_id for item in result.resolved_sessions] == ["human"]
+    assert result.loaded_session_count == 1
+    assert result.warnings == []
+
+
+class IiwiAuthoredWithMissingTimestampSource:
+    """An iiwi-authored session that also carries a timestamp-less activity.
+
+    Iiwi's own runs always set a title, so this combination is real: a dropped
+    session must not surface the timestamp-less-activity warning, which would
+    name a session absent from every count and list in the result.
+    """
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return [SessionDescriptor(harness="opencode", session_id="synthesis")]
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        return AgentSession(
+            harness="opencode",
+            session_id=descriptor.session_id,
+            title="iiwi-internal: outcome synthesis",
+            activities=[
+                SessionActivity(
+                    activity_id="synthesis:a1",
+                    activity_type=ActivityType.USER_MESSAGE,
+                    timestamp=datetime(2026, 7, 22, tzinfo=TZ),
+                    content="Synthesize outcomes",
+                ),
+                SessionActivity(
+                    activity_id="synthesis:a2",
+                    activity_type=ActivityType.ASSISTANT_MESSAGE,
+                    timestamp=None,
+                    content="...",
+                ),
+            ],
+        )
+
+
+def test_scan_drops_an_iiwi_authored_session_before_any_warning_fires() -> None:
+    """A timestamp-less activity on a dropped session must not warn about it —
+    the warning would name a session that appears nowhere else in the result."""
+
+    result = ScanService(
+        source=IiwiAuthoredWithMissingTimestampSource(),
+        resolver=StaticResolver(),
+        period=period(),
+    ).scan()
+
+    assert result.resolved_sessions == []
+    assert result.warnings == []

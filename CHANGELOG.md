@@ -2,6 +2,131 @@
 
 All notable changes to this project are documented in this file.
 
+## 0.11.0 - 2026-08-12
+
+- Quick Review. `Generate report` no longer writes a file straight away: it
+  opens a review of evidence-backed outcomes synthesized from the sessions you
+  selected, and nothing is written until you approve it. Each outcome can be
+  edited, reordered, included or excluded; a cross-repository outcome can be
+  split back into its source groups, and an outcome the sessions do not cover
+  can be added by hand and is labelled as such in the report. The first five
+  candidates are selected, the rest wait under **More candidates**, and a
+  session whose evidence extraction failed stays visible under **Ungrouped
+  candidates** rather than disappearing. Every title, status, impact and
+  reference is reconstructed from the extracted evidence rather than taken from
+  the model's prose — the model proposes the grouping, and a proposal the
+  evidence does not support is replaced by one built from the evidence itself.
+  `p` renders the exact draft without writing it; `g` writes that draft, at the
+  Report type and Detail on screen.
+- **The default Detail for interactive reports changes from Full to Brief.**
+  `Generate report` now routes through Quick Review, Quick Review opens on the
+  report type saved in `report.quick_review_report_type`, and that setting
+  defaults to `manager` — which defaults to Brief. Brief drops the files,
+  sessions and usage sections. To keep the old output, either press Enter on
+  the Quick Review `Report` row to switch to Engineering, set
+  `iiwi config set report.quick_review_report_type engineering`, or change
+  Detail under Advanced settings, which is remembered for the run.
+- Quick Review works on a full week again. Synthesis sent every selected
+  session's evidence in one `opencode run` and demanded strict JSON back, so a
+  realistic selection — over a hundred sessions, more than a megabyte — came
+  back as prose or as nothing, and the only way out was the session-based
+  fallback. The model now gets a compact index instead — session id,
+  repository, title, branch, the first goal and one outcome, each whole, since
+  that text is exactly what it reads to decide whether two sessions are the
+  same work. At about 580 bytes a session rather than several kilobytes, the
+  default `report.quick_review_max_evidence_bytes` of `40000` carries around 65
+  of the most recent sessions instead of seventeen; the rest skip the model and
+  stay as ungrouped candidates, with a warning naming how many were held back
+  on screen and in the report. Raising that budget is not simply a matter of a
+  larger number: measured over a real week, `40000` returns grouped outcomes,
+  `80000` comes back without valid JSON, and `120000` runs past the 600-second
+  timeout.
+- Iiwi no longer reports on itself. Every `opencode run` iiwi invokes leaves a
+  session in the OpenCode store, and the next scan was picking those up as
+  work — fifteen of them in one real 30-day window. They are dropped during the
+  scan now, so they are absent from Quick Review, Browse Activity, the
+  session-based report, and every session count — except the Usage section,
+  an external `opencode stats` aggregate the scan cannot filter.
+- Quick Review no longer overflows the terminal. With both disclosure sections
+  open on a short, narrow terminal the focused outcome's block was printed in
+  full regardless of the budget, so the frame ran one row past the last line
+  and the paint left a torn screen behind. The body is clamped where it is
+  printed: the scroll indicators go first, then the focused block's trailing
+  detail lines, and its summary row always stays visible.
+- A grouped outcome's title reads as one line. When the model's proposed title
+  is not supported by the evidence, the fallback used to join every session
+  title in the group with slashes, so a group of eleven rendered as eleven
+  clauses. It now names the session with the most extracted evidence and counts
+  the rest: `The real work and 10 more sessions`. A multi-repository group
+  still joins repository ids with ` / `, unchanged.
+- A proposed title survives when the evidence substantively supports it. The
+  check required every word longer than two characters to appear in the
+  evidence; across one real synthesis that refused five of ten proposals over
+  words like `polish` and `housekeeping` while every substantive term matched.
+  Eighty percent of the words now suffice, recovering four of the five — the
+  66.7% case is still refused. Status and impact keep their existing, stricter
+  checks.
+- `J`/`K` reorders within the outcome's own section. Quick Review lists
+  primary, more, and ungrouped outcomes separately, but reordering worked on
+  the global rank, so moving a primary outcome past a candidate hidden behind a
+  disclosure row changed nothing on screen. Reordering now swaps with the
+  adjacent outcome in the same section and stops at either end of it.
+- The help screen documents Quick Review. `Space`, `e`, `J`/`K`, `v`, `s`, `a`,
+  `p` and `g` are listed with what they do on that screen, and the four keys
+  that mean something else there — `a`, `e`, `p`, `g` — are marked in the
+  general list. The reference scrolls with `↑↓`/`jk` rather than running off a
+  short terminal.
+- The report result screen dropped its unreachable **Preview report** option.
+  Interactive generation always writes a file, so the dry-run variant of that
+  screen could no longer be reached.
+
+## 0.10.0 - 2026-08-11
+
+The interactive interface is the release. Opening `iiwi` with no arguments
+leads with reviewing what the agent did rather than with generating a report,
+and the two session screens behind that are now one screen.
+
+- The home screen is activity-first. The subtitle reads `See what your agent
+  did`, `Review Activity` is the first action and `Generate Report` the
+  second, and the numeric shortcuts follow the visible order. The direct CLI
+  commands are unchanged.
+- Browse Sessions and Review Sessions are one activity explorer. The two were
+  split by what you could do in them — browsing was read-only, review existed
+  only to produce a report — so finding something worth reporting on meant
+  leaving one screen and finding it again in the other. Both entries now open
+  the same selectable repository and session tree, and `g` generates from it
+  directly. Search, preview, rescan, repository exclusion, selection
+  persistence, viewport behaviour, and Back are unchanged.
+- Report Setup separates the actions from the configuration. `Generate report`
+  and `Preview report` sit at the top, and `Preview report` takes the dry-run
+  path internally so the preview opens without writing a file — `Dry run` is
+  no longer a setting to find and switch. `Harness`, `Period`, and `Advanced
+  settings` remain in the list; `Detail`, `Subagents`, `Narrative`, and
+  `Sanitize` move under `Advanced settings`, which starts collapsed for each
+  new report flow and toggles with Enter.
+- The footer hints are shorter. Each screen lists the actions it is actually
+  for — select, inspect, search, report, help, back on Review Activity — while
+  `a`, `n`, `e`, `R`, `h`/`l`, the paging keys and the rest keep working and
+  are documented under `? Help`. The rows this frees go to content.
+- The main menu opens on the name drawn in ASCII rather than the word `Iiwi`
+  in bold, with the version flush right on the wordmark's last row so the art
+  costs four rows instead of five. Below either gate — 24 rows or 24 columns —
+  the previous one-line header returns unchanged: a wordmark clipped mid-glyph
+  reads as noise rather than as a name, so a small terminal gets the word.
+- The wordmark is drawn in `#E0301E`, the ʻiʻiwi's plumage, at 4.6:1 contrast
+  on both a black and a white terminal. It is the only place a hex colour
+  appears — the rest of the interface stays on plain ANSI names so it follows
+  the terminal's own theme, which is the right rule for colours that carry
+  state and the wrong one for a logo. Rich degrades the colour on terminals
+  without truecolor.
+- The PyPI badge fix that 0.9.1 recorded lands here. It was committed on that
+  release's branch but the squash merge did not carry it, so 0.9.1 shipped
+  with the stuck badge URL its entry claimed to have fixed.
+- Both READMEs carry the name-forms table — which casing the name takes in the
+  distribution and CLI, in imports, in prose, in environment variables, and in
+  the error base class — under `## Development`, beside the commands it
+  applies to.
+
 ## 0.9.1 - 2026-08-10
 
 Documentation only; no functional change. PyPI renders the description that

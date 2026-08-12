@@ -5,6 +5,15 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from iiwi.models.report_options import ReportType
+
+# ponytail: one `opencode run`, one payload, so the ceiling is what a single
+# model call can still answer with strict JSON. Measured against a real
+# OpenCode store: 20 KB (10 sessions) synthesized, 110 KB (25) returned no
+# output, 1.1 MB (162) came back as prose. Batching the synthesis across
+# several runs and merging the outcomes is what lifts this, not a bigger number.
+DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES = 40000
+
 
 class OpenCodeCliSettings(BaseModel):
     """OpenCode executable invocation settings."""
@@ -63,6 +72,11 @@ class ReportSettings(BaseModel):
     # A comma-separated string, not `list[str]`: a list cannot be validated or
     # round-tripped by `config set`, which writes and rereads strings.
     exclude_repositories: str = ""
+    quick_review_report_type: ReportType = ReportType.MANAGER
+    # How much extracted evidence Quick Review may hand to one `opencode run`.
+    # Sessions past the budget are not sent at all; they stay ungrouped
+    # candidates rather than disappearing.
+    quick_review_max_evidence_bytes: int = DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES
 
     def excluded_repository_ids(self) -> tuple[str, ...]:
         """Normalise the string setting into the repository ids it names.

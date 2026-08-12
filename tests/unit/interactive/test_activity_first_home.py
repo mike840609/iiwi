@@ -16,6 +16,7 @@ from iiwi.interactive.controller import (
 from iiwi.interactive.input import KeyPress
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.render import render_main_menu
+from iiwi.models.outcome import OutcomeReviewDraft
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -126,6 +127,16 @@ def _actions(counters: dict[str, int]) -> InteractiveActions:
         choose_period=lambda current: ("Last 7 days", _period()),
         scan=scan,
         generate=generate,
+        synthesize=lambda draft, scan: OutcomeReviewDraft(
+            outcomes=[], report_type=draft.report_type
+        ),
+        generate_reviewed=lambda draft, scan, review, force: generate(
+            draft, scan, force
+        ),
+        edit_outcome=lambda outcome: outcome,
+        add_outcome=lambda: None,
+        edit_gap=lambda label, current: current,
+        save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
         edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,

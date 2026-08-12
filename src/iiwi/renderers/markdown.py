@@ -1,17 +1,12 @@
 """Markdown rendering for worklog reports."""
 
-from enum import StrEnum
+import re
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from iiwi.models.report import WorklogReport
-
-
-class DetailLevel(StrEnum):
-    BRIEF = "brief"
-    FULL = "full"
-
+from iiwi.models.report_options import DetailLevel, ReportType
 
 # The renderer is the report's only truncation point. Both summarizers now emit
 # complete lists, so the omitted-item count is always the real remainder.
@@ -19,6 +14,34 @@ _SECTION_LIMITS = {
     DetailLevel.FULL: 20,
     DetailLevel.BRIEF: 5,
 }
+_BRIEF_NARRATIVE_ALLOWED_HEADINGS = frozenset(
+    {"outcomes", "in progress", "blockers", "next week", "warnings"}
+)
+_FILE_PATH_PATTERN = re.compile(r"\b[\w.-]+/[\w./-]+\.[A-Za-z0-9]{1,12}\b")
+_SESSION_LINE_PATTERN = re.compile(
+    r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?session(?: id)?(?:\s*:\s*|\s+)\S+",
+    re.IGNORECASE,
+)
+_EVIDENCE_LINE_PATTERN = re.compile(
+    r"\b(?:branch|commit|command|file|path|revision)(?:\s*:|\s+)", re.IGNORECASE
+)
+_SESSION_ID_PATTERN = re.compile(r"\bses-[\w-]+\b", re.IGNORECASE)
+# Distinctive tool names never read as English prose, so they drop a line alone.
+_COMMAND_TOOL_PATTERN = re.compile(
+    r"(?:^|\s)(?:[$>#]\s*|bash\b|cargo\b|curl\b|docker\b|git\b|npm\b|pnpm\b|"
+    r"pytest\b|yarn\b|zsh\b)",
+    re.IGNORECASE,
+)
+# These double as ordinary English ("make a call", "go over the results"), so a
+# line only counts as a command when it is lowercase and carries an argument.
+_AMBIGUOUS_COMMAND_PATTERN = re.compile(r"(?:^|\s)(?:go|make|python|sh|uv)\b")
+_COMMAND_ARGUMENT_PATTERN = re.compile(r"(?:^|\s)(?:-{1,2}[A-Za-z0-9]|\.{0,2}/)")
+
+
+def _is_setext_underline(value: str) -> bool:
+    """Return whether a stripped line is a Setext heading underline."""
+
+    return bool(re.fullmatch(r"(?:={3,}|-{3,})", value.strip()))
 
 
 class MarkdownRenderer:
@@ -35,6 +58,7 @@ class MarkdownRenderer:
             keep_trailing_newline=True,
         )
         self._template = environment.get_template("worklog.md.j2")
+        self._outcomes_template = environment.get_template("outcomes.md.j2")
 
     def render(
         self,
@@ -59,7 +83,38 @@ class MarkdownRenderer:
         return f"{output.rstrip()}\n"
 
 
-def render_narrative(report: WorklogReport, *, timezone: str) -> str:
+    def render_outcomes(
+        self,
+        report: WorklogReport,
+        *,
+        detail: DetailLevel = DetailLevel.FULL,
+    ) -> str:
+        """Render an outcome review using the report-type-specific template."""
+
+        detail = DetailLevel(detail)
+        timezone = getattr(report.period.since.tzinfo, "key", str(report.period.since.tzinfo))
+        evidence_by_repository: dict[str, list] = {}
+        for outcome in report.outcomes:
+            if not outcome.included:
+                continue
+            for reference in outcome.evidence_refs:
+                evidence_by_repository.setdefault(reference.repository_id, []).append(reference)
+        output = self._outcomes_template.render(
+            report=report,
+            report_type=report.report_type or ReportType.ENGINEERING,
+            timezone=timezone,
+            full=detail is DetailLevel.FULL,
+            evidence_by_repository=evidence_by_repository,
+        )
+        return f"{output.rstrip()}\n"
+
+
+def render_narrative(
+    report: WorklogReport,
+    *,
+    timezone: str,
+    detail: DetailLevel = DetailLevel.FULL,
+) -> str:
     """Wrap a narrative body under the standard worklog header.
 
     The narrative prose from `opencode run` is rendered verbatim below the
@@ -67,6 +122,10 @@ def render_narrative(report: WorklogReport, *, timezone: str) -> str:
     artifact; usage and warnings render in the same positions as the template.
     """
 
+    detail = DetailLevel(detail)
+    narrative_text = report.narrative_text or ""
+    if detail is DetailLevel.BRIEF:
+        narrative_text = _brief_narrative_body(narrative_text)
     lines = [
         "# Engineering Worklog",
         "",
@@ -76,9 +135,9 @@ def render_narrative(report: WorklogReport, *, timezone: str) -> str:
         f"**Timezone:** {timezone}",
         f"**Generated:** {report.generated_at.strftime('%Y-%m-%d %H:%M')}",
         "",
-        report.narrative_text or "",
+        narrative_text,
     ]
-    if report.usage_text:
+    if detail is DetailLevel.FULL and report.usage_text:
         lines += ["", "## Usage"]
         if report.usage_days:
             lines += [
@@ -93,3 +152,95 @@ def render_narrative(report: WorklogReport, *, timezone: str) -> str:
         lines += ["", "## Warnings"]
         lines += [f"- {warning}" for warning in report.warnings]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _brief_narrative_body(value: str) -> str:
+    """Keep only reader-facing sections without technical evidence details."""
+
+    lines = value.splitlines()
+    kept: list[str] = []
+    has_headings = False
+    in_code_block = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(("```", "~~~")):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
+        if stripped.startswith("#") or (
+            stripped
+            and index + 1 < len(lines)
+            and _is_setext_underline(lines[index + 1])
+        ):
+            has_headings = True
+            break
+
+    allowed_section = not has_headings
+    in_code_block = False
+    heading_start: int | None = None
+    heading_has_content = False
+
+    def _close_section() -> None:
+        """Drop the section's heading when filtering left it with no content."""
+
+        nonlocal heading_start, heading_has_content
+        if heading_start is not None and not heading_has_content:
+            del kept[heading_start:]
+        heading_start = None
+        heading_has_content = False
+
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        if stripped.startswith(("```", "~~~")):
+            in_code_block = not in_code_block
+            index += 1
+            continue
+        if in_code_block:
+            index += 1
+            continue
+        if stripped.startswith("#"):
+            _close_section()
+            heading = stripped.lstrip("#").strip().casefold()
+            allowed_section = heading in _BRIEF_NARRATIVE_ALLOWED_HEADINGS
+            if allowed_section:
+                heading_start = len(kept)
+                kept.append(line)
+            index += 1
+            continue
+        if (
+            stripped
+            and index + 1 < len(lines)
+            and _is_setext_underline(lines[index + 1])
+        ):
+            _close_section()
+            allowed_section = stripped.casefold() in _BRIEF_NARRATIVE_ALLOWED_HEADINGS
+            if allowed_section:
+                heading_start = len(kept)
+                kept.extend((line, lines[index + 1]))
+            index += 2
+            continue
+        if not allowed_section:
+            index += 1
+            continue
+        if (
+            _FILE_PATH_PATTERN.search(line)
+            or _SESSION_LINE_PATTERN.search(line)
+            or _SESSION_ID_PATTERN.search(line)
+            or _EVIDENCE_LINE_PATTERN.search(line)
+            or _COMMAND_TOOL_PATTERN.search(line)
+            or (
+                _AMBIGUOUS_COMMAND_PATTERN.search(line)
+                and _COMMAND_ARGUMENT_PATTERN.search(line)
+            )
+        ):
+            index += 1
+            continue
+        kept.append(line)
+        if stripped:
+            heading_has_content = True
+        index += 1
+    _close_section()
+    return "\n".join(kept).strip()
