@@ -70,14 +70,19 @@ Rows split by the setting's annotation:
 
 - **Choice rows** (`bool`, the `ReportType` StrEnum, and the fixed
   `source` string): `←→` cycles the choices and writes the new value
-  immediately.
+  immediately. The row renders every choice at once, separated by ` / `,
+  with the choice in force highlighted (`bold cyan`, the cursor style)
+  and the rest dim — so the user sees the full option list, never a lone
+  value.
 - **Edit rows** (paths, numbers, `model`, `exclude_repositories`,
-  `executable`, `output_directory`): Enter opens an inline editor.
+  `executable`, `output_directory`): Enter opens an inline editor. These
+  rows show only their current value, because their option space is open.
 - **Timezone row**: `←→` cycles a curated shortlist
   (`Asia/Taipei`, `Asia/Shanghai`, `Asia/Tokyo`, `Asia/Singapore`,
   `Europe/London`, `Europe/Berlin`, `America/New_York`,
   `America/Los_Angeles`, `UTC`); Enter edits any IANA zone. The row always
-  displays the actual value in force, even when it is outside the shortlist.
+  displays only the actual value in force — nine zones would not fit one
+  row — and `←→` still steps through the shortlist.
 - **Environment-sourced rows**: value shown with a `[environment]` tag and
   the row is locked — `←→` and Enter do nothing on it.
 
@@ -89,9 +94,11 @@ in src/iiwi/interactive/render.py, in the same style as
 
 - Header `"Settings"` via `_print_header`, plus a dim line with the
   settings file path (from `config_store.config_file_path()`).
-- One viewport line per setting: `▶ label` + padded value column. Empty
-  values render as dim `(default)` instead of blank, so nothing on the
-  page is empty.
+- One viewport line per setting: `▶ label` + padded value column. Choice
+  rows render their full option list (`true / false`,
+  `manager / engineering`) with the active choice in `_CURSOR_STYLE` and
+  the rest dim. Empty values render as dim `(default)` instead of blank,
+  so nothing on the page is empty.
 - The cursor row uses `_CURSOR_STYLE`; a dim `[environment]` tag follows
   locked values.
 - The bottom line is the existing `_setup_help`-style per-row detail:
@@ -139,7 +146,9 @@ writes:
 
 - Rendering: every setting key renders as a row; empty values show
   `(default)`; environment-sourced rows show `[environment]`; the file
-  path header shows.
+  path header shows; choice rows list every option separated by ` / `
+  with only the choice in force highlighted and the rest dim; the
+  timezone row shows only its current value.
 - Choice cycling: `←→` on `enabled`, `sanitize`, `quick_review_report_type`,
   and timezone writes the next choice through `config_store` and updates
   the row; an unchanged value writes nothing.
