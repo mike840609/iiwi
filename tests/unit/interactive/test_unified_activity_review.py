@@ -158,7 +158,7 @@ def _actions(counters: dict[str, int]) -> InteractiveActions:
     )
 
 
-def test_main_browse_entry_can_generate_from_the_same_activity_tree() -> None:
+def test_setup_quick_review_can_generate_from_the_same_activity_tree() -> None:
     counters: dict[str, int] = {}
     console = Console(
         file=StringIO(),

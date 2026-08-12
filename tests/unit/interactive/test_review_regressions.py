@@ -237,7 +237,7 @@ def test_non_opencode_sanitize_enter_stays_in_report_setup() -> None:
     assert draft.sanitize is False
 
 
-def test_browse_empty_change_period_retries_with_changed_draft() -> None:
+def test_activity_empty_change_period_retries_with_changed_draft() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     period_calls = 0
@@ -276,8 +276,8 @@ def test_browse_empty_change_period_retries_with_changed_draft() -> None:
     assert draft.period == _period(10)
 
 
-def test_browse_empty_state_says_configuration_exclusion() -> None:
-    """An empty browse whose cause is the exclusion setting must say so."""
+def test_activity_empty_state_says_configuration_exclusion() -> None:
+    """An empty activity review whose cause is the exclusion setting must say so."""
 
     draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}

@@ -8,7 +8,6 @@ from rich.console import Console
 
 from iiwi.interactive.render import (
     render_help,
-    render_session_browser,
     render_session_review,
 )
 from iiwi.interactive.selection import SelectionState
@@ -89,25 +88,6 @@ def test_review_footer_shows_core_actions_not_power_shortcuts() -> None:
     assert "a All" not in text
     assert "n None" not in text
     assert "e Exclude repo" not in text
-    assert "R Rescan" not in text
-    assert "←→ hl" not in text
-
-
-def test_browser_footer_shows_only_browse_essentials() -> None:
-    console, stream = _console()
-
-    render_session_browser(
-        console,
-        _scan(),
-        expanded_repositories=set(),
-        cursor=0,
-    )
-
-    text = stream.getvalue()
-    assert "p Inspect" in text
-    assert "/ Search" in text
-    assert "? More" in text
-    assert "b Back" in text
     assert "R Rescan" not in text
     assert "←→ hl" not in text
 

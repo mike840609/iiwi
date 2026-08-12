@@ -16,7 +16,6 @@ from iiwi.interactive.density import (
     last_activity_at,
     message_volume,
     repository_meta,
-    scan_volume,
     session_meta,
     volume_label,
 )
@@ -157,7 +156,6 @@ _MIN_WORDMARK_WIDTH = 24
 _PROJECT_URL = "https://github.com/mike840609/iiwi"
 _PROJECT_LABEL = "github.com/mike840609/iiwi"
 _REVIEW_SUBTITLE = "Select sessions to include in the report:"
-_BROWSE_SUBTITLE = "Select a repository to explore:"
 # The two disclosure rows live in the same expansion set as the per-outcome
 # evidence toggles, so they need ids no outcome can own. Defined once here and
 # imported by the controller, because the cursor and the highlight must key off
@@ -1321,119 +1319,6 @@ def render_session_review(
                         bar_block,
                         _mark_glyph(mark),
                         " ",
-                    ),
-                    title=titles[row.session_id],
-                    meta=metas[row.session_id],
-                    selected=cursor_here,
-                )
-            )
-    _print_list_rows(console, tree)
-    if hidden_below:
-        _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
-    console.print()
-    _print_hints(console, hints)
-
-
-def _browser_header(scan: ScanResult) -> str:
-    """Compose the Browse Sessions title: a scan total, with no selection to compare it to."""
-    sessions = f"Browse Sessions   {scan.loaded_session_count} sessions"
-    volume = scan_volume(scan)
-    if not volume:
-        return sessions
-    return f"{sessions} │ {volume_label(volume)}"
-
-
-def render_session_browser(
-    console: Console,
-    scan: ScanResult,
-    *,
-    expanded_repositories: set[str],
-    cursor: int,
-    query: str = "",
-    searching: bool = False,
-) -> None:
-    _print_header(
-        console,
-        _browser_header(scan),
-        subtitle=_BROWSE_SUBTITLE,
-    )
-    warning_label = _scan_warning_label(scan)
-    if warning_label:
-        _print_viewport_line(console, warning_label, style="yellow")
-    _render_search_status(console, query, searching)
-    hints = [
-        "↑↓ jk",
-        "p Inspect",
-        "/ Search",
-        "? More",
-        "b Back",
-    ]
-    console.print()
-    rows = build_filtered_rows(scan, expanded_repositories, query=query)
-    visible, hidden_above, hidden_below = _visible_window(
-        rows,
-        cursor=cursor,
-        terminal_height=console.size.height,
-        reserved_lines=2 + _header_lines(console, _BROWSE_SUBTITLE)
-        + len(_hint_lines(hints, console.size.width))
-        + (1 if warning_label else 0)
-        + (1 if searching or query else 0),
-    )
-    if hidden_above:
-        _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
-    titles = _session_titles(scan)
-    sessions = _sessions_by_id(scan)
-    metas = {
-        row.session_id: session_row_meta(
-            sessions[row.session_id],
-            scan.period.since.tzinfo,
-        )
-        for _, row in visible
-        if row.session_id is not None
-    }
-    repository_numbers, number_width = _repository_numbers(rows)
-    bar_scale = _bar_scale(scan, rows, console_width=console.size.width)
-    tree: list[_ListRow] = []
-    for index, row in visible:
-        cursor_here = index == cursor
-        if row.kind == "repository":
-            expanded = row.repository_id in expanded_repositories or bool(query)
-            name = _repository_display_name(scan, row.repository_id)
-            count = len(scan.sessions_by_repository[row.repository_id])
-            volume = sum(
-                message_volume(item.session)
-                for item in scan.sessions_by_repository[row.repository_id]
-            )
-            bar_block = _bar_cell(bar_scale, volume)
-            tree.append(
-                _ListRow(
-                    lead=Text.assemble(
-                        _cursor_glyph(cursor_here),
-                        " ",
-                        f"{repository_numbers[row.repository_id]:>{number_width - 1}}.",
-                        " ",
-                        _expansion_glyph(expanded),
-                        " ",
-                        bar_block,
-                    ),
-                    title=f"{name}   {count}",
-                    meta=repository_meta(row.repository_id, scan),
-                    selected=cursor_here,
-                )
-            )
-        else:
-            assert row.session_id is not None
-            bar_block = _bar_cell(bar_scale, message_volume(sessions[row.session_id]))
-            tree.append(
-                _ListRow(
-                    lead=Text.assemble(
-                        _cursor_glyph(cursor_here),
-                        " ",
-                        " " * number_width,
-                        " ",
-                        " ",
-                        " ",
-                        bar_block,
                     ),
                     title=titles[row.session_id],
                     meta=metas[row.session_id],

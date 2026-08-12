@@ -38,7 +38,6 @@ from iiwi.interactive.render import (
     render_report_preview,
     render_report_result,
     render_report_setup,
-    render_session_browser,
     render_session_preview,
     render_session_review,
     report_generate_row,
@@ -118,12 +117,10 @@ class _State:
     main_cursor: int = 0
     setup_cursor: int = 0
     setup_advanced: bool = False
-    browser_cursor: int = 0
     review_cursor: int = 0
     result_cursor: int = 0
     preview_offset: int = 0
     draft: ReportDraft | None = None
-    browser_scan: ScanResult | None = None
     selection: SelectionState | None = None
     result: InteractiveReportResult | None = None
     expanded_repositories: set[str] | None = None
@@ -257,7 +254,7 @@ def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.screen = Screen.REPORT_SETUP
 
 
-def _load_browse(
+def _load_activity(
     state: _State,
     actions: InteractiveActions,
     draft: ReportDraft,
@@ -270,7 +267,7 @@ def _load_browse(
         scan = actions.scan(draft)
     except IiwiError as exc:
         state.error = _ErrorState(
-            kind="browse-source",
+            kind="activity-source",
             title=f"Could not read {draft.harness} sessions",
             detail=str(exc),
         )
@@ -279,14 +276,14 @@ def _load_browse(
     if scan.loaded_session_count == 0:
         if scan.excluded_session_count > 0:
             state.error = _ErrorState(
-                kind="browse-empty",
+                kind="activity-empty",
                 title="Sessions excluded by configuration",
                 detail="All sessions matched by the selected harness and period "
                 "were excluded by configuration.",
             )
         else:
             state.error = _ErrorState(
-                kind="browse-empty",
+                kind="activity-empty",
                 title="No sessions found",
                 detail="No activity matched the selected harness and period.",
             )
@@ -312,10 +309,10 @@ def _load_browse(
     state.screen = Screen.SESSION_REVIEW
 
 
-def _begin_browse(state: _State, actions: InteractiveActions) -> None:
-    """Open the unified activity explorer with configured defaults."""
+def _begin_activity_review(state: _State, actions: InteractiveActions) -> None:
+    """Open the unified activity review with configured defaults."""
 
-    _load_browse(state, actions, actions.new_draft())
+    _load_activity(state, actions, actions.new_draft())
 
 
 def _review(state: _State, actions: InteractiveActions) -> None:
@@ -390,7 +387,7 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
         return
 
     if state.main_cursor == 0:
-        _begin_browse(state, actions)
+        _begin_activity_review(state, actions)
     elif state.main_cursor == 1:
         _new_report(state, actions)
     elif state.main_cursor == 2:
@@ -580,54 +577,6 @@ def _preview_from_row(
         return False
     _open_session_preview(state, session, return_screen=return_screen)
     return True
-
-
-def _browser_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
-    assert state.browser_scan is not None
-    if _search_input(state, key, "browser_cursor"):
-        return
-    if _exact_char(key, "/"):
-        _begin_search(state, "browser_cursor")
-        return
-    if _exact_char(key, "R"):
-        assert state.draft is not None
-        _load_browse(state, actions, state.draft)
-        return
-    rows = _tree_rows(state.browser_scan, state)
-    state.browser_cursor = _move(state.browser_cursor, key, len(rows))
-    if _char(key, "q"):
-        state.screen = Screen.MAIN
-        return
-    if key.key is Key.ESCAPE or _char(key, "b"):
-        state.screen = Screen.MAIN
-        return
-    if _exact_char(key, "p"):
-        _preview_from_row(
-            state,
-            state.browser_scan,
-            rows,
-            "browser_cursor",
-            return_screen=Screen.SESSION_BROWSER,
-        )
-        return
-    if key.key is Key.RIGHT or _char(key, "l"):
-        _expand_tree_row(state, rows, "browser_cursor")
-        return
-    if key.key is Key.LEFT or _char(key, "h"):
-        _collapse_tree_row(state, rows, "browser_cursor")
-        return
-    if key.key is not Key.ENTER or not rows:
-        return
-    row = rows[state.browser_cursor]
-    if row.kind != "repository":
-        return
-    expanded = state.expansions()
-    if row.repository_id in expanded:
-        expanded.remove(row.repository_id)
-    else:
-        expanded.add(row.repository_id)
-    visible_count = len(_tree_rows(state.browser_scan, state))
-    state.browser_cursor = min(state.browser_cursor, max(0, visible_count - 1))
 
 
 def _sync_selection(state: _State, actions: InteractiveActions) -> None:
@@ -1093,7 +1042,7 @@ def _error_options(error: _ErrorState) -> list[str]:
         return ["Main menu"]
     if error.kind == "report-path":
         return ["Back"]
-    if error.kind in {"report-empty", "browse-empty"}:
+    if error.kind in {"report-empty", "activity-empty"}:
         return ["Change period", "Change harness", "Back", "Main menu"]
     if error.kind == "outcome-synthesis":
         return ["Retry", "Use session-based report", "Back"]
@@ -1215,8 +1164,8 @@ def _error_key(
     else:
         state.draft.set_period(*actions.choose_period(state.draft.period_label))
     state.selection = None
-    if error.kind.startswith("browse"):
-        _load_browse(state, actions, state.draft)
+    if error.kind.startswith("activity"):
+        _load_activity(state, actions, state.draft)
     else:
         state.error = None
         state.expanded_repositories = set()
@@ -1351,16 +1300,6 @@ def _render_screen(state: _State, console: Console) -> None:
             selected=state.setup_cursor,
             advanced=state.setup_advanced,
         )
-    elif state.screen is Screen.SESSION_BROWSER:
-        assert state.browser_scan is not None
-        render_session_browser(
-            console,
-            state.browser_scan,
-            expanded_repositories=state.expansions(),
-            cursor=state.browser_cursor,
-            query=state.search_query,
-            searching=state.searching,
-        )
     elif state.screen is Screen.SESSION_REVIEW:
         assert state.selection is not None
         render_session_review(
@@ -1427,7 +1366,7 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
 
     if state.screen is Screen.MAIN:
         state.screen = Screen.EXIT
-    elif state.screen in {Screen.REPORT_SETUP, Screen.SESSION_BROWSER}:
+    elif state.screen is Screen.REPORT_SETUP:
         state.screen = Screen.MAIN
     elif state.screen is Screen.SESSION_REVIEW:
         if state.selection is not None and state.draft is not None:
@@ -1462,8 +1401,6 @@ def _dispatch(
         _main_key(state, key, actions)
     elif state.screen is Screen.REPORT_SETUP:
         _setup_key(state, key, actions)
-    elif state.screen is Screen.SESSION_BROWSER:
-        _browser_key(state, key, actions)
     elif state.screen is Screen.SESSION_REVIEW:
         _review_key(state, key, actions)
     elif state.screen is Screen.OUTCOME_REVIEW:

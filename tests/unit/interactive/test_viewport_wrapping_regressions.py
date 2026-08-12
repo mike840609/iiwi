@@ -10,7 +10,6 @@ from iiwi.interactive import render
 from iiwi.interactive.render import (
     build_visible_rows,
     render_report_preview,
-    render_session_browser,
     render_session_review,
 )
 from iiwi.interactive.selection import SelectionState
@@ -114,21 +113,6 @@ def test_session_review_long_titles_do_not_exceed_terminal_display_budget() -> N
         for item in selection.scan.resolved_sessions
     }
     assert titles[cursor_row.session_id][:10] in stream.getvalue()
-
-
-def test_session_browser_long_titles_do_not_exceed_terminal_display_budget() -> None:
-    console, stream = _console(width=40, height=20)
-    scan = _scan(12, long_titles=True)
-
-    render_session_browser(
-        console,
-        scan,
-        expanded_repositories={"repo-a"},
-        cursor=12,
-    )
-
-    assert len(_display_lines(stream)) <= console.size.height - 1
-    assert "Session 11" in stream.getvalue()
 
 
 def test_report_preview_long_lines_do_not_exceed_terminal_display_budget() -> None:
@@ -237,14 +221,6 @@ def test_interactive_screens_fit_every_reasonable_terminal_size() -> None:
                 console, stream = _console(width=width, height=height)
                 render_session_review(
                     console, selection, expanded_repositories=expanded, cursor=cursor
-                )
-                lines = _display_lines(stream)
-                assert len(lines) <= height - 1, (width, height, cursor)
-                assert any("▶" in line for line in lines), (width, height, cursor)
-
-                console, stream = _console(width=width, height=height)
-                render_session_browser(
-                    console, scan, expanded_repositories=expanded, cursor=cursor
                 )
                 lines = _display_lines(stream)
                 assert len(lines) <= height - 1, (width, height, cursor)

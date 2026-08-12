@@ -230,7 +230,7 @@ def test_p_opens_session_preview_from_review_and_back_returns_to_it() -> None:
     assert "Session A" in text
 
 
-def test_p_opens_session_preview_from_browse_and_returns() -> None:
+def test_p_opens_session_preview_from_activity_and_returns() -> None:
     console, stream = _console()
 
     run_interactive(
