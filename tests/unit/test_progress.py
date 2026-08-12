@@ -5,6 +5,7 @@ def test_progress_stages_are_stable_and_complete() -> None:
     assert [stage.value for stage in ProgressStage] == [
         "discovering_sessions",
         "exporting_sessions",
+        "synthesizing_outcomes",
         "preparing_evidence",
         "summarizing_repositories",
         "collecting_usage",

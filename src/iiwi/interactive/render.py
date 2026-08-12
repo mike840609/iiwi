@@ -157,9 +157,10 @@ _BAR_STYLE = "cyan"
 # errors, and a red cursor beside the green/yellow marks would not survive
 # red-green colour blindness. Not bold: terminals answer bold with their bright
 # variant, which is what makes a saturated red glare -- so the fix is dropping
-# bold, not dulling the hue. The bird's actual plumage, within ΔE 1.6 of it,
-# clearing 4.6:1 on both a black and a white terminal.
-_WORDMARK_STYLE = "#E0301E"
+# bold, not dulling the hue. A half-step off the bird's actual plumage, ΔE 8.9
+# from it and still reading as the same red, clearing 4.6:1 on both a black and
+# a white terminal.
+_WORDMARK_STYLE = "#D93B28"
 _PERCENT_CELLS = 4  # "100%" at its widest
 # Bars are the first thing to go on a narrow terminal: the title column matters
 # more than the decoration.

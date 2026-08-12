@@ -4,10 +4,18 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
-from rich.console import Console
-from rich.padding import Padding
-from rich.status import Status
-from rich.table import Table
+from rich.console import Console, RenderableType
+from rich.progress import (
+    BarColumn,
+    Progress,
+    ProgressColumn,
+    SpinnerColumn,
+    Task,
+    TaskID,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Column, Table
 from rich.text import Text
 
 from iiwi.config_store import SettingRow
@@ -35,6 +43,7 @@ def _collapse_whitespace(value: str) -> str:
 _STAGE_LABELS = {
     ProgressStage.DISCOVERING_SESSIONS: "Finding sessions",
     ProgressStage.EXPORTING_SESSIONS: "Exporting sessions",
+    ProgressStage.SYNTHESIZING_OUTCOMES: "Grouping sessions into outcomes",
     ProgressStage.PREPARING_EVIDENCE: "Preparing repository evidence",
     ProgressStage.SUMMARIZING_REPOSITORIES: "Summarizing repositories",
     ProgressStage.COLLECTING_USAGE: "Collecting usage statistics",
@@ -43,24 +52,60 @@ _STAGE_LABELS = {
 }
 
 
+class _BarWhenCounted(ProgressColumn):
+    """Draw a bar only for a stage that reports a total.
+
+    Rich renders a bar with no total as a pulse, animated through color. With
+    color off — `NO_COLOR`, a plain pipe — the pulse is a solid full-width bar,
+    which reads as finished work. The spinner and the elapsed timer say the
+    stage is alive without claiming a fraction nobody can compute.
+    """
+
+    def __init__(self, *, bar_width: int) -> None:
+        super().__init__()
+        self._bar = BarColumn(bar_width=bar_width)
+
+    def render(self, task: Task) -> RenderableType:
+        if task.total is None:
+            return Text("")
+        return self._bar.render(task)
+
+
 class RichProgressReporter:
-    """Render one transient, continuously animated Rich status line."""
+    """Render one transient, continuously animated Rich progress line.
+
+    Stages that report a total get a filling bar. A stage that is one opaque
+    call — the `opencode run` behind outcome synthesis — has no total to fill,
+    so its bar pulses and the elapsed timer carries the only honest number:
+    fabricating a fraction there would read as a bar stuck partway.
+    """
 
     def __init__(self, console: Console) -> None:
         self._console = console
-        self._status: Status | None = None
+        self._progress = Progress(
+            SpinnerColumn(),
+            TextColumn(
+                "{task.description}",
+                # The narrow-terminal contract: shorten the label rather than
+                # wrap the line, so the frame below it never moves.
+                table_column=Column(no_wrap=True, overflow="ellipsis"),
+            ),
+            _BarWhenCounted(bar_width=20),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        )
+        self._task: TaskID | None = None
         self._stage: ProgressStage | None = None
         self._total: int | None = None
         self._completed = 0
 
-    def _description(self) -> Padding:
+    def _description(self) -> str:
         assert self._stage is not None
         label = _STAGE_LABELS[self._stage]
-        description = label
         if self._total is not None:
-            description = f"{label} {self._completed}/{self._total}"
-        text = Text(description, overflow="ellipsis", no_wrap=True)
-        return Padding(text, (0, 0))
+            return f"{label} {self._completed}/{self._total}"
+        return label
 
     def start(
         self,
@@ -71,24 +116,31 @@ class RichProgressReporter:
         self._stage = stage
         self._total = total
         self._completed = 0
-        description = self._description()
-        if self._status is None:
-            self._status = self._console.status(description, spinner="dots")
-            self._status.start()
+        # Each stage gets a fresh task rather than a reset one: Rich's `reset`
+        # and `update` both ignore `total=None`, so a counted stage handing off
+        # to an uncounted one would keep the old total and show a bar frozen at
+        # zero. A new task also restarts the elapsed timer per stage.
+        if self._task is None:
+            self._progress.start()
         else:
-            self._status.update(description)
+            self._progress.remove_task(self._task)
+        self._task = self._progress.add_task(self._description(), total=total)
 
     def advance(self, completed: int) -> None:
         self._completed = completed
-        if self._status is not None:
-            self._status.update(self._description())
+        if self._task is not None:
+            self._progress.update(
+                self._task,
+                completed=completed,
+                description=self._description(),
+            )
 
     def finish(self) -> None:
-        status = self._status
-        self._status = None
+        task = self._task
+        self._task = None
         self._stage = None
-        if status is not None:
-            status.stop()
+        if task is not None:
+            self._progress.stop()
 
 
 class ConsoleReporter:
@@ -110,7 +162,11 @@ class ConsoleReporter:
     @contextmanager
     def progress(self) -> Iterator[ProgressReporter]:
         progress: ProgressReporter
-        if self.quiet:
+        # `is_interactive` is exactly Rich's own "can I animate here" test:
+        # a terminal that is not a dumb one. Off a terminal the live region
+        # cannot be drawn or erased, and `Progress.stop` would leave a stray
+        # newline in a redirected stream, so nothing is rendered at all.
+        if self.quiet or not self.progress_console.is_interactive:
             progress = NullProgressReporter()
         else:
             progress = RichProgressReporter(self.progress_console)
