@@ -98,8 +98,11 @@ same one "Print report path" uses) with the entry's `output_path`, title
 - History is read per entry into the screen, not cached in state, so a fresh
   read on each render keeps the list current if a report was just generated.
   (Entries are immutable dataclasses; re-reading is cheap at report scale.)
-- Long paths fold instead of truncating, matching the CLI table's
-  `overflow="fold"` behavior.
+- Long paths truncate with an ellipsis like every other TUI row (the TUI
+  prints one display line per row and never wraps); the full path is one
+  Enter away on the path screen. This differs from the CLI table's
+  `overflow="fold"` and is deliberate: a wrapped row would break the
+  row-indexed frame painting.
 
 ## Testing
 
