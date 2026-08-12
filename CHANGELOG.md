@@ -12,7 +12,7 @@ All notable changes to this project are documented in this file.
   repository, title, branch, the first goal and one outcome, each whole, since
   that text is exactly what it reads to decide whether two sessions are the
   same work. At about 580 bytes a session rather than several kilobytes, the
-  default `report.quick_review_max_evidence_bytes` of `40000` carries around 70
+  default `report.quick_review_max_evidence_bytes` of `40000` carries around 65
   of the most recent sessions instead of seventeen; the rest skip the model and
   stay as ungrouped candidates, with a warning naming how many were held back
   on screen and in the report. Raising that budget is not simply a matter of a

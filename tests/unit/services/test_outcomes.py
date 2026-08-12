@@ -212,18 +212,27 @@ def dated(session_id: str, *, day: int) -> ResolvedSession:
     )
 
 
-def compact_entry_size(session: ResolvedSession) -> int:
-    """The payload cost of one session, measured the way the service measures it."""
-
+def compact_entry(session: ResolvedSession) -> outcomes._CompactSession:
     extracted = outcomes.extract_evidence(session)
     redacted = outcomes.SessionEvidence.model_validate(
         outcomes.redact_value(extracted.model_dump(mode="json"))
     )
-    entry = outcomes._compact_session(
+    return outcomes._compact_session(
         redacted,
         branch=session.session.branch or session.repository.branch,
     )
-    return len(entry.as_json().encode())
+
+
+def compact_entry_size(session: ResolvedSession) -> int:
+    """One session's entry on its own, without the index that carries it."""
+
+    return len(compact_entry(session).as_json().encode())
+
+
+def payload_size(sessions: list[ResolvedSession]) -> int:
+    """The bytes these sessions actually cost as one sent payload."""
+
+    return len(outcomes._index_json([compact_entry(session) for session in sessions]).encode())
 
 
 def full_evidence_size(session: ResolvedSession) -> int:
@@ -697,7 +706,7 @@ def test_sessions_past_the_budget_never_reach_the_model() -> None:
 
     OutcomeSynthesisService(
         runner,
-        max_evidence_bytes=compact_entry_size(sessions[0]) + compact_entry_size(sessions[1]),
+        max_evidence_bytes=payload_size(sessions[:2]),
     ).synthesize(scan_with(sessions))
 
     assert sent_session_ids(runner) == ["ses-a", "ses-b"]
@@ -739,7 +748,7 @@ def test_the_most_recent_sessions_are_the_ones_synthesized() -> None:
 
     OutcomeSynthesisService(
         runner,
-        max_evidence_bytes=compact_entry_size(sessions[0]) + compact_entry_size(sessions[1]),
+        max_evidence_bytes=payload_size([sessions[1], sessions[2]]),
     ).synthesize(scan_with(sessions))
 
     assert sent_session_ids(runner) == ["ses-new", "ses-mid"]
@@ -752,6 +761,22 @@ def test_a_session_larger_than_the_whole_budget_is_still_sent() -> None:
     OutcomeSynthesisService(runner, max_evidence_bytes=1).synthesize(scan_with(sessions))
 
     assert sent_session_ids(runner) == ["ses-a"]
+
+
+def test_the_budget_counts_the_index_around_the_entries_not_just_the_entries() -> None:
+    """The entries alone fit; the payload that carries them does not."""
+
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+    budget = compact_entry_size(sessions[0]) + compact_entry_size(sessions[1]) + 1
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(
+        scan_with(sessions)
+    )
+
+    assert budget < payload_size(sessions)
+    assert sent_session_ids(runner) == ["ses-a"]
+    assert len(runner.calls[0]["transcript"].encode()) <= budget
 
 
 def test_undated_sessions_keep_their_scan_order_behind_dated_ones() -> None:
@@ -959,6 +984,63 @@ def test_branch_is_redacted_before_it_reaches_the_model() -> None:
     assert sent_sessions(runner)[0]["branch"] == "token=[REDACTED]"
 
 
+def test_a_linkage_signal_repeating_the_redacted_branch_is_observed_locally() -> None:
+    """The model can only echo the branch it was shown, so both sides are redacted."""
+
+    branch = "feature/checkout.rendering.regression"
+    redacted_branch = outcomes.redact_text(branch)
+    assert redacted_branch != branch
+    runner = StaticRunner(
+        json.dumps(
+            cross_repo_payload(
+                confidence="high",
+                linkage_signals=[
+                    {"kind": "branch_or_issue", "value": redacted_branch},
+                    {"kind": "direct_reference", "value": "same feature rollout"},
+                ],
+            )
+        )
+    )
+
+    result = OutcomeSynthesisService(runner).synthesize(
+        scan_with(
+            [
+                resolved(
+                    "ses-a",
+                    "repo-a",
+                    branch=branch,
+                    activities=[
+                        activity(
+                            "a-user",
+                            ActivityType.USER_MESSAGE,
+                            "Implement same feature rollout for the API.",
+                        )
+                    ],
+                ),
+                resolved(
+                    "ses-b",
+                    "repo-b",
+                    branch=branch,
+                    activities=[
+                        activity(
+                            "b-user",
+                            ActivityType.USER_MESSAGE,
+                            "Implement same feature rollout for the UI.",
+                        )
+                    ],
+                ),
+            ]
+        )
+    )
+
+    assert [session["branch"] for session in sent_sessions(runner)] == [redacted_branch] * 2
+    assert len(result.outcomes) == 1
+    assert {ref.repository_id for ref in result.outcomes[0].evidence_refs} == {
+        "repo-a",
+        "repo-b",
+    }
+
+
 def test_sessions_without_branch_goal_or_outcome_send_no_blank_fields() -> None:
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
 
@@ -989,7 +1071,7 @@ def test_long_goal_and_outcome_text_reaches_the_model_whole() -> None:
 
 def test_the_budget_now_buys_far_more_sessions_than_full_evidence_would() -> None:
     sessions = [dated(f"ses-{index}", day=9 - index) for index in range(3)]
-    budget = sum(compact_entry_size(session) for session in sessions)
+    budget = payload_size(sessions)
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-0"])))
 
     result = OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(
@@ -1000,6 +1082,37 @@ def test_the_budget_now_buys_far_more_sessions_than_full_evidence_would() -> Non
     assert result.warnings == []
     # The same budget would not have covered even one session of full evidence.
     assert full_evidence_size(sessions[0]) > budget
+
+
+def redaction_rewriting_session_ids():
+    """Redaction that renames the session it redacts, as it may one day do."""
+
+    original = outcomes.redact_value
+
+    def redact(value):
+        redacted = original(value)
+        if isinstance(redacted, dict) and "session_id" in redacted:
+            return {**redacted, "session_id": f"anon-{redacted['session_id']}"}
+        return redacted
+
+    return redact
+
+
+def test_synthesis_survives_redaction_rewriting_the_session_id(monkeypatch) -> None:
+    """Every dict is keyed on the id redaction produced, which is the id sent."""
+
+    monkeypatch.setattr(outcomes, "redact_value", redaction_rewriting_session_ids())
+    sessions = [dated("ses-old", day=3), dated("ses-new", day=9)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["anon-ses-new"])))
+
+    result = OutcomeSynthesisService(runner, max_evidence_bytes=100_000).synthesize(
+        scan_with(sessions)
+    )
+
+    assert sent_session_ids(runner) == ["anon-ses-new", "anon-ses-old"]
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
+        "anon-ses-new"
+    ]
 
 
 def test_grouping_still_builds_evidence_refs_the_model_never_saw() -> None:

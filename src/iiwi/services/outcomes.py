@@ -81,6 +81,16 @@ class _CompactIndex(BaseModel):
     sessions: list[_CompactSession]
 
 
+def _index_json(sessions: list[_CompactSession]) -> str:
+    """The exact payload the model is sent.
+
+    The budget is measured through this function and the transcript is built by
+    it, so what is counted and what is sent cannot drift apart.
+    """
+
+    return _CompactIndex(sessions=sessions).model_dump_json(indent=2, exclude_none=True)
+
+
 _ALLOWED_LINKAGE_KINDS = frozenset({"branch_or_issue", "direct_reference"})
 _COMMIT_PATTERN = re.compile(
     r"\b(?:commit|revision|rev)\b\s*(?:[:=]\s*)?(?P<commit>[0-9a-f]{7,40})\b",
@@ -111,20 +121,31 @@ class OutcomeSynthesisService:
                 extracted = extract_evidence(resolved)
                 redacted = redact_value(extracted.model_dump(mode="json"))
                 evidence = SessionEvidence.model_validate(redacted)
-                evidence_by_session[extracted.session_id] = evidence
+                # Every dict here is keyed on the post-redaction session id,
+                # because that is the id the model is given and the id every
+                # lookup downstream carries.
+                evidence_by_session[evidence.session_id] = evidence
                 compact_by_session[evidence.session_id] = _compact_session(
                     evidence,
                     branch=resolved.session.branch or resolved.repository.branch,
                 )
                 if resolved.session.created_at is not None:
-                    started_at[extracted.session_id] = resolved.session.created_at
+                    started_at[evidence.session_id] = resolved.session.created_at
                 local_texts_by_session[evidence.session_id] = _local_texts(
                     evidence,
+                    # These come from the resolved session rather than the
+                    # redacted evidence, so they are redacted here: the corpus
+                    # validates model output, and the model only ever saw the
+                    # redacted form.
                     extra_values=[
-                        resolved.session.branch,
-                        resolved.repository.branch,
-                        resolved.repository.repository_id,
-                        resolved.repository.display_name,
+                        redact_text(value)
+                        for value in (
+                            resolved.session.branch,
+                            resolved.repository.branch,
+                            resolved.repository.repository_id,
+                            resolved.repository.display_name,
+                        )
+                        if value
                     ],
                 )
             except Exception:  # Extraction failures remain visible candidates.
@@ -157,9 +178,7 @@ class OutcomeSynthesisService:
 
         try:
             output = self._runner.run(
-                transcript=_CompactIndex(sessions=sent).model_dump_json(
-                    indent=2, exclude_none=True
-                ),
+                transcript=_index_json(sent),
                 prompt=build_outcome_prompt(),
                 title="Iiwi outcome synthesis",
             )
@@ -506,6 +525,12 @@ def _sessions_within_budget(
 ) -> list[_CompactSession]:
     """Take sessions in order while the serialized payload stays in budget.
 
+    The per-entry sizes only choose candidates: they miss the index envelope,
+    the deeper indentation each entry picks up inside it, and the separators
+    between entries, so the selection is then measured as it will actually be
+    sent and trimmed from the oldest end until it fits. Serializing repeatedly
+    costs nothing here — this runs once per synthesis and usually trims nothing.
+
     The first session is always taken: a payload the model can refuse is still
     worth more than an empty one, and the sessions left behind stay visible as
     ungrouped candidates either way.
@@ -519,6 +544,8 @@ def _sessions_within_budget(
             break
         selected.append(entry)
         total += size
+    while len(selected) > 1 and len(_index_json(selected).encode()) > max_bytes:
+        selected.pop()
     return selected
 
 
