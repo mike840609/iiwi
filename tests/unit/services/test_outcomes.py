@@ -851,26 +851,22 @@ def test_sessions_without_branch_goal_or_outcome_send_no_blank_fields() -> None:
     ]
 
 
-def test_long_goal_and_outcome_text_is_truncated_for_the_model() -> None:
+def test_long_goal_and_outcome_text_reaches_the_model_whole() -> None:
+    """Most real goals run past 120 characters, and the overlap is the signal."""
+
+    goal = "Investigate the regression. " * 10
+    claim = "Completed the regression fix. " * 10
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
 
     OutcomeSynthesisService(runner).synthesize(
-        scan_with(
-            [
-                detailed(
-                    "ses-a",
-                    goal="Investigate the regression. " * 10,
-                    claim="Completed the regression fix. " * 10,
-                )
-            ]
-        )
+        scan_with([detailed("ses-a", goal=goal, claim=claim)])
     )
 
     sent = sent_sessions(runner)[0]
-    assert len(sent["goal"]) == 120
-    assert sent["goal"].startswith("Investigate the regression.")
-    assert len(sent["outcome"]) == 120
-    assert sent["outcome"].startswith("Completed the regression fix.")
+    assert len(goal) > 120
+    assert sent["goal"] == goal.strip()
+    assert len(claim) > 120
+    assert sent["outcome"] == claim.strip()
 
 
 def test_the_budget_now_buys_far_more_sessions_than_full_evidence_would() -> None:

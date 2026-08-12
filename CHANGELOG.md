@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Quick Review sends each session's goal and outcome whole. They were cut to
+  120 characters on the way to the model, which saved about 30% of the payload
+  by discarding most of nearly every goal — measured against a real store, the
+  median first goal runs 299 characters and 87% ran past the limit — and that
+  text is exactly what the model reads to decide whether two sessions are the
+  same work. Extraction already caps evidence text, so the second cut bought
+  nothing but lost signal. Sessions now cost about 580 bytes each instead of
+  400, so a given `report.quick_review_max_evidence_bytes` covers fewer of
+  them; the ones it does cover arrive intact. The default budget sits close to
+  what a local model of the default class can still answer, so covering more
+  sessions is not simply a matter of raising the number.
 - Quick Review works on a full week again. Synthesis sent every selected
   session's evidence in one `opencode run` and demanded strict JSON back, so a
   realistic selection — over a hundred sessions, more than a megabyte — came

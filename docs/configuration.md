@@ -183,6 +183,17 @@ Quick Review always fell back to the session-based report. Synthesis sends the
 most recent sessions that fit; the sessions beyond the budget become ungrouped
 candidates in the review, and a warning names how many were held back.
 
+Each session costs roughly 580 bytes of that budget, so the default of `40000`
+covers about the 70 most recent sessions and leaves the rest as ungrouped
+candidates. Raising it has a real ceiling rather than free headroom: against a
+busy week of 175 sessions, `40000` returned grouped outcomes, `80000` came back
+without valid outcome JSON, and `120000` ran past the 600-second
+`run_timeout_seconds`. Those runs used the default local model, so a more capable
+one may reach further — raise the budget a step at a time and confirm synthesis
+still succeeds. When it does not, Quick Review's recovery screen still offers the
+session-based report, so a budget set too high degrades the review rather than
+breaking it.
+
 ## OpenCode run settings
 
 The default narrative report runs the locally installed `opencode run`. These

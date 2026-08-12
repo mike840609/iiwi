@@ -82,7 +82,6 @@ class _CompactIndex(BaseModel):
 
 
 _ALLOWED_LINKAGE_KINDS = frozenset({"branch_or_issue", "direct_reference"})
-_COMPACT_TEXT_LIMIT = 120
 _COMMIT_PATTERN = re.compile(
     r"\b(?:commit|revision|rev)\b\s*(?:[:=]\s*)?(?P<commit>[0-9a-f]{7,40})\b",
     re.IGNORECASE,
@@ -470,10 +469,17 @@ def _omit_if_blank(value: str | None) -> str | None:
 
 
 def _first_text(items: list[EvidenceItem]) -> str | None:
+    """The first non-blank text, whole.
+
+    Extraction already caps evidence text; shortening it again here would only
+    strip the overlap grouping reads to decide whether two sessions are the same
+    work. How many sessions fit is the budget's decision, not this function's.
+    """
+
     for item in items:
         text = _omit_if_blank(item.text)
         if text is not None:
-            return text[:_COMPACT_TEXT_LIMIT]
+            return text
     return None
 
 
