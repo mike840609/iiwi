@@ -2,27 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.11.0 - 2026-08-12
 
-- A grouped outcome's title reads as one line. When the model's proposed title
-  is not supported by the evidence, the fallback used to join every session
-  title in the group with slashes, so a group of eleven rendered as eleven
-  clauses. It now names the session with the most extracted evidence and counts
-  the rest: `The real work and 10 more sessions`. A multi-repository group
-  still joins repository ids with ` / `, unchanged.
-- A proposed title survives when the evidence substantively supports it. The
-  check required every word longer than two characters to appear in the
-  evidence; across one real synthesis that refused five of ten proposals over
-  words like `polish` and `housekeeping` while every substantive term matched.
-  Eighty percent of the words now suffice, recovering four of the five — the
-  66.7% case is still refused. Status and impact keep their existing, stricter
-  checks.
-- Iiwi no longer reports on itself. Every `opencode run` iiwi invokes leaves a
-  session in the OpenCode store, and the next scan was picking those up as
-  work — fifteen of them in one real 30-day window. They are dropped during the
-  scan now, so they are absent from Quick Review, Browse Activity, the
-  session-based report, and every session count — except the Usage section,
-  an external `opencode stats` aggregate the scan cannot filter.
+- Quick Review. `Generate report` no longer writes a file straight away: it
+  opens a review of evidence-backed outcomes synthesized from the sessions you
+  selected, and nothing is written until you approve it. Each outcome can be
+  edited, reordered, included or excluded; a cross-repository outcome can be
+  split back into its source groups, and an outcome the sessions do not cover
+  can be added by hand and is labelled as such in the report. The first five
+  candidates are selected, the rest wait under **More candidates**, and a
+  session whose evidence extraction failed stays visible under **Ungrouped
+  candidates** rather than disappearing. Every title, status, impact and
+  reference is reconstructed from the extracted evidence rather than taken from
+  the model's prose — the model proposes the grouping, and a proposal the
+  evidence does not support is replaced by one built from the evidence itself.
+  `p` renders the exact draft without writing it; `g` writes that draft, at the
+  Report type and Detail on screen.
+- **The default Detail for interactive reports changes from Full to Brief.**
+  `Generate report` now routes through Quick Review, Quick Review opens on the
+  report type saved in `report.quick_review_report_type`, and that setting
+  defaults to `manager` — which defaults to Brief. Brief drops the files,
+  sessions and usage sections. To keep the old output, either press Enter on
+  the Quick Review `Report` row to switch to Engineering, set
+  `iiwi config set report.quick_review_report_type engineering`, or change
+  Detail under Advanced settings, which is remembered for the run.
 - Quick Review works on a full week again. Synthesis sent every selected
   session's evidence in one `opencode run` and demanded strict JSON back, so a
   realistic selection — over a hundred sessions, more than a megabyte — came
@@ -38,20 +41,31 @@ All notable changes to this project are documented in this file.
   larger number: measured over a real week, `40000` returns grouped outcomes,
   `80000` comes back without valid JSON, and `120000` runs past the 600-second
   timeout.
-- **The default Detail for interactive reports changes from Full to Brief.**
-  `Generate report` now routes through Quick Review, Quick Review opens on the
-  report type saved in `report.quick_review_report_type`, and that setting
-  defaults to `manager` — which defaults to Brief. Brief drops the files,
-  sessions and usage sections. To keep the old output, either press Enter on
-  the Quick Review `Report` row to switch to Engineering, set
-  `iiwi config set report.quick_review_report_type engineering`, or change
-  Detail under Advanced settings, which is remembered for the run.
+- Iiwi no longer reports on itself. Every `opencode run` iiwi invokes leaves a
+  session in the OpenCode store, and the next scan was picking those up as
+  work — fifteen of them in one real 30-day window. They are dropped during the
+  scan now, so they are absent from Quick Review, Browse Activity, the
+  session-based report, and every session count — except the Usage section,
+  an external `opencode stats` aggregate the scan cannot filter.
 - Quick Review no longer overflows the terminal. With both disclosure sections
   open on a short, narrow terminal the focused outcome's block was printed in
   full regardless of the budget, so the frame ran one row past the last line
   and the paint left a torn screen behind. The body is clamped where it is
   printed: the scroll indicators go first, then the focused block's trailing
   detail lines, and its summary row always stays visible.
+- A grouped outcome's title reads as one line. When the model's proposed title
+  is not supported by the evidence, the fallback used to join every session
+  title in the group with slashes, so a group of eleven rendered as eleven
+  clauses. It now names the session with the most extracted evidence and counts
+  the rest: `The real work and 10 more sessions`. A multi-repository group
+  still joins repository ids with ` / `, unchanged.
+- A proposed title survives when the evidence substantively supports it. The
+  check required every word longer than two characters to appear in the
+  evidence; across one real synthesis that refused five of ten proposals over
+  words like `polish` and `housekeeping` while every substantive term matched.
+  Eighty percent of the words now suffice, recovering four of the five — the
+  66.7% case is still refused. Status and impact keep their existing, stricter
+  checks.
 - `J`/`K` reorders within the outcome's own section. Quick Review lists
   primary, more, and ungrouped outcomes separately, but reordering worked on
   the global rank, so moving a primary outcome past a candidate hidden behind a
