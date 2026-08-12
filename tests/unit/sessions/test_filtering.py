@@ -1,9 +1,15 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from iiwi.models.session import ActivityType, AgentSession, SessionActivity
 from iiwi.models.time_range import DateRange
-from iiwi.sessions.filtering import filter_session_to_period
+from iiwi.sessions.filtering import (
+    IIWI_SESSION_TITLE_PREFIX,
+    filter_session_to_period,
+    is_iiwi_authored,
+)
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -122,3 +128,45 @@ def test_activity_without_timestamp_is_excluded() -> None:
     )
 
     assert filter_session_to_period(session, period) is None
+
+
+def _titled(title: str | None) -> AgentSession:
+    return AgentSession(harness="opencode", session_id="s1", title=title)
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "iiwi-internal: outcome synthesis",
+        "iiwi-internal: narrative 2026-08-05 to 2026-08-12",
+        "Iiwi outcome synthesis",
+        "Iiwi narrative summary",
+        "Iiwi - 2026-08-05 to 2026-08-12",
+    ],
+)
+def test_titles_iiwi_writes_are_recognized(title: str) -> None:
+    assert is_iiwi_authored(_titled(title)) is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Iiwi main menu rework",
+        "Iiwi outcome synthesis rewrite",
+        "iiwi-internal notes",
+        "agent-worklog 更名 iiwi 進度整理",
+        "Iiwi - not a date range",
+        "Iiwi - 2026-08-05 to yesterday",
+    ],
+)
+def test_human_titles_are_not_dropped(title: str) -> None:
+    assert is_iiwi_authored(_titled(title)) is False
+
+
+@pytest.mark.parametrize("title", [None, "", "   "])
+def test_absent_titles_are_not_iiwi_authored(title: str | None) -> None:
+    assert is_iiwi_authored(_titled(title)) is False
+
+
+def test_prefix_constant_matches_what_the_predicate_accepts() -> None:
+    assert is_iiwi_authored(_titled(f"{IIWI_SESSION_TITLE_PREFIX}anything")) is True
