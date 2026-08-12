@@ -52,6 +52,19 @@ A value the settings would reject is refused and asked again, so a typo partway 
 Both need a terminal. In a pipeline or in CI there is nobody to answer, so they exit
 with code 3 rather than reading from stdin; pass the value as an argument there.
 
+The interactive menu's **Settings** entry opens a full-screen editor in the
+same style as the rest of the menu: every setting is a row showing its
+current value. Choice rows (booleans, the Quick Review report type, and the
+harness source) list every option separated by ` / `, with the choice in
+force highlighted; `←→` cycles them. Free-text rows (model, paths, numbers,
+`exclude_repositories`) open an inline editor on Enter, pre-filled with the
+current value — Enter keeps it, an empty value restores the default, Esc
+cancels. The timezone row cycles a shortlist of common zones; Enter types
+any IANA zone. Values set by an `IIWI_*` environment variable are shown
+with an `[environment]` tag and cannot be edited from the file. Every
+change is written to the settings file immediately; `config list` reflects
+it right away.
+
 Keys are the lowercase, dot-separated form of the variable name, so
 `IIWI_HARNESSES__OPENCODE__CLI__MODEL` is `opencode.cli.model` and
 `IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE` is
