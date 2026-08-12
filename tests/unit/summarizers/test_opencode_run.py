@@ -1,8 +1,10 @@
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
+from iiwi.models.report_options import DetailLevel
 from iiwi.process import CommandResult
 from iiwi.summarizers.opencode_run import (
     OpenCodeRunError,
@@ -43,6 +45,16 @@ def test_build_summary_prompt_forbids_inventing_content() -> None:
     prompt = build_summary_prompt(7)
 
     assert "attached transcript" in prompt
+
+
+def test_build_summary_prompt_changes_evidence_instructions_for_brief_detail() -> None:
+    brief = build_summary_prompt(7, detail=DetailLevel.BRIEF)
+    full = build_summary_prompt(7, detail=DetailLevel.FULL)
+
+    assert "concise outcomes and impact" in brief
+    assert "Do not include session IDs, file lists, command lists, or Usage." in brief
+    assert "#### Related Sessions" not in brief
+    assert "#### Related Sessions" in full
 
 
 def test_run_invokes_opencode_with_transcript_file(tmp_path: Path) -> None:
@@ -105,3 +117,49 @@ def test_run_raises_when_stdout_file_is_never_written(tmp_path: Path) -> None:
 
     with pytest.raises(OpenCodeRunError, match="no output"):
         driver.run(transcript="t", prompt="p", title="title")
+
+
+def test_run_removes_owned_tempdir_on_success_and_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[Path] = []
+
+    def mkdtemp(*, prefix: str) -> str:
+        path = tmp_path / f"{prefix}{len(created)}"
+        path.mkdir()
+        created.append(path)
+        return str(path)
+
+    monkeypatch.setattr(tempfile, "mkdtemp", mkdtemp)
+
+    OpenCodeRunner(runner=RecordingRunner(output="ok")).run(
+        transcript="t",
+        prompt="p",
+        title="title",
+    )
+    with pytest.raises(OpenCodeRunError, match="failed"):
+        OpenCodeRunner(runner=RecordingRunner(returncode=1, stderr="failed")).run(
+            transcript="t",
+            prompt="p",
+            title="title",
+        )
+
+    assert [path.exists() for path in created] == [False, False]
+
+
+def test_run_translates_tempfile_io_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def mkdtemp(*, prefix: str) -> str:
+        del prefix
+        raise OSError("no temp space")
+
+    monkeypatch.setattr(tempfile, "mkdtemp", mkdtemp)
+
+    with pytest.raises(OpenCodeRunError, match="no temp space"):
+        OpenCodeRunner(runner=RecordingRunner(output="ok")).run(
+            transcript="t",
+            prompt="p",
+            title="title",
+        )

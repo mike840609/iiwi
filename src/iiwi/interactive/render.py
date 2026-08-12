@@ -22,6 +22,12 @@ from iiwi.interactive.density import (
 )
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.selection import SelectionMark, SelectionState, noise_reason
+from iiwi.models.outcome import (
+    Outcome,
+    OutcomeBucket,
+    OutcomeOrigin,
+    OutcomeReviewDraft,
+)
 from iiwi.models.repository import ResolvedSession
 from iiwi.models.session import ActivityType, AgentSession
 from iiwi.models.time_range import DateRange
@@ -34,6 +40,12 @@ class VisibleRow:
     kind: str
     repository_id: str
     session_id: str | None = None
+
+
+@dataclass(frozen=True)
+class OutcomeReviewRow:
+    kind: str
+    outcome_id: str | None = None
 
 
 _MAIN_OPTIONS = ["Review Activity", "Generate Report", "Check Setup", "Settings"]
@@ -50,12 +62,10 @@ _MAIN_DESCRIPTIONS = {
 _PRIMARY_SETUP_FIELDS = ["Harness", "Period"]
 _ADVANCED_SETUP_FIELDS = ["Detail", "Subagents", "Narrative", "Sanitize"]
 _ADVANCED_ROW = "Advanced settings"
-# Report setup begins with two terminal actions. Preview uses the same report
-# pipeline in dry-run mode, but dry-run is an execution choice rather than a
-# persistent setting the user has to toggle and then remember to undo.
+# Report setup begins with its one terminal action. Previewing lives on Quick
+# Review, one screen later, where the outcomes it would render are on screen.
 _GENERATE_ROW = "Generate report"
-_PREVIEW_ROW = "Preview report"
-_ACTION_ROWS = [_GENERATE_ROW, _PREVIEW_ROW]
+_ACTION_ROWS = [_GENERATE_ROW]
 _SETTINGS_LABEL = "Settings"
 _SETUP_LABEL_CELLS = 18
 # Each row's name and value say what it is set to, never what it does. One line
@@ -69,10 +79,8 @@ _SETUP_HELP = {
     "Narrative": "Write the prose review with the local opencode run, or emit structure only.",
     "Sanitize": "Ask OpenCode to redact session content on export.",
     "Generate report": "Scan the period and produce the report.",
-    "Preview report": "Preview the report without writing a file.",
 }
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
-_DRY_RUN_RESULT_OPTIONS = ["Preview report", "Back to main menu", "Generate another report"]
 _ERROR_HINTS = [
     "↑↓ jk",
     "PgUp/PgDn Detail",
@@ -150,6 +158,25 @@ _PROJECT_URL = "https://github.com/mike840609/iiwi"
 _PROJECT_LABEL = "github.com/mike840609/iiwi"
 _REVIEW_SUBTITLE = "Select sessions to include in the report:"
 _BROWSE_SUBTITLE = "Select a repository to explore:"
+# The two disclosure rows live in the same expansion set as the per-outcome
+# evidence toggles, so they need ids no outcome can own. Defined once here and
+# imported by the controller, because the cursor and the highlight must key off
+# the same two strings.
+MORE_CANDIDATES_SECTION = "__more_candidates__"
+UNGROUPED_CANDIDATES_SECTION = "__ungrouped_candidates__"
+_OUTCOME_REVIEW_HINTS = [
+    "↑↓ jk",
+    "Space Include",
+    "e Edit",
+    "J/K Reorder",
+    "v Evidence",
+    "s Split",
+    "a Add",
+    "p Preview",
+    "g Generate",
+    "? Help",
+    "b Back",
+]
 
 
 def main_menu_options() -> list[str]:
@@ -171,12 +198,6 @@ def report_generate_row() -> str:
     """Return the write-to-disk action label."""
 
     return _GENERATE_ROW
-
-
-def report_preview_row() -> str:
-    """Return the no-write preview action label."""
-
-    return _PREVIEW_ROW
 
 
 def _option(label: str, index: int, selected: int) -> str:
@@ -240,6 +261,443 @@ def _print_hints(console: Console, hints: list[str]) -> None:
     """
     for line in _hint_lines(hints, console.size.width):
         _print_viewport_line(console, line, style="dim")
+
+
+def outcome_review_rows(draft: OutcomeReviewDraft) -> list[OutcomeReviewRow]:
+    """Return every structural Quick Review row in display order.
+
+    More and ungrouped outcomes remain in this structural list so callers can
+    preserve their identity. Rendering filters those children until their
+    disclosure row is open.
+    """
+
+    ordered = draft.ordered()
+    rows = [OutcomeReviewRow("settings")]
+    rows.extend(
+        OutcomeReviewRow("outcome", outcome.id)
+        for outcome in ordered
+        if outcome.bucket is OutcomeBucket.PRIMARY
+    )
+    more = [outcome for outcome in ordered if outcome.bucket is OutcomeBucket.MORE]
+    if more:
+        rows.append(OutcomeReviewRow("more"))
+        rows.extend(OutcomeReviewRow("outcome", outcome.id) for outcome in more)
+    ungrouped = [
+        outcome for outcome in ordered if outcome.bucket is OutcomeBucket.UNGROUPED
+    ]
+    if ungrouped:
+        rows.append(OutcomeReviewRow("ungrouped"))
+        rows.extend(OutcomeReviewRow("outcome", outcome.id) for outcome in ungrouped)
+    rows.extend(
+        [
+            OutcomeReviewRow("blockers"),
+            OutcomeReviewRow("next_week"),
+            OutcomeReviewRow("preview"),
+            OutcomeReviewRow("generate"),
+        ]
+    )
+    return rows
+
+
+def visible_outcome_review_rows(
+    draft: OutcomeReviewDraft,
+    expanded_evidence: set[str],
+) -> list[OutcomeReviewRow]:
+    """Return the Quick Review rows actually on screen, in cursor order.
+
+    This is the one list the cursor addresses and the highlight paints, so the
+    controller navigates it rather than deriving its own copy.
+    """
+
+    outcomes = {outcome.id: outcome for outcome in draft.outcomes}
+    more_open = MORE_CANDIDATES_SECTION in expanded_evidence
+    ungrouped_open = UNGROUPED_CANDIDATES_SECTION in expanded_evidence
+    visible: list[OutcomeReviewRow] = []
+    for row in outcome_review_rows(draft):
+        if row.kind != "outcome" or row.outcome_id is None:
+            visible.append(row)
+            continue
+        outcome = outcomes[row.outcome_id]
+        if outcome.bucket is OutcomeBucket.MORE and not more_open:
+            continue
+        if outcome.bucket is OutcomeBucket.UNGROUPED and not ungrouped_open:
+            continue
+        visible.append(row)
+    return visible
+
+
+@dataclass(frozen=True)
+class _OutcomeReviewBlock:
+    row: OutcomeReviewRow
+    lines: list[Text]
+
+
+def _single_line(value: str) -> str:
+    """Collapse hard line breaks in fields whose viewport contract is one row."""
+
+    return " ".join(value.splitlines())
+
+
+def _truncated_text(text: Text, width: int) -> Text:
+    fitted = text.copy()
+    fitted.truncate(max(1, width), overflow="ellipsis")
+    return fitted
+
+
+def _labelled_wrapped_lines(
+    console: Console,
+    *,
+    indent: str,
+    label: str,
+    value: str,
+    style: str = "",
+    limit: int | None = None,
+) -> list[Text]:
+    """Wrap a value beside a fixed label and return its actual display lines."""
+
+    prefix = f"{indent}{label:<12}"
+    available = max(1, console.size.width - cell_len(prefix))
+    wrapped = list(
+        Text(value, style=style).wrap(
+            console,
+            available,
+            overflow="fold",
+            no_wrap=False,
+        )
+    ) or [Text("")]
+    if limit is not None:
+        truncated = len(wrapped) > limit
+        wrapped = wrapped[:limit]
+        if truncated and wrapped:
+            wrapped[-1].append("…", style=style)
+    lines: list[Text] = []
+    for index, value_line in enumerate(wrapped):
+        lead = prefix if index == 0 else " " * cell_len(prefix)
+        lines.append(
+            _truncated_text(Text.assemble((lead, "dim"), value_line), console.size.width)
+        )
+    return lines
+
+
+def _outcome_summary(outcome: Outcome, *, focused: bool, width: int) -> Text:
+    style = _CURSOR_STYLE if focused else ""
+    summary = Text.assemble(
+        (_CURSOR if focused else " ", style),
+        " ",
+        ("●" if outcome.included else "○", "green" if outcome.included else "dim"),
+        " ",
+    )
+    if outcome.origin is OutcomeOrigin.USER_ADDED:
+        summary.append("User-added ", style="magenta")
+    if outcome.bucket is OutcomeBucket.UNGROUPED:
+        summary.append("Ungrouped ", style="yellow")
+    summary.append(_single_line(outcome.title), style=style)
+    return _truncated_text(summary, width)
+
+
+def _evidence_detail_lines(console: Console, outcome: Outcome) -> list[Text]:
+    lines: list[Text] = []
+    for reference in outcome.evidence_refs:
+        values = [
+            ("Repository", reference.repository_id),
+            ("Session", reference.session_id),
+            ("Commit", reference.commit),
+            ("File", reference.file),
+        ]
+        lines.extend(
+            _labelled_wrapped_lines(
+                console,
+                indent="      ",
+                label=label,
+                value=value,
+                limit=1,
+            )[0]
+            for label, value in values
+            if value
+        )
+    return lines
+
+
+def _outcome_block(
+    console: Console,
+    outcome: Outcome,
+    *,
+    focused: bool,
+    evidence_expanded: bool,
+    evidence_details: bool = True,
+    impact_line_limit: int | None = None,
+) -> list[Text]:
+    lines = [_outcome_summary(outcome, focused=focused, width=console.size.width)]
+    if not focused:
+        return lines
+    status = outcome.status.value.replace("_", " ").capitalize()
+    lines.extend(
+        _labelled_wrapped_lines(
+            console,
+            indent="    ",
+            label="Status",
+            value=status,
+            limit=1,
+        )
+    )
+    impact = outcome.impact.strip()
+    lines.extend(
+        _labelled_wrapped_lines(
+            console,
+            indent="    ",
+            label="Impact",
+            value=impact or "Unsupported by extracted evidence",
+            style="" if impact else "dim",
+            limit=impact_line_limit,
+        )
+    )
+    reference_count = len(outcome.evidence_refs)
+    evidence = f"{reference_count} reference{'s' if reference_count != 1 else ''}"
+    lines.extend(
+        _labelled_wrapped_lines(
+            console,
+            indent="    ",
+            label="Evidence",
+            value=evidence,
+            limit=1,
+        )
+    )
+    if evidence_expanded and evidence_details:
+        lines.extend(_evidence_detail_lines(console, outcome))
+    return lines
+
+
+def _review_control_line(
+    draft: OutcomeReviewDraft,
+    row: OutcomeReviewRow,
+    *,
+    focused: bool,
+    expanded_evidence: set[str],
+    width: int,
+) -> Text:
+    cursor = _CURSOR if focused else " "
+    style = _CURSOR_STYLE if focused else ""
+    if row.kind == "settings":
+        assert draft.detail is not None
+        value = f"{draft.report_type.value.title()} │ {draft.detail.value.title()}"
+        text = Text.assemble((f"{cursor} Report       ", style), (value, style))
+    elif row.kind == "more":
+        open_ = MORE_CANDIDATES_SECTION in expanded_evidence
+        text = Text(f"{cursor} {'▾' if open_ else '▸'} More candidates", style=style)
+    elif row.kind == "ungrouped":
+        open_ = UNGROUPED_CANDIDATES_SECTION in expanded_evidence
+        text = Text(f"{cursor} {'▾' if open_ else '▸'} Ungrouped candidates", style=style)
+    elif row.kind == "blockers":
+        value = _single_line(draft.blockers or "Not set")
+        text = Text(f"{cursor} Blockers    {value}", style=style)
+    elif row.kind == "next_week":
+        value = _single_line(draft.next_week or "Not set")
+        text = Text(f"{cursor} Next week   {value}", style=style)
+    elif row.kind == "preview":
+        text = Text(f"{cursor} Preview report", style=style or _ACTION_STYLE)
+    elif row.kind == "generate":
+        text = Text(f"{cursor} Generate report", style=style or _ACTION_STYLE)
+    else:
+        raise ValueError(f"Unknown outcome review row: {row.kind}")
+    return _truncated_text(text, width)
+
+
+def _build_outcome_review_blocks(
+    console: Console,
+    draft: OutcomeReviewDraft,
+    rows: list[OutcomeReviewRow],
+    *,
+    cursor: int,
+    expanded_evidence: set[str],
+    focused_capacity: int,
+) -> list[_OutcomeReviewBlock]:
+    outcomes = {outcome.id: outcome for outcome in draft.outcomes}
+    blocks: list[_OutcomeReviewBlock] = []
+    for index, row in enumerate(rows):
+        focused = index == cursor
+        if row.kind != "outcome":
+            lines = [
+                _review_control_line(
+                    draft,
+                    row,
+                    focused=focused,
+                    expanded_evidence=expanded_evidence,
+                    width=console.size.width,
+                )
+            ]
+        else:
+            assert row.outcome_id is not None
+            outcome = outcomes[row.outcome_id]
+            lines = _outcome_block(
+                console,
+                outcome,
+                focused=focused,
+                evidence_expanded=row.outcome_id in expanded_evidence,
+            )
+            if focused and len(lines) > focused_capacity:
+                lines = _outcome_block(
+                    console,
+                    outcome,
+                    focused=True,
+                    evidence_expanded=row.outcome_id in expanded_evidence,
+                    evidence_details=False,
+                )
+            if focused and len(lines) > focused_capacity:
+                lines = _outcome_block(
+                    console,
+                    outcome,
+                    focused=True,
+                    evidence_expanded=False,
+                    evidence_details=False,
+                    impact_line_limit=1,
+                )
+        blocks.append(_OutcomeReviewBlock(row=row, lines=lines))
+    return blocks
+
+
+def _outcome_block_window(
+    blocks: list[_OutcomeReviewBlock],
+    *,
+    cursor: int,
+    capacity: int,
+) -> tuple[int, int]:
+    """Choose the largest contiguous block window containing the focus."""
+
+    best: tuple[int, int] | None = None
+    best_score: tuple[int, int, int] | None = None
+    for start in range(cursor, -1, -1):
+        used = 0
+        for end in range(start, len(blocks)):
+            used += len(blocks[end].lines)
+            if not (start <= cursor <= end):
+                continue
+            indicators = int(start > 0) + int(end < len(blocks) - 1)
+            if used + indicators > capacity:
+                continue
+            count = end - start + 1
+            score = (count, used, -abs((start + end) - (2 * cursor)))
+            if best_score is None or score > best_score:
+                best = (start, end + 1)
+                best_score = score
+    if best is not None:
+        return best
+    return cursor, cursor + 1
+
+
+def _outcome_review_body(
+    blocks: list[_OutcomeReviewBlock],
+    *,
+    start: int,
+    end: int,
+    cursor: int,
+    capacity: int,
+) -> list[Text]:
+    """Compose the printed body, clamped to ``capacity`` display lines.
+
+    ``_outcome_block_window`` fits every window it can find, but the focused
+    block can still be taller than the budget once the shrink rungs run out —
+    at 40x14 with both disclosure sections open it is. Rather than grow another
+    rung, the frame sheds here: the scroll indicators go first, then the focused
+    block's trailing detail lines. Its summary line is what says where the
+    cursor is, so that one never goes.
+    """
+
+    above = Text(f"↑ {start} more", style="dim") if start > 0 else None
+    below = Text(f"↓ {len(blocks) - end} more", style="dim") if end < len(blocks) else None
+    window = [list(block.lines) for block in blocks[start:end]]
+
+    def used() -> int:
+        return (
+            sum(len(lines) for lines in window)
+            + (above is not None)
+            + (below is not None)
+        )
+
+    if used() > capacity and above is not None:
+        above = None
+    if used() > capacity and below is not None:
+        below = None
+    focused = cursor - start
+    if used() > capacity and 0 <= focused < len(window):
+        keep = max(1, len(window[focused]) - (used() - capacity))
+        window[focused] = window[focused][:keep]
+
+    body: list[Text] = []
+    if above is not None:
+        body.append(above)
+    for lines in window:
+        body.extend(lines)
+    if below is not None:
+        body.append(below)
+    return body[:capacity]
+
+
+def render_outcome_review(
+    console: Console,
+    draft: OutcomeReviewDraft,
+    *,
+    cursor: int,
+    expanded_evidence: set[str],
+    period: DateRange | None = None,
+    message: str | None = None,
+) -> None:
+    """Render Quick Review inside one terminal frame using display-line budgets."""
+
+    rows = visible_outcome_review_rows(draft, expanded_evidence)
+    cursor = min(max(0, cursor), max(0, len(rows) - 1))
+    hints = _hint_lines(_OUTCOME_REVIEW_HINTS, console.size.width)
+    terminal_budget = max(0, console.size.height - 1)
+    fixed_lines = 2 + 2 + len(hints) + int(message is not None)
+    body_capacity = max(1, terminal_budget - fixed_lines)
+    indicator_floor = int(cursor > 0) + int(cursor < len(rows) - 1)
+    focused_capacity = max(1, body_capacity - indicator_floor)
+    blocks = _build_outcome_review_blocks(
+        console,
+        draft,
+        rows,
+        cursor=cursor,
+        expanded_evidence=expanded_evidence,
+        focused_capacity=focused_capacity,
+    )
+    start, end = _outcome_block_window(blocks, cursor=cursor, capacity=body_capacity)
+
+    selected = sum(outcome.included for outcome in draft.outcomes)
+    period_suffix = f"  {_period_label(period)}" if period is not None else ""
+    _print_viewport_text(
+        console,
+        _truncated_text(
+            Text.assemble(
+                ("Quick Review", "bold"),
+                (period_suffix, "dim"),
+                (f"  {selected} selected", "dim"),
+            ),
+            console.size.width,
+        ),
+    )
+    _print_viewport_text(
+        console,
+        _truncated_text(Text(_RULE_CHAR * console.size.width, style="dim"), console.size.width),
+    )
+    console.print()
+    if message is not None:
+        _print_viewport_text(
+            console,
+            _truncated_text(
+                Text(_single_line(message), style="yellow"),
+                console.size.width,
+            ),
+        )
+    body = _outcome_review_body(
+        blocks,
+        start=start,
+        end=end,
+        cursor=cursor,
+        capacity=body_capacity,
+    )
+    for line in body:
+        _print_viewport_text(console, _truncated_text(line, console.size.width))
+    console.print()
+    _print_hints(console, _OUTCOME_REVIEW_HINTS)
 
 
 @dataclass(frozen=True)
@@ -402,10 +860,10 @@ def _bool_label(value: bool, enabled: str, disabled: str) -> str:
     return enabled if value else disabled
 
 
-def report_result_options(*, dry_run: bool) -> list[str]:
+def report_result_options() -> list[str]:
     """Return the actions shown on the result screen."""
 
-    return list(_DRY_RUN_RESULT_OPTIONS if dry_run else _RESULT_OPTIONS)
+    return list(_RESULT_OPTIONS)
 
 
 def report_preview_capacity(terminal_height: int) -> int:
@@ -1010,7 +1468,7 @@ def render_report_result(
     output = "Not written (dry run)" if dry_run else str(output_path)
     _print_viewport_line(console, f"Output         {output}")
     console.print()
-    for index, label in enumerate(report_result_options(dry_run=dry_run)):
+    for index, label in enumerate(report_result_options()):
         _print_option_line(console, label, index, selected)
     console.print()
     _print_hints(
@@ -1191,28 +1649,72 @@ def render_recoverable_error(
     _print_hints(console, _ERROR_HINTS)
 
 
-def render_help(console: Console) -> None:
+# Quick Review overloads four of the general keys, so those four carry a mark
+# and the section below says what they do there. Without it the general list
+# reads as authoritative on a screen where `a`, `e`, `p` and `g` all differ.
+_HELP_LINES = (
+    "↑↓ / jk        Move selection or scroll one line",
+    "←→ / hl        Collapse / expand tree rows or change setup values",
+    "Enter / Space  Activate / toggle",
+    "a *            Select all sessions",
+    "n              Select no sessions",
+    "PgUp / PgDn    Scroll error details or report preview by a page",
+    "g * / G        Jump to top / bottom in report preview",
+    "p *            Preview a session's transcript",
+    "e *            Exclude a repository from future scans (Review only)",
+    "R              Rescan sessions",
+    "/              Search repositories and session titles",
+    "?              Open this help",
+    "b / Esc        Back",
+    "q              Main menu / quit from main menu",
+    "Ctrl-C         Cancel the current operation and go back",
+    "",
+    "Quick Review   * these keys mean something else here",
+    "Space          Include or exclude the focused outcome",
+    "e              Edit the focused outcome's title, status and impact",
+    "J / K          Reorder the focused outcome within its section",
+    "v              Show or hide the focused outcome's evidence",
+    "s              Split a merged outcome into its source groups",
+    "a              Add an outcome of your own",
+    "p              Preview the report without writing it",
+    "g              Generate the report",
+)
+_HELP_HINTS = ["↑↓ jk Scroll", "b / Esc / Enter Back"]
+
+
+def help_lines() -> list[str]:
+    """Return every keyboard-reference line, in display order."""
+
+    return list(_HELP_LINES)
+
+
+def help_capacity(terminal_height: int) -> int:
+    """Reference lines available beside the help screen's own fixed chrome.
+
+    The list outgrew a short terminal once Quick Review joined it, so it scrolls
+    like the previews rather than spilling past the terminal's last row. Six
+    lines of chrome: title, rule, two blanks, one hint bar, and the row this
+    screen leaves free.
+    """
+
+    return max(0, terminal_height - 6)
+
+
+def render_help(console: Console, *, offset: int = 0) -> None:
     """Render the shared keyboard shortcut reference."""
 
     _print_header(console, "Keyboard shortcuts")
     console.print()
-    for line in (
-        "↑↓ / jk        Move selection or scroll one line",
-        "←→ / hl        Collapse / expand tree rows or change setup values",
-        "Enter / Space  Activate / toggle",
-        "a              Select all sessions",
-        "n              Select no sessions",
-        "PgUp / PgDn    Scroll error details or report preview by a page",
-        "g / G          Jump to top / bottom in report preview",
-        "p              Preview a session's transcript",
-        "e              Exclude a repository from future scans (Review only)",
-        "R              Rescan sessions",
-        "/              Search repositories and session titles",
-        "?              Open this help",
-        "b / Esc        Back",
-        "q              Main menu / quit from main menu",
-        "Ctrl-C         Cancel the current operation and go back",
-    ):
+    visible, hidden_above, hidden_below = _detail_window(
+        help_lines(),
+        offset=offset,
+        capacity=help_capacity(console.size.height),
+    )
+    if hidden_above:
+        _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
+    for line in visible:
         _print_viewport_line(console, line)
+    if hidden_below:
+        _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
     console.print()
-    _print_hints(console, ["b / Esc / Enter Back"])
+    _print_hints(console, _HELP_HINTS)

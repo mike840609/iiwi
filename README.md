@@ -16,8 +16,10 @@ English | [繁體中文](https://github.com/mike840609/iiwi/blob/main/README.zh-
 ![Iiwi — see what your agents did](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-banner.jpg)
 
 The weekly status update is work you already did once. Iiwi reads the sessions
-your coding agent already recorded, groups them by repository, and writes the
-report. Works with OpenCode, Claude Code, and Codex.
+your coding agent already recorded, synthesizes evidence-backed outcomes, and lets
+you review the result before it writes the report. Quick Review targets a 30–60
+second pass from candidate outcomes to a shareable update. Works with OpenCode,
+Claude Code, and Codex.
 
 - **Nothing leaves your machine.** Your local `opencode run` writes the narrative — no network, no API key.
 - **Finds your sessions anywhere.** Every project, whichever folder you run from.
@@ -26,9 +28,12 @@ report. Works with OpenCode, Claude Code, and Codex.
 
 ## Quick start
 
-Needs Python 3.11+ and `git`. Plus one harness: OpenCode (the default, needs an
-`opencode` executable) or Claude Code / Codex (no CLI, just a readable transcript
-store at `~/.claude/projects` or `~/.codex`).
+Needs Python 3.11+ and `git`. Plus one transcript source: OpenCode (the default,
+needs an `opencode` executable) or a readable Claude Code / Codex transcript store
+at `~/.claude/projects` or `~/.codex` (their CLIs are not needed for reading).
+Quick Review outcome synthesis still uses your local `opencode run` for every
+transcript source; if it is unavailable, the recovery screen offers Retry and an
+explicit session-based report fallback.
 
 ```bash
 pipx install iiwi                 # or: pip install iiwi
@@ -85,7 +90,25 @@ Select sessions to include in the report:
 
 `Space` toggles a repository or a single session, `p` previews a transcript
 (redacted), and `e` excludes a repository from every future scan. Your selection
-is remembered per period.
+is remembered per period. Press `g` to synthesize the selected sessions into
+Quick Review instead of writing the session-based report immediately.
+
+Quick Review keeps the evidence traceable while you decide what belongs in the
+update. The first five candidates are selected; additional work stays under
+**More candidates**, and extraction failures stay visible under **Ungrouped
+candidates**. User-added outcomes, optional Blockers, and optional Next week text
+are included in the same in-memory draft.
+
+```text
+Space Include/exclude │ e Edit │ J/K Reorder │ v Evidence │ s Split │ a Add
+p Preview │ g Generate │ b Back
+```
+
+`p Preview` renders the current draft without writing a file. `g Generate` writes
+that reviewed draft. If synthesis fails, retry it or explicitly use the labeled
+session-based report fallback. See the
+[evidence-first Quick Review guide](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md)
+for the full flow and the Manager/Engineering and Brief/Full responsibilities.
 
 ## Commands
 
@@ -142,6 +165,7 @@ for the full data flow and current limits.
 | Page | What's in it |
 |---|---|
 | [CLI reference](https://github.com/mike840609/iiwi/blob/main/docs/cli-reference.md) | Every command, option, and exit code |
+| [Evidence-first Quick Review](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md) | Outcome review keys, report modes, recovery, and current exclusions |
 | [Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md) | Settings file, environment variables, precedence |
 | [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md) | Data flow, redaction boundary, what reports still contain |
 | [Security policy](https://github.com/mike840609/iiwi/blob/main/SECURITY.md) | Threat model and how to report a vulnerability |

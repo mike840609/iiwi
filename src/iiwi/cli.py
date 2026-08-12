@@ -74,6 +74,12 @@ _DETAIL_OPTION = typer.Option(
     help="How much detail the report contains: full (default) or brief.",
 )
 
+_RUN_DETAIL_OPTION = typer.Option(
+    None,
+    "--detail",
+    help="How much detail the report contains: full or brief; prompts when omitted.",
+)
+
 app = typer.Typer(
     help="Turn coding-agent sessions into repository-based engineering reports.",
 )
@@ -277,6 +283,7 @@ def _build_report_service(
     sanitize: bool = False,
     detail: DetailLevel = DetailLevel.FULL,
     progress: ProgressReporter | None = None,
+    initial_warnings: list[str] | None = None,
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
 
@@ -313,6 +320,7 @@ def _build_report_service(
         opencode_runner=opencode_runner,
         include_subagents=not root_only,
         sanitized=sanitize,
+        initial_warnings=initial_warnings,
     )
 
 
@@ -1023,6 +1031,7 @@ def _ask_output_path(settings: AppSettings, period: DateRange) -> tuple[Path, bo
 def run(
     verbose: bool = typer.Option(False, "--verbose"),
     dry_run: bool = typer.Option(False, "--dry-run"),
+    detail: DetailLevel | None = _RUN_DETAIL_OPTION,
 ) -> None:
     """Answer a few questions, preview the scan, and generate a worklog.
 
@@ -1048,7 +1057,7 @@ def run(
         )
         include_children = _ask_yes("Include child/subagent sessions?", default=True)
         period = _ask_period(settings.report.timezone, now)
-        detail = _ask_detail()
+        detail = detail or _ask_detail()
         # `report`'s default is the narrative review, so the wizard's default is
         # too. Answering no is what `--no-llm` does: the deterministic structured
         # report, which is also the answer when `opencode` is not installed.
@@ -1110,7 +1119,7 @@ def run(
                 progress=progress,
             )
             result = service.generate(force=force, dry_run=dry_run, scan=scan)
-            if not result.report.repositories:
+            if not result.report.repositories and not result.report.narrative_text:
                 raise NoSessionsError(
                     _no_sessions_message(
                         harness,
@@ -1190,7 +1199,7 @@ def _interactive_menu() -> None:
                     "Dry run - print the report instead of writing a file?",
                     default=False,
                 )
-                run(verbose=False, dry_run=dry_run)
+                run(verbose=False, dry_run=dry_run, detail=None)
                 return
             if answer in {"2", "3"}:
                 settings = _load_settings()

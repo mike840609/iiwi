@@ -123,3 +123,28 @@ def test_help_keeps_hidden_power_shortcuts_discoverable() -> None:
     assert "Exclude a repository" in text
     assert "Rescan sessions" in text
     assert "←→ / hl" in text
+
+
+def test_help_documents_the_quick_review_keys_and_marks_the_overloaded_ones() -> None:
+    """Quick Review's hint bar sends people here, so the four reused keys must be flagged."""
+
+    stream = StringIO()
+    console = Console(
+        file=stream,
+        color_system=None,
+        force_terminal=False,
+        width=100,
+        height=40,
+    )
+
+    render_help(console)
+
+    text = stream.getvalue()
+    assert "Quick Review" in text
+    assert "J / K          Reorder the focused outcome within its section" in text
+    assert "v              Show or hide the focused outcome's evidence" in text
+    assert "s              Split a merged outcome into its source groups" in text
+    assert "Space          Include or exclude the focused outcome" in text
+    # `a`, `e`, `p` and `g` all mean something else on Quick Review.
+    for line in ("a *", "e *", "p *", "g * / G"):
+        assert line in text

@@ -1,8 +1,12 @@
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
+from iiwi import config_store
+from iiwi.cli import app
 from iiwi.config import AppSettings
+from iiwi.models.report_options import ReportType
 
 
 def test_settings_use_opencode_cli_and_taipei_defaults() -> None:
@@ -25,6 +29,75 @@ def test_report_exclude_repositories_defaults_to_empty() -> None:
     settings = AppSettings()
 
     assert settings.report.exclude_repositories == ""
+
+
+def test_quick_review_report_type_defaults_to_manager() -> None:
+    settings = AppSettings()
+
+    assert settings.report.quick_review_report_type is ReportType.MANAGER
+
+
+def test_quick_review_evidence_budget_defaults_and_is_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert AppSettings().report.quick_review_max_evidence_bytes == 40000
+
+    monkeypatch.setenv("IIWI_REPORT__QUICK_REVIEW_MAX_EVIDENCE_BYTES", "12000")
+
+    assert AppSettings().report.quick_review_max_evidence_bytes == 12000
+
+
+def test_quick_review_report_type_is_configurable_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE",
+        "engineering",
+    )
+
+    settings = AppSettings()
+
+    assert settings.report.quick_review_report_type is ReportType.ENGINEERING
+
+
+def test_quick_review_report_type_is_listable_settable_and_unsettable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    runner = CliRunner()
+
+    listed = runner.invoke(app, ["config", "list"])
+    assert listed.exit_code == 0
+    assert "report.quick_review_" in listed.stdout
+    assert "report_type" in listed.stdout
+    listed_setting = next(
+        row
+        for row in config_store.describe_settings(path)
+        if row.key == "report.quick_review_report_type"
+    )
+    assert (listed_setting.value, listed_setting.source, listed_setting.default) == (
+        "manager",
+        "default",
+        "manager",
+    )
+
+    written = runner.invoke(
+        app,
+        ["config", "set", "report.quick_review_report_type", "engineering"],
+    )
+    assert written.exit_code == 0
+    assert config_store.stored_values(path) == {
+        "IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE": "engineering"
+    }
+
+    removed = runner.invoke(
+        app,
+        ["config", "unset", "report.quick_review_report_type"],
+    )
+    assert removed.exit_code == 0
+    assert config_store.stored_values(path) == {}
 
 
 def test_report_exclude_repositories_is_configurable(

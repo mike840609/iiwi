@@ -1,0 +1,73 @@
+# {{ "Weekly Work Update" if report_type.value == "manager" else "Engineering Worklog" }}
+
+**Period:** {{ report.period.since.strftime("%Y-%m-%d %H:%M") }} – {{ report.period.until.strftime("%Y-%m-%d %H:%M") }}
+**Timezone:** {{ timezone }}
+**Generated:** {{ report.generated_at.strftime("%Y-%m-%d %H:%M") }}
+**Audience:** {{ "Manager update" if report_type.value == "manager" else "Engineering worklog" }}
+**Status view:** {{ "Decisions, blockers, and next steps" if report_type.value == "manager" else "Implementation progress and verification" }}
+
+{% set completed = report.outcomes | selectattr("included") | selectattr("status", "equalto", "completed") | list %}
+{% if completed %}
+## {{ "Outcomes and Impact" if report_type.value == "manager" else "Engineering Outcomes" }}
+{% for outcome in completed %}
+- {{ outcome.title }}{% if outcome.origin.value == "user_added" %} _(User added)_{% endif %}
+{% if outcome.impact %}
+  - Impact: {{ outcome.impact }}
+{% else %}
+  - Impact: Unsupported by extracted evidence
+{% endif %}
+
+{% endfor %}
+{% endif %}
+{% set in_progress = report.outcomes | selectattr("included") | selectattr("status", "equalto", "in_progress") | list %}
+{% if in_progress %}
+## {{ "Priorities in Progress" if report_type.value == "manager" else "Implementation Progress" }}
+{% for outcome in in_progress %}
+- {{ outcome.title }}{% if outcome.origin.value == "user_added" %} _(User added)_{% endif %}
+{% if outcome.impact %}
+  - Impact: {{ outcome.impact }}
+{% else %}
+  - Impact: Unsupported by extracted evidence
+{% endif %}
+
+{% endfor %}
+{% endif %}
+{% if report.blockers %}
+## Blockers
+
+{{ report.blockers }}
+{% endif %}
+{% if report.next_week %}
+## Next Week
+
+{{ report.next_week }}
+{% endif %}
+{% if full and evidence_by_repository %}
+### Evidence
+{% for repository_id, references in evidence_by_repository | dictsort %}
+
+#### {{ repository_id }}
+{% for reference in references %}
+- Session: `{{ reference.session_id }}`{% if reference.commit %} · Commit: `{{ reference.commit }}`{% endif %}{% if reference.file %} · File: `{{ reference.file }}`{% endif %}{{ "\n" }}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% if full and report.usage_text %}
+## Usage
+{% if report.usage_days %}
+
+Window: the last {{ report.usage_days }} days ending at generation time. It contains the
+report period but does not match it exactly, because OpenCode reports usage only for a
+window ending now.
+{% endif %}
+
+```text
+{{ report.usage_text }}
+```
+{% endif %}
+{% if report.warnings %}
+## Warnings
+{% for warning in report.warnings %}
+- {{ warning }}
+{% endfor %}
+{% endif %}
