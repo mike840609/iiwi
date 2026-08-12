@@ -11,6 +11,7 @@ class ProgressStage(StrEnum):
 
     DISCOVERING_SESSIONS = "discovering_sessions"
     EXPORTING_SESSIONS = "exporting_sessions"
+    SYNTHESIZING_OUTCOMES = "synthesizing_outcomes"
     PREPARING_EVIDENCE = "preparing_evidence"
     SUMMARIZING_REPOSITORIES = "summarizing_repositories"
     COLLECTING_USAGE = "collecting_usage"

@@ -49,6 +49,47 @@ def test_progress_renders_one_transient_stage_line(monkeypatch: pytest.MonkeyPat
     assert "Exporting sessions" not in output_stream.getvalue()
 
 
+@pytest.mark.parametrize(("completed", "filled"), [(1, 5), (2, 10), (4, 20)])
+def test_counted_stage_draws_a_bar_that_tracks_the_count(
+    monkeypatch: pytest.MonkeyPatch,
+    completed: int,
+    filled: int,
+) -> None:
+    """One run per count: Rich collapses rapid updates into a single frame, so
+    only the state the stage ends on is observable."""
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+    progress_stream = StringIO()
+    reporter = ConsoleReporter(progress_console=forced_console(progress_stream))
+
+    with reporter.progress() as progress:
+        progress.start(ProgressStage.EXPORTING_SESSIONS, total=4)
+        progress.advance(completed)
+
+    last_frame = progress_stream.getvalue().split("\r")[-2]
+
+    assert f"{completed}/4" in last_frame
+    assert last_frame.count("━") == filled
+
+
+def test_uncounted_stage_shows_elapsed_time_and_no_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pulsing bar with color off is a solid one, which reads as finished."""
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+    progress_stream = StringIO()
+    reporter = ConsoleReporter(progress_console=forced_console(progress_stream))
+
+    with reporter.progress() as progress:
+        progress.start(ProgressStage.SYNTHESIZING_OUTCOMES)
+
+    progress_output = progress_stream.getvalue()
+    assert "Grouping sessions into outcomes" in progress_output
+    assert "0:00:00" in progress_output
+    assert "━" not in progress_output
+
+
 def test_progress_ellipsizes_to_one_row_in_a_narrow_terminal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -95,7 +136,10 @@ def test_quiet_progress_is_a_no_op() -> None:
     assert progress_stream.getvalue() == ""
 
 
-def test_progress_context_finishes_after_an_exception() -> None:
+def test_progress_context_finishes_after_an_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TERM", "xterm-256color")
     progress_stream = StringIO()
     reporter = ConsoleReporter(
         progress_console=forced_console(progress_stream),
@@ -109,10 +153,13 @@ def test_progress_context_finishes_after_an_exception() -> None:
         raise RuntimeError("boom")
 
     assert active is not None
-    assert active._status is None
+    assert active._task is None
 
 
-def test_progress_context_finishes_after_keyboard_interrupt() -> None:
+def test_progress_context_finishes_after_keyboard_interrupt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TERM", "xterm-256color")
     progress_stream = StringIO()
     reporter = ConsoleReporter(
         progress_console=forced_console(progress_stream),
@@ -126,7 +173,7 @@ def test_progress_context_finishes_after_keyboard_interrupt() -> None:
         raise KeyboardInterrupt
 
     assert active is not None
-    assert active._status is None
+    assert active._task is None
 
 
 SCAN_TZ = ZoneInfo("Asia/Taipei")
