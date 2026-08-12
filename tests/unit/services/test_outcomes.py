@@ -212,15 +212,41 @@ def dated(session_id: str, *, day: int) -> ResolvedSession:
     )
 
 
-def evidence_size(session: ResolvedSession) -> int:
-    """The payload cost of one session, measured the way the service measures it."""
+def compact_entry(session: ResolvedSession) -> outcomes._CompactSession:
+    extracted = outcomes.extract_evidence(session)
+    redacted = outcomes.SessionEvidence.model_validate(
+        outcomes.redact_value(extracted.model_dump(mode="json"))
+    )
+    return outcomes._compact_session(
+        redacted,
+        branch=session.session.branch or session.repository.branch,
+    )
+
+
+def compact_entry_size(session: ResolvedSession) -> int:
+    """One session's entry on its own, without the index that carries it."""
+
+    return len(compact_entry(session).as_json().encode())
+
+
+def payload_size(sessions: list[ResolvedSession]) -> int:
+    """The bytes these sessions actually cost as one sent payload."""
+
+    return len(outcomes._index_json([compact_entry(session) for session in sessions]).encode())
+
+
+def full_evidence_size(session: ResolvedSession) -> int:
+    """The payload cost the same session would have carried as full evidence."""
 
     return len(outcomes.extract_evidence(session).model_dump_json(indent=2).encode())
 
 
+def sent_sessions(runner: StaticRunner) -> list[dict[str, str]]:
+    return json.loads(runner.calls[0]["transcript"])["sessions"]
+
+
 def sent_session_ids(runner: StaticRunner) -> list[str]:
-    transcript = json.loads(runner.calls[0]["transcript"])
-    return [session["session_id"] for session in transcript["sessions"]]
+    return [session["session_id"] for session in sent_sessions(runner)]
 
 
 def fail_only(session_id: str):
@@ -662,7 +688,7 @@ def test_all_proposals_skipped_returns_ungrouped_candidates_without_raising() ->
     ]
 
 
-def test_evidence_inside_the_budget_is_sent_whole_and_warns_about_nothing() -> None:
+def test_evidence_inside_the_budget_reaches_the_model_and_warns_about_nothing() -> None:
     sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a", "ses-b"])))
 
@@ -680,7 +706,7 @@ def test_sessions_past_the_budget_never_reach_the_model() -> None:
 
     OutcomeSynthesisService(
         runner,
-        max_evidence_bytes=evidence_size(sessions[0]) + evidence_size(sessions[1]),
+        max_evidence_bytes=payload_size(sessions[:2]),
     ).synthesize(scan_with(sessions))
 
     assert sent_session_ids(runner) == ["ses-a", "ses-b"]
@@ -692,7 +718,7 @@ def test_sessions_past_the_budget_remain_excluded_ungrouped_candidates() -> None
 
     result = OutcomeSynthesisService(
         runner,
-        max_evidence_bytes=evidence_size(sessions[0]),
+        max_evidence_bytes=compact_entry_size(sessions[0]),
     ).synthesize(scan_with(sessions))
 
     held_back = next(
@@ -709,7 +735,7 @@ def test_budget_warning_names_how_many_sessions_were_held_back() -> None:
 
     result = OutcomeSynthesisService(
         runner,
-        max_evidence_bytes=evidence_size(sessions[0]),
+        max_evidence_bytes=compact_entry_size(sessions[0]),
     ).synthesize(scan_with(sessions))
 
     assert len(result.warnings) == 1
@@ -722,7 +748,7 @@ def test_the_most_recent_sessions_are_the_ones_synthesized() -> None:
 
     OutcomeSynthesisService(
         runner,
-        max_evidence_bytes=evidence_size(sessions[0]) + evidence_size(sessions[1]),
+        max_evidence_bytes=payload_size([sessions[1], sessions[2]]),
     ).synthesize(scan_with(sessions))
 
     assert sent_session_ids(runner) == ["ses-new", "ses-mid"]
@@ -737,6 +763,22 @@ def test_a_session_larger_than_the_whole_budget_is_still_sent() -> None:
     assert sent_session_ids(runner) == ["ses-a"]
 
 
+def test_the_budget_counts_the_index_around_the_entries_not_just_the_entries() -> None:
+    """The entries alone fit; the payload that carries them does not."""
+
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+    budget = compact_entry_size(sessions[0]) + compact_entry_size(sessions[1]) + 1
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(
+        scan_with(sessions)
+    )
+
+    assert budget < payload_size(sessions)
+    assert sent_session_ids(runner) == ["ses-a"]
+    assert len(runner.calls[0]["transcript"].encode()) <= budget
+
+
 def test_undated_sessions_keep_their_scan_order_behind_dated_ones() -> None:
     sessions = [resolved("ses-first"), resolved("ses-second"), dated("ses-dated", day=1)]
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-first"])))
@@ -746,3 +788,357 @@ def test_undated_sessions_keep_their_scan_order_behind_dated_ones() -> None:
     )
 
     assert sent_session_ids(runner) == ["ses-dated", "ses-first", "ses-second"]
+
+
+def detailed(
+    session_id: str,
+    repository_id: str = "repo-a",
+    *,
+    branch: str | None = "feature/checkout",
+    goal: str = "Investigate the checkout regression.",
+    file: str = "src/checkout/render.py",
+    command: str = "npm run deploy-preview",
+    failing_command: str = "cargo build --release",
+    verification_command: str | None = None,
+    claim: str | None = "Completed the checkout regression fix.",
+) -> ResolvedSession:
+    """One session carrying every kind of evidence the extractor recognizes.
+
+    A passing `verification_command` becomes an outcome ahead of the claim, which
+    is how real sessions order them.
+    """
+
+    verification = (
+        [
+            activity(
+                f"{session_id}-verification",
+                ActivityType.COMMAND,
+                verification_command,
+                metadata={"exit_code": 0},
+            )
+        ]
+        if verification_command
+        else []
+    )
+    return resolved(
+        session_id,
+        repository_id,
+        branch=branch,
+        activities=[
+            activity(f"{session_id}-goal", ActivityType.USER_MESSAGE, goal),
+            activity(
+                f"{session_id}-command",
+                ActivityType.COMMAND,
+                command,
+                metadata={"exit_code": 0},
+            ),
+            activity(
+                f"{session_id}-error",
+                ActivityType.COMMAND,
+                failing_command,
+                metadata={"exit_code": 1},
+            ),
+            activity(f"{session_id}-file", ActivityType.FILE_CHANGE, file),
+            *verification,
+            *(
+                [activity(f"{session_id}-claim", ActivityType.ASSISTANT_MESSAGE, claim)]
+                if claim
+                else []
+            ),
+        ],
+    )
+
+
+def test_the_model_receives_only_the_fields_grouping_needs() -> None:
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(scan_with([detailed("ses-a")]))
+
+    assert sent_sessions(runner) == [
+        {
+            "session_id": "ses-a",
+            "repository_id": "repo-a",
+            "title": "Session ses-a",
+            "branch": "feature/checkout",
+            "goal": "Investigate the checkout regression.",
+            "outcome": "Completed the checkout regression fix.",
+        }
+    ]
+
+
+def test_commands_files_and_errors_never_reach_the_model() -> None:
+    """Including the passing verification command, which the outcome field carried."""
+
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with(
+            [
+                detailed(
+                    "ses-a",
+                    verification_command="pytest -q tests/unit/checkout/test_render.py",
+                )
+            ]
+        )
+    )
+
+    transcript = runner.calls[0]["transcript"]
+    assert "npm run deploy-preview" not in transcript
+    assert "cargo build --release" not in transcript
+    assert "src/checkout/render.py" not in transcript
+    assert "tests/unit/checkout/test_render.py" not in transcript
+    assert sent_sessions(runner)[0]["outcome"] == "Completed the checkout regression fix."
+
+
+def test_the_session_claim_is_sent_rather_than_the_verification_that_precedes_it() -> None:
+    """Every session running one test command would otherwise send one outcome."""
+
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with(
+            [
+                resolved(
+                    "ses-a",
+                    activities=[
+                        activity("a-goal", ActivityType.USER_MESSAGE, "Fix the parser."),
+                        activity(
+                            "a-verify-1",
+                            ActivityType.COMMAND,
+                            "pytest -q tests/unit/parser",
+                            metadata={"exit_code": 0},
+                        ),
+                        activity(
+                            "a-verify-2",
+                            ActivityType.COMMAND,
+                            "ruff check .",
+                            metadata={"exit_code": 0},
+                        ),
+                        activity(
+                            "a-claim",
+                            ActivityType.ASSISTANT_MESSAGE,
+                            "Fixed the nested-quote parser bug.",
+                        ),
+                    ],
+                )
+            ]
+        )
+    )
+
+    assert sent_sessions(runner)[0]["outcome"] == "Fixed the nested-quote parser bug."
+
+
+def test_a_session_without_a_claim_still_sends_its_first_outcome() -> None:
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with([detailed("ses-a", verification_command="pytest -q", claim=None)])
+    )
+
+    assert sent_sessions(runner)[0]["outcome"] == "Verification passed: pytest -q"
+
+
+def test_the_goal_field_still_takes_the_first_goal() -> None:
+    """Goals come from user messages in order, so first is genuinely first."""
+
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with(
+            [
+                resolved(
+                    "ses-a",
+                    activities=[
+                        activity(
+                            "a-goal-1",
+                            ActivityType.USER_MESSAGE,
+                            "Investigate the checkout regression.",
+                        ),
+                        activity(
+                            "a-goal-2",
+                            ActivityType.USER_MESSAGE,
+                            "Also rename the pricing module.",
+                        ),
+                        activity(
+                            "a-claim",
+                            ActivityType.ASSISTANT_MESSAGE,
+                            "Completed the checkout regression fix.",
+                        ),
+                    ],
+                )
+            ]
+        )
+    )
+
+    assert sent_sessions(runner)[0]["goal"] == "Investigate the checkout regression."
+
+
+def test_branch_is_redacted_before_it_reaches_the_model() -> None:
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with([detailed("ses-a", branch="token=secret-branch")])
+    )
+
+    assert "secret-branch" not in runner.calls[0]["transcript"]
+    assert sent_sessions(runner)[0]["branch"] == "token=[REDACTED]"
+
+
+def test_a_linkage_signal_repeating_the_redacted_branch_is_observed_locally() -> None:
+    """The model can only echo the branch it was shown, so both sides are redacted."""
+
+    branch = "feature/checkout.rendering.regression"
+    redacted_branch = outcomes.redact_text(branch)
+    assert redacted_branch != branch
+    runner = StaticRunner(
+        json.dumps(
+            cross_repo_payload(
+                confidence="high",
+                linkage_signals=[
+                    {"kind": "branch_or_issue", "value": redacted_branch},
+                    {"kind": "direct_reference", "value": "same feature rollout"},
+                ],
+            )
+        )
+    )
+
+    result = OutcomeSynthesisService(runner).synthesize(
+        scan_with(
+            [
+                resolved(
+                    "ses-a",
+                    "repo-a",
+                    branch=branch,
+                    activities=[
+                        activity(
+                            "a-user",
+                            ActivityType.USER_MESSAGE,
+                            "Implement same feature rollout for the API.",
+                        )
+                    ],
+                ),
+                resolved(
+                    "ses-b",
+                    "repo-b",
+                    branch=branch,
+                    activities=[
+                        activity(
+                            "b-user",
+                            ActivityType.USER_MESSAGE,
+                            "Implement same feature rollout for the UI.",
+                        )
+                    ],
+                ),
+            ]
+        )
+    )
+
+    assert [session["branch"] for session in sent_sessions(runner)] == [redacted_branch] * 2
+    assert len(result.outcomes) == 1
+    assert {ref.repository_id for ref in result.outcomes[0].evidence_refs} == {
+        "repo-a",
+        "repo-b",
+    }
+
+
+def test_sessions_without_branch_goal_or_outcome_send_no_blank_fields() -> None:
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(scan_with([resolved("ses-a")]))
+
+    assert sent_sessions(runner) == [
+        {"session_id": "ses-a", "repository_id": "repo-a", "title": "Session ses-a"}
+    ]
+
+
+def test_long_goal_and_outcome_text_reaches_the_model_whole() -> None:
+    """Most real goals run past 120 characters, and the overlap is the signal."""
+
+    goal = "Investigate the regression. " * 10
+    claim = "Completed the regression fix. " * 10
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(
+        scan_with([detailed("ses-a", goal=goal, claim=claim)])
+    )
+
+    sent = sent_sessions(runner)[0]
+    assert len(goal) > 120
+    assert sent["goal"] == goal.strip()
+    assert len(claim) > 120
+    assert sent["outcome"] == claim.strip()
+
+
+def test_the_budget_now_buys_far_more_sessions_than_full_evidence_would() -> None:
+    sessions = [dated(f"ses-{index}", day=9 - index) for index in range(3)]
+    budget = payload_size(sessions)
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-0"])))
+
+    result = OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(
+        scan_with(sessions)
+    )
+
+    assert sent_session_ids(runner) == ["ses-0", "ses-1", "ses-2"]
+    assert result.warnings == []
+    # The same budget would not have covered even one session of full evidence.
+    assert full_evidence_size(sessions[0]) > budget
+
+
+def redaction_rewriting_session_ids():
+    """Redaction that renames the session it redacts, as it may one day do."""
+
+    original = outcomes.redact_value
+
+    def redact(value):
+        redacted = original(value)
+        if isinstance(redacted, dict) and "session_id" in redacted:
+            return {**redacted, "session_id": f"anon-{redacted['session_id']}"}
+        return redacted
+
+    return redact
+
+
+def test_synthesis_survives_redaction_rewriting_the_session_id(monkeypatch) -> None:
+    """Every dict is keyed on the id redaction produced, which is the id sent."""
+
+    monkeypatch.setattr(outcomes, "redact_value", redaction_rewriting_session_ids())
+    sessions = [dated("ses-old", day=3), dated("ses-new", day=9)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["anon-ses-new"])))
+
+    result = OutcomeSynthesisService(runner, max_evidence_bytes=100_000).synthesize(
+        scan_with(sessions)
+    )
+
+    assert sent_session_ids(runner) == ["anon-ses-new", "anon-ses-old"]
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
+        "anon-ses-new"
+    ]
+
+
+def test_grouping_still_builds_evidence_refs_the_model_never_saw() -> None:
+    sessions = [
+        detailed("ses-a", file="src/checkout/render.py", command="git show commit 1a2b3c4"),
+        detailed("ses-b", file="src/checkout/totals.py", command="git show commit 5d6e7f8"),
+    ]
+    runner = StaticRunner(
+        json.dumps(payload(title="Checkout regression", source_session_ids=["ses-a", "ses-b"]))
+    )
+
+    result = OutcomeSynthesisService(runner).synthesize(scan_with(sessions))
+
+    assert len(result.outcomes) == 1
+    outcome = result.outcomes[0]
+    assert outcome.title == "Checkout regression"
+    assert [reference.file for reference in outcome.evidence_refs] == [
+        "src/checkout/render.py",
+        "src/checkout/totals.py",
+    ]
+    assert [reference.commit for reference in outcome.evidence_refs] == [
+        "1a2b3c4",
+        "5d6e7f8",
+    ]
+    transcript = runner.calls[0]["transcript"]
+    assert "src/checkout/render.py" not in transcript
+    assert "src/checkout/totals.py" not in transcript
+    assert "1a2b3c4" not in transcript
+    assert "5d6e7f8" not in transcript

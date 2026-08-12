@@ -20,7 +20,12 @@ from iiwi.models import (
     OutcomeStatus,
     OutcomeSynthesisResult,
 )
-from iiwi.models.evidence import EvidenceConfidence, EvidenceStatus, SessionEvidence
+from iiwi.models.evidence import (
+    EvidenceConfidence,
+    EvidenceItem,
+    EvidenceStatus,
+    SessionEvidence,
+)
 from iiwi.security.redactor import redact_text, redact_value
 from iiwi.services.scan import ScanResult
 from iiwi.summarizers.opencode_run import OpenCodeRunner
@@ -53,8 +58,37 @@ class _SynthesisPayload(BaseModel):
     outcomes: list[_ProposedOutcome]
 
 
-class _EvidencePayload(BaseModel):
-    sessions: list[SessionEvidence]
+class _CompactSession(BaseModel):
+    """The only thing the model needs to group sessions: nothing else is sent.
+
+    Iiwi reconstructs titles, statuses, impacts, and every evidence reference
+    from local evidence afterwards, so commands, changed files, and errors would
+    only cost budget the grouping cannot spend.
+    """
+
+    session_id: str
+    repository_id: str
+    title: str | None = None
+    branch: str | None = None
+    goal: str | None = None
+    outcome: str | None = None
+
+    def as_json(self) -> str:
+        return self.model_dump_json(indent=2, exclude_none=True)
+
+
+class _CompactIndex(BaseModel):
+    sessions: list[_CompactSession]
+
+
+def _index_json(sessions: list[_CompactSession]) -> str:
+    """The exact payload the model is sent.
+
+    The budget is measured through this function and the transcript is built by
+    it, so what is counted and what is sent cannot drift apart.
+    """
+
+    return _CompactIndex(sessions=sessions).model_dump_json(indent=2, exclude_none=True)
 
 
 _ALLOWED_LINKAGE_KINDS = frozenset({"branch_or_issue", "direct_reference"})
@@ -78,6 +112,7 @@ class OutcomeSynthesisService:
 
     def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
         evidence_by_session: dict[str, SessionEvidence] = {}
+        compact_by_session: dict[str, _CompactSession] = {}
         local_texts_by_session: dict[str, list[str]] = {}
         started_at: dict[str, datetime] = {}
         failed_sessions = []
@@ -86,16 +121,31 @@ class OutcomeSynthesisService:
                 extracted = extract_evidence(resolved)
                 redacted = redact_value(extracted.model_dump(mode="json"))
                 evidence = SessionEvidence.model_validate(redacted)
-                evidence_by_session[extracted.session_id] = evidence
+                # Every dict here is keyed on the post-redaction session id,
+                # because that is the id the model is given and the id every
+                # lookup downstream carries.
+                evidence_by_session[evidence.session_id] = evidence
+                compact_by_session[evidence.session_id] = _compact_session(
+                    evidence,
+                    branch=resolved.session.branch or resolved.repository.branch,
+                )
                 if resolved.session.created_at is not None:
-                    started_at[extracted.session_id] = resolved.session.created_at
+                    started_at[evidence.session_id] = resolved.session.created_at
                 local_texts_by_session[evidence.session_id] = _local_texts(
                     evidence,
+                    # These come from the resolved session rather than the
+                    # redacted evidence, so they are redacted here: the corpus
+                    # validates model output, and the model only ever saw the
+                    # redacted form.
                     extra_values=[
-                        resolved.session.branch,
-                        resolved.repository.branch,
-                        resolved.repository.repository_id,
-                        resolved.repository.display_name,
+                        redact_text(value)
+                        for value in (
+                            resolved.session.branch,
+                            resolved.repository.branch,
+                            resolved.repository.repository_id,
+                            resolved.repository.display_name,
+                        )
+                        if value
                     ],
                 )
             except Exception:  # Extraction failures remain visible candidates.
@@ -107,10 +157,15 @@ class OutcomeSynthesisService:
             )
 
         sent = _sessions_within_budget(
-            _most_recent_first(evidence_by_session, started_at),
+            [
+                compact_by_session[evidence.session_id]
+                for evidence in _most_recent_first(evidence_by_session, started_at)
+            ],
             max_bytes=self._max_evidence_bytes,
         )
-        sent_by_session = {evidence.session_id: evidence for evidence in sent}
+        sent_by_session = {
+            entry.session_id: evidence_by_session[entry.session_id] for entry in sent
+        }
         held_back = len(evidence_by_session) - len(sent_by_session)
         warnings = (
             [
@@ -123,7 +178,7 @@ class OutcomeSynthesisService:
 
         try:
             output = self._runner.run(
-                transcript=_EvidencePayload(sessions=sent).model_dump_json(indent=2),
+                transcript=_index_json(sent),
                 prompt=build_outcome_prompt(),
                 title="Iiwi outcome synthesis",
             )
@@ -411,26 +466,86 @@ def _most_recent_first(
     return [*dated, *(item for item in scanned if item.session_id not in started_at)]
 
 
+def _compact_session(evidence: SessionEvidence, *, branch: str | None) -> _CompactSession:
+    """Reduce redacted evidence to the fields grouping actually reads.
+
+    Every field but the branch is already redacted; the branch comes from the
+    resolved session, so it is redacted here before it can reach the model.
+    """
+
+    return _CompactSession(
+        session_id=evidence.session_id,
+        repository_id=evidence.repository_id,
+        title=_omit_if_blank(evidence.title),
+        branch=_omit_if_blank(redact_text(branch) if branch else None),
+        goal=_first_text(evidence.goals),
+        outcome=_claimed_outcome_text(evidence.outcomes),
+    )
+
+
+def _omit_if_blank(value: str | None) -> str | None:
+    return value if value and value.strip() else None
+
+
+def _first_text(items: list[EvidenceItem]) -> str | None:
+    """The first non-blank text, whole.
+
+    Extraction already caps evidence text; shortening it again here would only
+    strip the overlap grouping reads to decide whether two sessions are the same
+    work. How many sessions fit is the budget's decision, not this function's.
+    """
+
+    for item in items:
+        text = _omit_if_blank(item.text)
+        if text is not None:
+            return text
+    return None
+
+
+def _claimed_outcome_text(items: list[EvidenceItem]) -> str | None:
+    """The session's own claim about what it accomplished, when it made one.
+
+    Outcomes are appended in activity order, and the mechanical ones land first:
+    a passing verification command reads "Verification passed: pytest …" whatever
+    the work was. Sending that would give every session in a repository running
+    one test command an identical outcome — similar wording, to a model whose one
+    job is to group by wording — while the claim that distinguishes them, which
+    extraction appends later, never arrives at all. Goals stay first-wins: they
+    come from user messages in activity order, where first is genuinely first.
+    """
+
+    claims = [item for item in items if item.extraction_method == "assistant_claim"]
+    return _first_text(claims) or _first_text(items)
+
+
 def _sessions_within_budget(
-    ordered: list[SessionEvidence],
+    ordered: list[_CompactSession],
     *,
     max_bytes: int,
-) -> list[SessionEvidence]:
+) -> list[_CompactSession]:
     """Take sessions in order while the serialized payload stays in budget.
+
+    The per-entry sizes only choose candidates: they miss the index envelope,
+    the deeper indentation each entry picks up inside it, and the separators
+    between entries, so the selection is then measured as it will actually be
+    sent and trimmed from the oldest end until it fits. Serializing repeatedly
+    costs nothing here — this runs once per synthesis and usually trims nothing.
 
     The first session is always taken: a payload the model can refuse is still
     worth more than an empty one, and the sessions left behind stay visible as
     ungrouped candidates either way.
     """
 
-    selected: list[SessionEvidence] = []
+    selected: list[_CompactSession] = []
     total = 0
-    for evidence in ordered:
-        size = len(evidence.model_dump_json(indent=2).encode())
+    for entry in ordered:
+        size = len(entry.as_json().encode())
         if selected and total + size > max_bytes:
             break
-        selected.append(evidence)
+        selected.append(entry)
         total += size
+    while len(selected) > 1 and len(_index_json(selected).encode()) > max_bytes:
+        selected.pop()
     return selected
 
 
