@@ -714,13 +714,35 @@ def _supported_title(
     return _fallback_title(selected)
 
 
+def _evidence_weight(evidence: SessionEvidence) -> int:
+    """Count everything extraction found, as a proxy for how substantive a session is.
+
+    Not the evidence-reference count: references are one per changed file, so a
+    rename sweep across fifty files would outrank the feature work beside it.
+    """
+
+    return sum(
+        len(collection)
+        for collection in (
+            evidence.goals,
+            evidence.commands,
+            evidence.files_changed,
+            evidence.errors,
+            evidence.outcomes,
+        )
+    )
+
+
 def _fallback_title(selected: list[SessionEvidence]) -> str:
     if len(selected) == 1:
         return selected[0].title or selected[0].session_id
     repositories = sorted({item.repository_id for item in selected})
     if len(repositories) > 1:
         return " / ".join(repositories)
-    return " / ".join(item.title or item.session_id for item in selected)
+    anchor = max(selected, key=_evidence_weight)
+    others = len(selected) - 1
+    plural = "session" if others == 1 else "sessions"
+    return f"{anchor.title or anchor.session_id} and {others} more {plural}"
 
 
 def _supported_status(

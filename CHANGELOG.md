@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- A grouped outcome's title reads as one line. When the model's proposed title
+  is not supported by the evidence, the fallback used to join every session
+  title in the group with slashes, so a group of eleven rendered as eleven
+  clauses. It now names the session with the most extracted evidence and counts
+  the rest: `The real work and 10 more sessions`.
+- A proposed title survives when the evidence substantively supports it. The
+  check required every word longer than two characters to appear in the
+  evidence; across one real synthesis that refused five of ten proposals over
+  words like `polish` and `housekeeping` while every substantive term matched.
+  Eighty percent of the words now suffice. Status and impact keep their
+  existing, stricter checks.
 - Iiwi no longer reports on itself. Every `opencode run` iiwi invokes leaves a
   session in the OpenCode store, and the next scan was picking those up as
   work — fifteen of them in one real 30-day window. They are dropped during the

@@ -17,7 +17,11 @@ from iiwi.models.repository import (
 from iiwi.models.session import ActivityType, AgentSession, SessionActivity
 from iiwi.models.time_range import DateRange
 from iiwi.services import outcomes
-from iiwi.services.outcomes import OutcomeSynthesisService, _supported_title
+from iiwi.services.outcomes import (
+    OutcomeSynthesisService,
+    _fallback_title,
+    _supported_title,
+)
 from iiwi.services.scan import ScanResult
 from iiwi.sessions.filtering import is_iiwi_authored
 
@@ -1209,3 +1213,102 @@ def test_two_word_titles_still_need_every_word() -> None:
 
 def test_a_title_with_no_long_words_falls_back() -> None:
     assert _support("a an of", ["render"]) != "a an of"
+
+
+def _weighted(
+    session_id: str,
+    title: str,
+    *,
+    files: int = 0,
+    goals: int = 0,
+    repository_id: str = "repo-a",
+) -> SessionEvidence:
+    return SessionEvidence(
+        session_id=session_id,
+        repository_id=repository_id,
+        title=title,
+        files_changed=[
+            EvidenceItem(
+                text=f"src/module_{index}.py",
+                source_activity_ids=["a1"],
+                confidence=EvidenceConfidence.HIGH,
+                extraction_method="test",
+            )
+            for index in range(files)
+        ],
+        goals=[
+            EvidenceItem(
+                text=f"goal {index}",
+                source_activity_ids=["a1"],
+                confidence=EvidenceConfidence.HIGH,
+                extraction_method="test",
+            )
+            for index in range(goals)
+        ],
+    )
+
+
+def test_one_session_keeps_its_own_title() -> None:
+    assert _fallback_title([_weighted("ses-a", "Fix the viewport")]) == "Fix the viewport"
+
+
+def test_a_group_sharing_one_repository_names_its_anchor_and_counts_the_rest() -> None:
+    group = [
+        _weighted("ses-a", "Small follow-up", goals=1),
+        _weighted("ses-b", "The real work", goals=8),
+        _weighted("ses-c", "Another follow-up", goals=1),
+    ]
+
+    assert _fallback_title(group) == "The real work and 2 more sessions"
+
+
+def test_a_group_of_two_uses_the_singular() -> None:
+    group = [
+        _weighted("ses-a", "The real work", goals=4),
+        _weighted("ses-b", "Follow-up", goals=1),
+    ]
+
+    assert _fallback_title(group) == "The real work and 1 more session"
+
+
+def test_the_anchor_is_the_richest_session_not_the_widest_one() -> None:
+    group = [
+        _weighted("ses-sweep", "Rename sweep", files=50),
+        _weighted("ses-feature", "The feature", files=3, goals=8),
+    ]
+
+    # 50 evidence items versus 11, so a ref count would pick the sweep
+    assert _fallback_title(group).startswith("Rename sweep")
+
+    richer = [
+        _weighted("ses-sweep", "Rename sweep", files=4),
+        _weighted("ses-feature", "The feature", files=3, goals=8),
+    ]
+    assert _fallback_title(richer).startswith("The feature")
+
+
+def test_ties_take_the_first_session_in_the_group() -> None:
+    group = [
+        _weighted("ses-a", "First", goals=3),
+        _weighted("ses-b", "Second", goals=3),
+    ]
+
+    assert _fallback_title(group) == "First and 1 more session"
+
+
+def test_a_titleless_anchor_falls_back_to_its_session_id() -> None:
+    group = [
+        _weighted("ses-a", "", goals=5),
+        _weighted("ses-b", "Other", goals=1),
+    ]
+
+    assert _fallback_title(group) == "ses-a and 1 more session"
+
+
+def test_a_cross_repository_group_still_names_its_repositories() -> None:
+    group = [
+        _weighted("ses-a", "One", repository_id="repo-a"),
+        _weighted("ses-b", "Two", repository_id="repo-b"),
+    ]
+
+    assert _fallback_title(group) == "repo-a / repo-b"
