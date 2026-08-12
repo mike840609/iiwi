@@ -12,20 +12,28 @@ import typer
 from rich.console import Console
 
 from iiwi.errors import (
+    ConfigurationError,
     IiwiError,
+    OutcomeSynthesisError,
     ReportAlreadyExistsError,
     ReportOutputError,
 )
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.interactive.render import (
+    MORE_CANDIDATES_SECTION,
+    UNGROUPED_CANDIDATES_SECTION,
+    OutcomeReviewRow,
     build_filtered_rows,
     build_session_preview_lines,
     build_visible_rows,
+    help_capacity,
+    help_lines,
     main_menu_options,
     recoverable_error_detail_capacity,
     render_help,
     render_main_menu,
+    render_outcome_review,
     render_recoverable_error,
     render_report_preview,
     render_report_result,
@@ -35,17 +43,20 @@ from iiwi.interactive.render import (
     render_session_review,
     report_generate_row,
     report_preview_capacity,
-    report_preview_row,
     report_result_options,
     report_setup_rows,
+    visible_outcome_review_rows,
 )
 from iiwi.interactive.selection import SelectionState
+from iiwi.models.outcome import Outcome, OutcomeReviewDraft
+from iiwi.models.report_options import ReportType
 from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
 from iiwi.renderers.markdown import DetailLevel
 from iiwi.services.scan import ScanResult
 
 _ADVANCED_ROW = "Advanced settings"
+_SESSION_FALLBACK_NOTICE = "Outcome synthesis unavailable; generated the session-based report."
 
 
 class KeySource(Protocol):
@@ -75,6 +86,15 @@ class InteractiveActions:
     choose_period: Callable[[str | None], tuple[str, DateRange]]
     scan: Callable[[ReportDraft], ScanResult]
     generate: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
+    synthesize: Callable[[ReportDraft, ScanResult], OutcomeReviewDraft]
+    generate_reviewed: Callable[
+        [ReportDraft, ScanResult, OutcomeReviewDraft, bool],
+        InteractiveReportResult,
+    ]
+    edit_outcome: Callable[[Outcome], Outcome]
+    add_outcome: Callable[[], Outcome | None]
+    edit_gap: Callable[[str, str | None], str | None]
+    save_report_type: Callable[[ReportType], None]
     doctor: Callable[[str], list[str]]
     edit_settings: Callable[[], None]
     restore_selection: Callable[[str, DateRange, bool], set[str] | None]
@@ -87,6 +107,7 @@ class _ErrorState:
     kind: str
     title: str
     detail: str
+    retry: str | None = None
     selected: int = 0
     detail_offset: int = 0
 
@@ -112,14 +133,25 @@ class _State:
     error: _ErrorState | None = None
     review_message: str | None = None
     review_from_main: bool = False
+    outcome_review: OutcomeReviewDraft | None = None
+    outcome_review_selection_key: tuple[tuple[str, ...], DetailLevel] | None = None
+    outcome_cursor: int = 0
+    outcome_message: str | None = None
+    expanded_evidence: set[str] | None = None
     search_query: str = ""
     searching: bool = False
     help_return_screen: Screen | None = None
+    help_offset: int = 0
 
     def expansions(self) -> set[str]:
         if self.expanded_repositories is None:
             self.expanded_repositories = set()
         return self.expanded_repositories
+
+    def evidence_expansions(self) -> set[str]:
+        if self.expanded_evidence is None:
+            self.expanded_evidence = set()
+        return self.expanded_evidence
 
 
 def _read_key(input_source: KeySource) -> KeyPress:
@@ -200,6 +232,14 @@ def _reset_search(state: _State) -> None:
     state.searching = False
 
 
+def _clear_outcome_review(state: _State) -> None:
+    state.outcome_review = None
+    state.outcome_review_selection_key = None
+    state.outcome_cursor = 0
+    state.outcome_message = None
+    state.expanded_evidence = set()
+
+
 def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.draft = actions.new_draft()
     state.setup_cursor = 0
@@ -209,6 +249,7 @@ def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.error = None
     state.review_message = None
     state.review_from_main = False
+    _clear_outcome_review(state)
     state.preview_offset = 0
     state.preview_return_screen = None
     state.expanded_repositories = set()
@@ -223,6 +264,7 @@ def _load_browse(
 ) -> None:
     """Load configured activity into the same selectable tree used by reports."""
 
+    _clear_outcome_review(state)
     state.draft = draft
     try:
         scan = actions.scan(draft)
@@ -329,6 +371,7 @@ def _review(state: _State, actions: InteractiveActions) -> None:
 
 def _open_help(state: _State) -> None:
     state.help_return_screen = state.screen
+    state.help_offset = 0
     state.screen = Screen.HELP
 
 
@@ -382,6 +425,7 @@ def _clear_expansions_if_scan_was_invalidated(
 ) -> None:
     if had_scan and draft.scan is None:
         state.expanded_repositories = set()
+        _clear_outcome_review(state)
 
 
 def _edit_setup_field(state: _State, actions: InteractiveActions, *, field: str) -> None:
@@ -420,18 +464,14 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         _review(state, actions)
         return
     if _char(key, "g"):
-        _generate_from_setup(state, actions, preview=False)
+        _generate_from_setup(state, actions)
         return
     row = rows[state.setup_cursor]
-    if row in {report_generate_row(), report_preview_row()}:
+    if row == report_generate_row():
         # Actions answer to Enter alone. Left/right remains reserved for changing
         # settings, so scrolling across an action can never execute it by accident.
         if key.key is Key.ENTER:
-            _generate_from_setup(
-                state,
-                actions,
-                preview=row == report_preview_row(),
-            )
+            _generate_from_setup(state, actions)
         return
     horizontal_edit = key.key in {Key.LEFT, Key.RIGHT} or _char(key, "h") or _char(key, "l")
     if key.key is not Key.ENTER and not horizontal_edit:
@@ -653,33 +693,13 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
     state.screen = Screen.REPORT_RESULT
 
 
-def _generate_from_setup(
-    state: _State,
-    actions: InteractiveActions,
-    *,
-    preview: bool,
-) -> None:
-    """Generate from setup, using dry-run only for the Preview action.
-
-    Both actions share the same scan and restored selection. Preview temporarily
-    enables ``dry_run`` for the business layer, then restores the draft so a later
-    Generate action can never inherit a hidden no-write mode.
-    """
+def _generate_from_setup(state: _State, actions: InteractiveActions) -> None:
+    """Route the setup action to Quick Review before writing output."""
     assert state.draft is not None
-    draft = state.draft
-    draft.set_dry_run(preview)
-    try:
-        state.review_from_main = False
-        _review(state, actions)
-        if state.screen is not Screen.SESSION_REVIEW:
-            return
-        _generate(state, actions, force=False)
-    finally:
-        draft.set_dry_run(False)
-    if preview and state.screen is Screen.REPORT_RESULT:
-        state.preview_offset = 0
-        state.preview_return_screen = Screen.REPORT_SETUP
-        state.screen = Screen.REPORT_PREVIEW
+    state.review_from_main = False
+    _review(state, actions)
+    if state.screen is Screen.SESSION_REVIEW:
+        _begin_outcome_review(state, actions)
 
 
 def _rescan_review(state: _State, actions: InteractiveActions) -> None:
@@ -687,6 +707,7 @@ def _rescan_review(state: _State, actions: InteractiveActions) -> None:
     assert state.selection is not None
     selected = set(state.selection.selected_session_ids)
     state.draft.scan = None
+    _clear_outcome_review(state)
     _review(state, actions)
     if state.screen is not Screen.SESSION_REVIEW or state.selection is None:
         return
@@ -735,7 +756,7 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         state.review_message = None
         return
     if _exact_char(key, "g"):
-        _generate(state, actions, force=False)
+        _begin_outcome_review(state, actions)
         return
     if _exact_char(key, "p"):
         _preview_from_row(
@@ -791,6 +812,282 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
             )
 
 
+def _outcome_review_rows(state: _State) -> list[OutcomeReviewRow]:
+    """Return the Quick Review rows the cursor addresses — the rendered ones."""
+
+    assert state.outcome_review is not None
+    return visible_outcome_review_rows(state.outcome_review, state.evidence_expansions())
+
+
+def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
+    assert state.draft is not None
+    assert state.selection is not None
+    if state.selection.selected_count == 0:
+        state.review_message = "Select at least one session before generating."
+        state.screen = Screen.SESSION_REVIEW
+        return
+    # Quick Review is the LLM path, so the Narrative toggle is what opts out of
+    # it. Turning it off must not still spend a synthesis run.
+    if not state.draft.narrative:
+        _generate(state, actions, force=False)
+        return
+    _sync_selection(state, actions)
+    filtered_scan = state.selection.filtered_scan()
+    selection_key = (
+        tuple(sorted(item.session.session_id for item in filtered_scan.resolved_sessions)),
+        state.draft.detail,
+    )
+    if (
+        state.outcome_review is not None
+        and state.outcome_review_selection_key == selection_key
+    ):
+        state.outcome_cursor = min(
+            state.outcome_cursor,
+            max(0, len(_outcome_review_rows(state)) - 1),
+        )
+        state.review_message = None
+        state.error = None
+        state.screen = Screen.OUTCOME_REVIEW
+        return
+    try:
+        state.outcome_review = actions.synthesize(state.draft, filtered_scan)
+    except OutcomeSynthesisError as exc:
+        state.error = _ErrorState(
+            kind="outcome-synthesis",
+            title="Could not synthesize outcomes",
+            detail=str(exc),
+            retry="outcome-synthesis",
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    state.outcome_review_selection_key = selection_key
+    state.outcome_cursor = 0
+    # Anything synthesis had to hold back is on screen as the review opens,
+    # not only in the written report.
+    state.outcome_message = (
+        state.outcome_review.warnings[0] if state.outcome_review.warnings else None
+    )
+    state.expanded_evidence = set()
+    state.review_message = None
+    state.error = None
+    state.screen = Screen.OUTCOME_REVIEW
+
+
+def _generate_outcome_review(
+    state: _State,
+    actions: InteractiveActions,
+    *,
+    preview: bool,
+    force: bool = False,
+) -> None:
+    assert state.draft is not None
+    assert state.selection is not None
+    assert state.outcome_review is not None
+    # A report with every outcome excluded is a header and nothing else, so say
+    # so here rather than writing the empty file.
+    if not any(outcome.included for outcome in state.outcome_review.outcomes):
+        state.outcome_message = "Include at least one outcome before generating."
+        return
+    draft = state.draft
+    draft.set_dry_run(preview)
+    try:
+        result = actions.generate_reviewed(
+            draft,
+            state.selection.filtered_scan(),
+            state.outcome_review,
+            force,
+        )
+    except ReportAlreadyExistsError as exc:
+        state.error = _ErrorState(
+            kind="outcome-preview" if preview else "outcome-write",
+            title="Could not write report",
+            detail=str(exc),
+            retry="outcome-preview" if preview else "outcome-write",
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    except ReportOutputError as exc:
+        state.error = _ErrorState(
+            kind="outcome-preview" if preview else "outcome-write",
+            title="Could not preview report" if preview else "Could not write report",
+            detail=str(exc),
+            retry="outcome-preview" if preview else None,
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    except IiwiError as exc:
+        state.error = _ErrorState(
+            kind="outcome-preview" if preview else "outcome-write",
+            title="Could not preview report" if preview else "Could not write report",
+            detail=str(exc),
+            retry="outcome-preview" if preview else None,
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    finally:
+        draft.set_dry_run(False)
+    state.result = result
+    state.result_cursor = 0
+    state.preview_offset = 0
+    state.outcome_message = None
+    state.error = None
+    if preview:
+        state.preview_return_screen = Screen.OUTCOME_REVIEW
+        state.screen = Screen.REPORT_PREVIEW
+    else:
+        state.preview_return_screen = None
+        state.screen = Screen.REPORT_RESULT
+
+
+def _cycle_report_type(state: _State, actions: InteractiveActions) -> None:
+    assert state.draft is not None
+    assert state.outcome_review is not None
+    review = state.outcome_review
+    report_type = (
+        ReportType.ENGINEERING
+        if review.report_type is ReportType.MANAGER
+        else ReportType.MANAGER
+    )
+    review.set_report_type(report_type)
+    assert review.detail is not None
+    state.draft.report_type = review.report_type
+    state.draft.detail = review.detail
+    state.draft.detail_overridden = review.detail_overridden
+    if state.outcome_review_selection_key is not None:
+        selected_session_ids, _ = state.outcome_review_selection_key
+        state.outcome_review_selection_key = (
+            selected_session_ids,
+            state.draft.detail,
+        )
+    state.outcome_message = None
+    try:
+        actions.save_report_type(report_type)
+    except ConfigurationError as exc:
+        state.outcome_message = (
+            "Report type changed, but the preference could not be remembered: "
+            f"{exc}"
+        )
+
+
+def _move_reviewed_outcome(
+    state: _State,
+    target: OutcomeReviewRow,
+    delta: int,
+) -> None:
+    assert state.outcome_review is not None
+    assert target.outcome_id is not None
+    state.outcome_review.move(target.outcome_id, delta)
+    rows = _outcome_review_rows(state)
+    state.outcome_cursor = next(
+        index
+        for index, row in enumerate(rows)
+        if row.kind == "outcome" and row.outcome_id == target.outcome_id
+    )
+
+
+def _outcome_review_key(
+    state: _State,
+    key: KeyPress,
+    actions: InteractiveActions,
+) -> None:
+    assert state.outcome_review is not None
+    rows = _outcome_review_rows(state)
+    state.outcome_cursor = min(state.outcome_cursor, len(rows) - 1)
+    target = rows[state.outcome_cursor]
+
+    if _exact_char(key, "J") and target.kind == "outcome":
+        _move_reviewed_outcome(state, target, 1)
+        return
+    if _exact_char(key, "K") and target.kind == "outcome":
+        _move_reviewed_outcome(state, target, -1)
+        return
+
+    state.outcome_cursor = _move(state.outcome_cursor, key, len(rows))
+    target = rows[state.outcome_cursor]
+    if _char(key, "q"):
+        state.screen = Screen.MAIN
+        return
+    if key.key is Key.ESCAPE or _char(key, "b"):
+        state.screen = Screen.SESSION_REVIEW
+        return
+    if _exact_char(key, "p"):
+        _generate_outcome_review(state, actions, preview=True)
+        return
+    if _exact_char(key, "g"):
+        _generate_outcome_review(state, actions, preview=False)
+        return
+    if _exact_char(key, "a"):
+        added = actions.add_outcome()
+        if added is not None:
+            created = state.outcome_review.add_user_outcome(
+                added.title,
+                added.impact,
+                added.status,
+            )
+            rows = _outcome_review_rows(state)
+            state.outcome_cursor = next(
+                index
+                for index, row in enumerate(rows)
+                if row.outcome_id == created.id
+            )
+        return
+    if target.kind != "outcome":
+        if key.key is not Key.ENTER:
+            return
+        if target.kind == "settings":
+            _cycle_report_type(state, actions)
+        elif target.kind == "more":
+            expansions = state.evidence_expansions()
+            expansions.symmetric_difference_update({MORE_CANDIDATES_SECTION})
+        elif target.kind == "ungrouped":
+            expansions = state.evidence_expansions()
+            expansions.symmetric_difference_update({UNGROUPED_CANDIDATES_SECTION})
+        elif target.kind == "blockers":
+            state.outcome_review.blockers = actions.edit_gap(
+                "Blockers", state.outcome_review.blockers
+            )
+        elif target.kind == "next_week":
+            state.outcome_review.next_week = actions.edit_gap(
+                "Next week", state.outcome_review.next_week
+            )
+        elif target.kind == "preview":
+            _generate_outcome_review(state, actions, preview=True)
+        elif target.kind == "generate":
+            _generate_outcome_review(state, actions, preview=False)
+        return
+
+    assert target.outcome_id is not None
+    if key.key is Key.SPACE:
+        state.outcome_review.toggle_included(target.outcome_id)
+        return
+    if _exact_char(key, "v"):
+        state.evidence_expansions().symmetric_difference_update({target.outcome_id})
+        return
+    if _exact_char(key, "e"):
+        outcome = next(
+            item
+            for item in state.outcome_review.outcomes
+            if item.id == target.outcome_id
+        )
+        edited = actions.edit_outcome(outcome.model_copy(deep=True))
+        state.outcome_review.edit(
+            target.outcome_id,
+            title=edited.title,
+            status=edited.status,
+            impact=edited.impact,
+        )
+        return
+    if _exact_char(key, "s"):
+        try:
+            state.outcome_review.split(target.outcome_id)
+        except ValueError as exc:
+            state.outcome_message = str(exc)
+        state.outcome_cursor = min(
+            state.outcome_cursor,
+            len(_outcome_review_rows(state)) - 1,
+        )
+
+
 def _error_options(error: _ErrorState) -> list[str]:
     if error.kind in {"doctor-result", "settings-result"}:
         return ["Main menu"]
@@ -798,6 +1095,14 @@ def _error_options(error: _ErrorState) -> list[str]:
         return ["Back"]
     if error.kind in {"report-empty", "browse-empty"}:
         return ["Change period", "Change harness", "Back", "Main menu"]
+    if error.kind == "outcome-synthesis":
+        return ["Retry", "Use session-based report", "Back"]
+    if error.kind == "outcome-preview":
+        return ["Retry", "Back to Quick Review", "Main menu"]
+    if error.kind == "outcome-write":
+        if error.retry == "outcome-write":
+            return ["Overwrite once", "Back to Quick Review", "Main menu"]
+        return ["Back to Quick Review", "Main menu"]
     if error.kind == "report-output-conflict":
         return ["Overwrite once", "Back", "Main menu"]
     if error.kind in {"report-output", "report-generate"}:
@@ -810,6 +1115,10 @@ def _error_back_screen(error: _ErrorState) -> Screen:
         return Screen.REPORT_RESULT
     if error.kind in {"doctor-result", "settings-result"}:
         return Screen.MAIN
+    if error.kind == "outcome-synthesis":
+        return Screen.SESSION_REVIEW
+    if error.kind in {"outcome-preview", "outcome-write"}:
+        return Screen.OUTCOME_REVIEW
     if error.kind in {"report-output-conflict", "report-output", "report-generate"}:
         return Screen.SESSION_REVIEW
     if error.kind.startswith("report"):
@@ -865,8 +1174,38 @@ def _error_key(
     if choice == "Back":
         state.screen = _error_back_screen(error)
         return
+    if choice == "Back to Quick Review":
+        state.screen = Screen.OUTCOME_REVIEW
+        return
+    if choice == "Retry":
+        if error.retry == "outcome-synthesis":
+            _begin_outcome_review(state, actions)
+        elif error.retry == "outcome-preview":
+            _generate_outcome_review(state, actions, preview=True)
+        return
+    if choice == "Use session-based report":
+        assert state.draft is not None
+        state.draft.generation_notice = _SESSION_FALLBACK_NOTICE
+        _generate(state, actions, force=False)
+        if state.screen is not Screen.RECOVERABLE_ERROR:
+            state.draft.generation_notice = None
+        return
     if choice == "Overwrite once":
-        _generate(state, actions, force=True)
+        if error.retry == "outcome-write":
+            _generate_outcome_review(
+                state,
+                actions,
+                preview=False,
+                force=True,
+            )
+        else:
+            _generate(state, actions, force=True)
+            if (
+                state.draft is not None
+                and state.draft.generation_notice is not None
+                and state.screen is not Screen.RECOVERABLE_ERROR
+            ):
+                state.draft.generation_notice = None
         return
     assert state.draft is not None
     if choice == "Change harness":
@@ -887,7 +1226,7 @@ def _error_key(
 def _result_key(state: _State, key: KeyPress) -> None:
     assert state.draft is not None
     assert state.result is not None
-    options = report_result_options(dry_run=state.draft.dry_run)
+    options = report_result_options()
     state.result_cursor = _move(state.result_cursor, key, len(options))
     if key.key is Key.ESCAPE or _char(key, "q") or _char(key, "b"):
         state.screen = Screen.MAIN
@@ -896,15 +1235,12 @@ def _result_key(state: _State, key: KeyPress) -> None:
         return
 
     choice = options[state.result_cursor]
-    if choice == "Preview report":
-        state.preview_offset = 0
-        state.preview_return_screen = Screen.REPORT_RESULT
-        state.screen = Screen.REPORT_PREVIEW
-    elif choice == "Back to main menu":
+    if choice == "Back to main menu":
         state.screen = Screen.MAIN
     elif choice == "Generate another report":
         state.draft.clear_scan()
         state.selection = None
+        _clear_outcome_review(state)
         state.result = None
         state.error = None
         state.review_message = None
@@ -982,13 +1318,26 @@ def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None
         state.preview_offset = max_offset
 
 
-def _help_key(state: _State, key: KeyPress) -> None:
+def _help_key(state: _State, key: KeyPress, console: Console) -> None:
     if _char(key, "q"):
         state.screen = Screen.MAIN
         return
     if key.key in {Key.ESCAPE, Key.ENTER} or _char(key, "b") or _exact_char(key, "?"):
         state.screen = state.help_return_screen or Screen.MAIN
         state.help_return_screen = None
+        return
+    # The reference outgrew a short terminal, so it scrolls like the previews.
+    capacity = help_capacity(console.size.height)
+    max_offset = max(0, len(help_lines()) - capacity)
+    page = max(1, capacity)
+    if key.key is Key.UP or _char(key, "k"):
+        state.help_offset = max(0, state.help_offset - 1)
+    elif key.key is Key.DOWN or _char(key, "j"):
+        state.help_offset = min(max_offset, state.help_offset + 1)
+    elif key.key is Key.PAGE_UP:
+        state.help_offset = max(0, state.help_offset - page)
+    elif key.key is Key.PAGE_DOWN:
+        state.help_offset = min(max_offset, state.help_offset + page)
 
 
 def _render_screen(state: _State, console: Console) -> None:
@@ -1022,6 +1371,16 @@ def _render_screen(state: _State, console: Console) -> None:
             message=state.review_message,
             query=state.search_query,
             searching=state.searching,
+        )
+    elif state.screen is Screen.OUTCOME_REVIEW:
+        assert state.outcome_review is not None
+        render_outcome_review(
+            console,
+            state.outcome_review,
+            cursor=state.outcome_cursor,
+            expanded_evidence=state.evidence_expansions(),
+            period=state.draft.period if state.draft is not None else None,
+            message=state.outcome_message,
         )
     elif state.screen is Screen.SESSION_PREVIEW:
         assert state.preview_session is not None
@@ -1060,7 +1419,7 @@ def _render_screen(state: _State, console: Console) -> None:
             detail_offset=state.error.detail_offset,
         )
     elif state.screen is Screen.HELP:
-        render_help(console)
+        render_help(console, offset=state.help_offset)
 
 
 def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
@@ -1074,6 +1433,8 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
         if state.selection is not None and state.draft is not None:
             _sync_selection(state, actions)
         state.screen = Screen.MAIN if state.review_from_main else Screen.REPORT_SETUP
+    elif state.screen is Screen.OUTCOME_REVIEW:
+        state.screen = Screen.SESSION_REVIEW
     elif state.screen is Screen.REPORT_RESULT:
         state.screen = Screen.MAIN
     elif state.screen is Screen.REPORT_PREVIEW:
@@ -1105,6 +1466,8 @@ def _dispatch(
         _browser_key(state, key, actions)
     elif state.screen is Screen.SESSION_REVIEW:
         _review_key(state, key, actions)
+    elif state.screen is Screen.OUTCOME_REVIEW:
+        _outcome_review_key(state, key, actions)
     elif state.screen is Screen.REPORT_RESULT:
         _result_key(state, key)
     elif state.screen is Screen.REPORT_PREVIEW:
@@ -1114,7 +1477,7 @@ def _dispatch(
     elif state.screen is Screen.RECOVERABLE_ERROR:
         _error_key(state, key, actions, console)
     elif state.screen is Screen.HELP:
-        _help_key(state, key)
+        _help_key(state, key, console)
 
 
 def _render(

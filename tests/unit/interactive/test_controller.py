@@ -16,6 +16,12 @@ from iiwi.interactive.controller import (
 )
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft
+from iiwi.models.outcome import (
+    EvidenceRef,
+    Outcome,
+    OutcomeReviewDraft,
+    OutcomeStatus,
+)
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -26,6 +32,20 @@ from iiwi.models.time_range import DateRange
 from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
+
+
+def _synthesized_outcomes() -> list[Outcome]:
+    """Quick Review declines to generate with nothing included, so stub one outcome."""
+    return [
+        Outcome(
+            id="outcome-1",
+            title="Outcome 1",
+            status=OutcomeStatus.IN_PROGRESS,
+            impact="Impact",
+            rank=0,
+            evidence_refs=[EvidenceRef(session_id="ses-0", repository_id="repo-a")],
+        )
+    ]
 
 
 def char(value: str) -> KeyPress:
@@ -146,6 +166,16 @@ def _actions(
         choose_period=choose_period,
         scan=scan,
         generate=generate,
+        synthesize=lambda draft, scan: OutcomeReviewDraft(
+            outcomes=_synthesized_outcomes(), report_type=draft.report_type
+        ),
+        generate_reviewed=lambda draft, scan, review, force: generate(
+            draft, scan, force
+        ),
+        edit_outcome=lambda outcome: outcome,
+        add_outcome=lambda: None,
+        edit_gap=lambda label, current: current,
+        save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
         edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
@@ -269,7 +299,7 @@ def test_zero_sessions_is_recoverable_by_changing_period() -> None:
     assert counters["choose_period"] == 1
 
 
-def test_setup_g_generates_without_visiting_review() -> None:
+def test_setup_g_enters_quick_review_then_generate_writes() -> None:
     counters: dict[str, int] = {}
 
     def populated_scan(draft: ReportDraft) -> ScanResult:
@@ -306,7 +336,7 @@ def test_setup_g_generates_without_visiting_review() -> None:
             sessions_by_repository={"repo-a": sessions},
         )
 
-    input_source = ScriptedInput([char("2"), char("g"), char("q"), char("q")])
+    input_source = ScriptedInput([char("2"), char("g"), char("g"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=populated_scan, counters=counters),
@@ -420,10 +450,10 @@ def _setup_populated_scan(draft: ReportDraft) -> ScanResult:
     )
 
 
-def test_setup_enter_on_the_action_row_generates() -> None:
+def test_setup_enter_on_the_action_row_enters_quick_review_then_generate_writes() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("2"), KeyPress(key=Key.ENTER), char("q"), char("q")]
+        [char("2"), KeyPress(key=Key.ENTER), char("g"), char("q"), char("q")]
     )
 
     run_interactive(

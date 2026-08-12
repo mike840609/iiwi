@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
+from iiwi.interactive import render
 from iiwi.interactive.render import (
     build_visible_rows,
     render_report_preview,
@@ -13,6 +14,14 @@ from iiwi.interactive.render import (
     render_session_review,
 )
 from iiwi.interactive.selection import SelectionState
+from iiwi.models.outcome import (
+    EvidenceRef,
+    Outcome,
+    OutcomeBucket,
+    OutcomeReviewDraft,
+    OutcomeStatus,
+)
+from iiwi.models.report_options import ReportType
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -164,18 +173,63 @@ def test_report_preview_reserves_last_terminal_line_when_both_indicators_show() 
     assert len(_display_lines(stream)) <= console.size.height - 1
 
 
+def _bucketed_outcome_review() -> OutcomeReviewDraft:
+    """A review with content in all three sections, every field wider than 140 cells."""
+
+    buckets = (
+        [OutcomeBucket.PRIMARY] * 4
+        + [OutcomeBucket.MORE] * 3
+        + [OutcomeBucket.UNGROUPED] * 2
+    )
+    outcomes = [
+        Outcome(
+            id=f"outcome-{index}",
+            title=f"Outcome {index}\n\n" + "very-long-title-" * 10,
+            status=OutcomeStatus.IN_PROGRESS,
+            impact="A long impact explanation\n" + "continues-across-lines-" * 12,
+            rank=index,
+            bucket=bucket,
+            evidence_refs=[
+                EvidenceRef(
+                    session_id=f"session-{index}-" + "long-session-id-" * 6,
+                    repository_id="repository-\n" + "long-repository-name-" * 8,
+                    commit="deadbeef" * 8,
+                    file="src/\n" + "deeply-nested-directory/" * 8 + "renderer.py",
+                )
+            ],
+        )
+        for index, bucket in enumerate(buckets)
+    ]
+    return OutcomeReviewDraft(
+        outcomes=outcomes,
+        report_type=ReportType.MANAGER,
+        blockers="Blocked by\n\n" + "long-blocker-detail-" * 12,
+        next_week="Next week\n\n" + "long-plan-detail-" * 12,
+    )
+
+
 def test_interactive_screens_fit_every_reasonable_terminal_size() -> None:
     """Chrome grew a rule, a subtitle and a wrapping status bar; none may crowd out the list.
 
-    Fourteen rows is the floor this screen guarantees: below it the fixed chrome alone
+    Fourteen rows is the floor these screens guarantee: below it the fixed chrome alone
     can exceed the terminal. Above it, every size must render inside its budget with the
     cursor row on screen.
+
+    Quick Review is measured in all three of its expansion states, because what the
+    focused block costs depends on them: at 40x14 with both disclosure sections open
+    the focused outcome alone used to outrun the whole body budget.
     """
 
     scan = _scan(12, long_titles=True)
     selection = SelectionState.from_scan(scan)
     expanded = {"repo-a"}
     rows = build_visible_rows(scan, expanded)
+    review = _bucketed_outcome_review()
+    expansion_states = (
+        set(),
+        {review.ordered()[0].id},
+        {render.MORE_CANDIDATES_SECTION, render.UNGROUPED_CANDIDATES_SECTION},
+    )
 
     for width in (40, 60, 80, 100, 140):
         for height in (14, 16, 20, 24, 40):
@@ -195,3 +249,90 @@ def test_interactive_screens_fit_every_reasonable_terminal_size() -> None:
                 lines = _display_lines(stream)
                 assert len(lines) <= height - 1, (width, height, cursor)
                 assert any("▶" in line for line in lines), (width, height, cursor)
+
+            for expansions in expansion_states:
+                review_rows = render.visible_outcome_review_rows(review, expansions)
+                for cursor in (0, len(review_rows) // 2, len(review_rows) - 1):
+                    where = (width, height, cursor, sorted(expansions))
+                    console, stream = _console(width=width, height=height)
+                    render.render_outcome_review(
+                        console,
+                        review,
+                        cursor=cursor,
+                        expanded_evidence=expansions,
+                    )
+                    lines = _display_lines(stream)
+                    assert len(lines) <= height - 1, where
+                    assert any("▶" in line for line in lines), where
+
+
+def test_help_fits_every_reasonable_terminal_size() -> None:
+    """The reference grew a Quick Review section; it scrolls rather than overflowing."""
+
+    for width in (40, 60, 80, 100, 140):
+        for height in (14, 16, 20, 24, 40):
+            console, stream = _console(width=width, height=height)
+            render.render_help(console)
+            lines = _display_lines(stream)
+            assert len(lines) <= height - 1, (width, height)
+            assert any("Keyboard shortcuts" in line for line in lines), (width, height)
+
+
+def _long_outcome_review() -> OutcomeReviewDraft:
+    outcomes = [
+        Outcome(
+            id=f"outcome-{index}",
+            title=f"Outcome {index}\n\n\n" + "very-long-title-" * 10,
+            status=OutcomeStatus.IN_PROGRESS,
+            impact=(
+                "A long impact explanation\n"
+                + "continues-across-rendered-lines-" * 12
+            ),
+            rank=index,
+            evidence_refs=[
+                EvidenceRef(
+                    session_id=f"session-{index}-" + "long-session-id-" * 6,
+                    repository_id="repository-\n" + "long-repository-name-" * 8,
+                    commit="deadbeef" * 8,
+                    file=(
+                        "src/\n" + "deeply-nested-directory/" * 8 + "renderer.py"
+                    ),
+                )
+            ],
+        )
+        for index in range(12)
+    ]
+    return OutcomeReviewDraft(
+        outcomes=outcomes,
+        report_type=ReportType.MANAGER,
+        blockers="Blocked by\n\n\n" + "long-blocker-detail-" * 12,
+        next_week="Next week\n\n\n" + "long-plan-detail-" * 12,
+    )
+
+
+def test_outcome_review_fits_width_height_and_focus_matrix() -> None:
+    review = _long_outcome_review()
+    rows = render.outcome_review_rows(review)
+    focuses = (0, len(rows) // 2, len(rows) - 1)
+    expanded = {outcome.id for outcome in review.outcomes}
+    error = "Could not refresh review:\n\n\n" + "long-error-detail-" * 20
+
+    for width in (40, 60, 80, 100, 140):
+        for height in (20, 24, 30):
+            for cursor in focuses:
+                console, stream = _console(width=width, height=height)
+                render.render_outcome_review(
+                    console,
+                    review,
+                    cursor=cursor,
+                    expanded_evidence=expanded,
+                    message=error,
+                )
+
+                lines = stream.getvalue().splitlines()
+                assert len(lines) <= height - 1, (width, height, cursor)
+                assert any("Quick Review" in line for line in lines), (width, height, cursor)
+                assert any("▶" in line for line in lines), (width, height, cursor)
+                assert any(
+                    "p Preview" in line or "g Generate" in line for line in lines
+                ), (width, height, cursor)

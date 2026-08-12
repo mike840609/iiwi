@@ -16,7 +16,7 @@ from iiwi.models.session import ActivityType, AgentSession
 from iiwi.models.time_range import DateRange
 from iiwi.progress import NullProgressReporter, ProgressReporter, ProgressStage
 from iiwi.repositories.resolver import Runner, reattach_by_branch
-from iiwi.sessions.filtering import filter_session_to_period
+from iiwi.sessions.filtering import filter_session_to_period, is_iiwi_authored
 from iiwi.sessions.hierarchy import group_resolved_sessions
 
 _ASSISTANT_ACTIVITY_TYPES = frozenset(
@@ -131,6 +131,12 @@ class ScanService:
                     )
                     continue
                 successful_exports += 1
+                # iiwi's own opencode runs are machinery, not the user's work. This
+                # runs before any warning append below, so a dropped session never
+                # surfaces a warning naming a session absent from the rest of the
+                # result.
+                if is_iiwi_authored(session):
+                    continue
                 missing_timestamp_count = sum(
                     activity.timestamp is None for activity in session.activities
                 )

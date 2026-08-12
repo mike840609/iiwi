@@ -1,9 +1,23 @@
 """Exact half-open activity filtering."""
 
+import re
 from copy import deepcopy
 
 from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
+
+IIWI_SESSION_TITLE_PREFIX = "iiwi-internal: "
+# Titles iiwi wrote before the prefix existed. Matched exactly, never by
+# prefix, so a human session named "Iiwi main menu rework" still counts as
+# work. "Iiwi narrative summary" is not a string iiwi's code emits — it came
+# from iiwi's own runner during diagnostics with a non-default title — but the
+# sessions it matches are iiwi machinery, which is what this predicate is for.
+_LEGACY_IIWI_TITLES = frozenset(
+    {"Iiwi outcome synthesis", "Iiwi narrative summary"}
+)
+_LEGACY_IIWI_NARRATIVE = re.compile(
+    r"^Iiwi - \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$"
+)
 
 
 def _session_timestamp_in_period(session: AgentSession, period: DateRange) -> bool:
@@ -40,3 +54,18 @@ def filter_session_to_period(
     filtered = deepcopy(session)
     filtered.activities = activities
     return filtered
+
+
+def is_iiwi_authored(session: AgentSession) -> bool:
+    """Return whether iiwi's own `opencode run` created this session."""
+
+    title = (session.title or "").strip()
+    if not title:
+        return False
+    if title.startswith(IIWI_SESSION_TITLE_PREFIX):
+        return True
+    # The legacy titles are strings only `opencode run` ever wrote, so a Claude
+    # Code or Codex session titled the same way is not iiwi's own.
+    return session.harness == "opencode" and (
+        title in _LEGACY_IIWI_TITLES or _LEGACY_IIWI_NARRATIVE.match(title) is not None
+    )

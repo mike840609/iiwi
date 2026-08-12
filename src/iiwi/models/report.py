@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from iiwi.models.outcome import Outcome
+from iiwi.models.report_options import ReportType
 from iiwi.models.time_range import DateRange
 
 
@@ -37,3 +39,7 @@ class WorklogReport(BaseModel):
     usage_text: str | None = None
     usage_days: int | None = None
     warnings: list[str] = Field(default_factory=list)
+    report_type: ReportType | None = None
+    outcomes: list[Outcome] = Field(default_factory=list)
+    blockers: str | None = None
+    next_week: str | None = None

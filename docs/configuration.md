@@ -151,6 +151,8 @@ iiwi doctor --harness codex
 | `IIWI_REPORT__TIMEZONE` | `Asia/Taipei` | Calendar-week and naive ISO timestamp timezone. |
 | `IIWI_REPORT__OUTPUT_DIRECTORY` | `reports` | Default Markdown output directory. |
 | `IIWI_REPORT__EXCLUDE_REPOSITORIES` | `""` | Comma-separated repository ids to permanently leave out of every scan and report. |
+| `IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE` | `manager` | Default Quick Review audience: `manager` or `engineering`. Manager defaults to Brief; Engineering defaults to Full unless Detail was explicitly changed. |
+| `IIWI_REPORT__QUICK_REVIEW_MAX_EVIDENCE_BYTES` | `40000` | Largest evidence payload one Quick Review synthesis run may send to `opencode run`. |
 
 The `--output` CLI option overrides the configured output directory for one invocation.
 
@@ -163,6 +165,36 @@ instead of reporting "no activity found".
 ```bash
 iiwi config set report.exclude_repositories "dotfiles,notes-vault"
 ```
+
+The exact Quick Review key is `report.quick_review_report_type`, and its
+environment variable is `IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE`. For example:
+
+```bash
+iiwi config set report.quick_review_report_type manager
+```
+
+Changing the Report row during Quick Review also saves this default for the next
+interactive report.
+
+`report.quick_review_max_evidence_bytes` bounds the evidence Quick Review sends to
+one `opencode run`. Past roughly this size the model stops returning the strict
+JSON synthesis needs — a full week of sessions used to return nothing at all, and
+Quick Review always fell back to the session-based report. Synthesis sends the
+most recent sessions that fit; the sessions beyond the budget become ungrouped
+candidates in the review, and a warning names how many were held back.
+
+Each session costs roughly 580 bytes of that budget, so the default of `40000`
+covers about the 65 most recent sessions and leaves the rest as ungrouped
+candidates. That budget is a hard limit rather than an estimate: synthesis
+measures the payload exactly as it will be sent, so what goes to the model stays
+under the number you set. Raising it has a real ceiling rather than free
+headroom: against a busy week of 175 sessions, `40000` returned grouped
+outcomes, `80000` came back without valid outcome JSON, and `120000` ran past
+the 600-second `run_timeout_seconds`. Those runs used the default local model,
+so a more capable one may reach further — raise the budget a step at a time and
+confirm synthesis still succeeds. When it does not, Quick Review's recovery
+screen still offers the session-based report, so a budget set too high degrades
+the review rather than breaking it.
 
 ## OpenCode run settings
 

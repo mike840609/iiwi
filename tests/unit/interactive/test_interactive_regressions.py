@@ -22,6 +22,12 @@ from iiwi.interactive.controller import (
 )
 from iiwi.interactive.input import Key, KeyPress, normalize_posix_sequence
 from iiwi.interactive.models import ReportDraft
+from iiwi.models.outcome import (
+    EvidenceRef,
+    Outcome,
+    OutcomeReviewDraft,
+    OutcomeStatus,
+)
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -32,6 +38,20 @@ from iiwi.models.time_range import DateRange
 from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
+
+
+def _synthesized_outcomes() -> list[Outcome]:
+    """Quick Review declines to generate with nothing included, so stub one outcome."""
+    return [
+        Outcome(
+            id="outcome-1",
+            title="Outcome 1",
+            status=OutcomeStatus.IN_PROGRESS,
+            impact="Impact",
+            rank=0,
+            evidence_refs=[EvidenceRef(session_id="ses-0", repository_id="repo-a")],
+        )
+    ]
 
 
 def char(value: str) -> KeyPress:
@@ -128,6 +148,19 @@ def _actions(
             repository_count=1,
             session_count=scan.loaded_session_count,
         ),
+        synthesize=lambda draft, scan: OutcomeReviewDraft(
+            outcomes=_synthesized_outcomes(), report_type=draft.report_type
+        ),
+        generate_reviewed=lambda draft, scan, review, force: InteractiveReportResult(
+            output_path=None if draft.dry_run else Path("reports/worklog.md"),
+            content="\n".join(f"line {index}" for index in range(60)),
+            repository_count=1,
+            session_count=scan.loaded_session_count,
+        ),
+        edit_outcome=lambda outcome: outcome,
+        add_outcome=lambda: None,
+        edit_gap=lambda label, current: current,
+        save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
         edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
@@ -180,7 +213,7 @@ def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
         ReportDraft(harness="opencode", period=_period()),
         selected=0,
     )
-    assert len(setup_stream.getvalue().splitlines()) == 21
+    assert len(setup_stream.getvalue().splitlines()) == 18
 
     console, result_stream = _console(width=30, height=30)
     interactive_render.render_report_result(
@@ -334,8 +367,8 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
     keys = ScriptedInput(
         [
             char("2"),
-            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
+            char("p"),
             KeyPress(key=page_down),
             char("G"),
             char("g"),

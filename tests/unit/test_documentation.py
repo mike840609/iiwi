@@ -170,6 +170,14 @@ def test_configuration_documents_opencode_run_settings() -> None:
     assert "IIWI_HARNESSES__OPENCODE__CLI__MODEL" in configuration
 
 
+def test_configuration_documents_quick_review_report_type_exactly() -> None:
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "`report.quick_review_report_type`" in configuration
+    assert "`IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE`" in configuration
+    assert "iiwi config set report.quick_review_report_type manager" in configuration
+
+
 def test_privacy_doc_warns_about_raw_export_and_dry_run() -> None:
     privacy = Path("docs/privacy.md").read_text(encoding="utf-8").casefold()
 
