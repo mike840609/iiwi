@@ -16,7 +16,7 @@ from iiwi.models.session import ActivityType, AgentSession
 from iiwi.models.time_range import DateRange
 from iiwi.progress import NullProgressReporter, ProgressReporter, ProgressStage
 from iiwi.repositories.resolver import Runner, reattach_by_branch
-from iiwi.sessions.filtering import filter_session_to_period
+from iiwi.sessions.filtering import filter_session_to_period, is_iiwi_authored
 from iiwi.sessions.hierarchy import group_resolved_sessions
 
 _ASSISTANT_ACTIVITY_TYPES = frozenset(
@@ -141,6 +141,9 @@ class ScanService:
                     )
                 if _has_assistant_work_but_no_prompt(session):
                     warnings.append(_missing_prompt_warning(session))
+                # iiwi's own opencode runs are machinery, not the user's work.
+                if is_iiwi_authored(session):
+                    continue
                 filtered = filter_session_to_period(session, self._period)
                 if filtered is None:
                     continue

@@ -459,3 +459,46 @@ def test_scan_with_nothing_to_reattach_behaves_like_the_baseline(fake_runner) ->
 
     assert with_runner == baseline
     assert not any("Reattached" in warning for warning in baseline.warnings)
+
+
+class IiwiAuthoredSource:
+    """One human session beside two sessions iiwi's own runs left behind."""
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return [
+            SessionDescriptor(harness="opencode", session_id="human"),
+            SessionDescriptor(harness="opencode", session_id="synthesis"),
+            SessionDescriptor(harness="opencode", session_id="narrative"),
+        ]
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        titles = {
+            "human": "Add weekly report generation",
+            "synthesis": "iiwi-internal: outcome synthesis",
+            "narrative": "Iiwi - 2026-07-20 to 2026-07-27",
+        }
+        return AgentSession(
+            harness="opencode",
+            session_id=descriptor.session_id,
+            title=titles[descriptor.session_id],
+            activities=[
+                SessionActivity(
+                    activity_id=f"{descriptor.session_id}:a1",
+                    activity_type=ActivityType.USER_MESSAGE,
+                    timestamp=datetime(2026, 7, 22, tzinfo=TZ),
+                    content="Add weekly report generation",
+                )
+            ],
+        )
+
+
+def test_scan_excludes_the_sessions_iiwi_itself_created() -> None:
+    result = ScanService(
+        source=IiwiAuthoredSource(),
+        resolver=StaticResolver(),
+        period=period(),
+    ).scan()
+
+    assert [item.session.session_id for item in result.resolved_sessions] == ["human"]
+    assert result.loaded_session_count == 1
+    assert result.warnings == []

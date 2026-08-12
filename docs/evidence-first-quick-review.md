@@ -10,6 +10,10 @@ Run `iiwi`, choose **Generate Report**, and open **Review sessions**. Select the
 sessions that belong in the update, then press `g` to generate outcome candidates.
 Iiwi synthesizes only that selection.
 
+Quick Review never sees the sessions iiwi's own `opencode run` leaves behind;
+they are dropped during the scan, so generating a report does not add to the
+activity the next report describes.
+
 Up to five outcomes are selected initially. All additional results remain under
 **More candidates**. Open that section, exclude a primary outcome with `Space`,
 and include a stronger candidate with `Space` to replace it. If evidence

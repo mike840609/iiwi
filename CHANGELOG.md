@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Iiwi no longer reports on itself. Every `opencode run` iiwi invokes leaves a
+  session in the OpenCode store, and the next scan was picking those up as
+  work — fifteen of them in one real 30-day window. They are dropped during the
+  scan now, so they are absent from Quick Review, Browse Activity, the
+  session-based report, and every session count.
 - Quick Review works on a full week again. Synthesis sent every selected
   session's evidence in one `opencode run` and demanded strict JSON back, so a
   realistic selection — over a hundred sessions, more than a megabyte — came
