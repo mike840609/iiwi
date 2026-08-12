@@ -29,6 +29,38 @@ def noise_reason(session: AgentSession) -> str | None:
     return None
 
 
+def without_repository(scan: ScanResult, repository_id: str) -> ScanResult:
+    """Return a scan with one repository's sessions removed, metadata intact.
+
+    The in-memory exclusion keeps the current view honest without re-reading
+    the disk; the persisted configuration still applies to future scans.
+    """
+
+    try:
+        removed = scan.sessions_by_repository[repository_id]
+    except KeyError:
+        raise KeyError(repository_id) from None
+    removed_ids = {item.session.session_id for item in removed}
+    return ScanResult(
+        period=scan.period,
+        candidate_session_count=scan.candidate_session_count,
+        loaded_session_count=scan.loaded_session_count - len(removed_ids),
+        failed_session_count=scan.failed_session_count,
+        resolved_sessions=[
+            item
+            for item in scan.resolved_sessions
+            if item.session.session_id not in removed_ids
+        ],
+        sessions_by_repository={
+            key: value
+            for key, value in scan.sessions_by_repository.items()
+            if key != repository_id
+        },
+        warnings=list(scan.warnings),
+        excluded_session_count=scan.excluded_session_count,
+    )
+
+
 @dataclass
 class SelectionState:
     scan: ScanResult
