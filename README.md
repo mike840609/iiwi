@@ -59,8 +59,8 @@ $ iiwi
 Turn coding-agent sessions into engineering reports
 github.com/mike840609/iiwi
 
-▶ Generate Report
-  Browse Sessions
+▶ Review Activity
+  Generate Report
   Check Setup
   Settings
 
