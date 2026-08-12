@@ -131,6 +131,12 @@ class ScanService:
                     )
                     continue
                 successful_exports += 1
+                # iiwi's own opencode runs are machinery, not the user's work. This
+                # runs before any warning append below, so a dropped session never
+                # surfaces a warning naming a session absent from the rest of the
+                # result.
+                if is_iiwi_authored(session):
+                    continue
                 missing_timestamp_count = sum(
                     activity.timestamp is None for activity in session.activities
                 )
@@ -141,9 +147,6 @@ class ScanService:
                     )
                 if _has_assistant_work_but_no_prompt(session):
                     warnings.append(_missing_prompt_warning(session))
-                # iiwi's own opencode runs are machinery, not the user's work.
-                if is_iiwi_authored(session):
-                    continue
                 filtered = filter_session_to_period(session, self._period)
                 if filtered is None:
                     continue
