@@ -34,12 +34,12 @@ the CLI. This design adds a read-only history list to the main menu, named
 
 ### 1. Menu entry
 
-`_MAIN_OPTIONS` (src/iiwi/interactive/render.py:51) gains a fifth option.
-Settings stays last, per the common convention that configuration screens
-close the menu:
+`_MAIN_OPTIONS` (src/iiwi/interactive/render.py:51) gains a fifth option,
+placed after the functional actions and before the two non-functional rows
+(Check Setup, Settings), which close the menu:
 
 ```
-["Review Activity", "Generate Report", "Check Setup", "History", "Settings"]
+["Review Activity", "Generate Report", "History", "Check Setup", "Settings"]
 ```
 
 The main menu renders options automatically through
