@@ -1067,7 +1067,10 @@ def _settings_value_text(row: SettingsRow) -> Text:
             parts.append(
                 Text(choice, style=_CURSOR_STYLE if choice == row.value else "dim")
             )
-        return Text.assemble(*parts)
+        text = Text.assemble(*parts)
+        if row.locked:
+            return Text.assemble(text, ("  [environment]", "dim"))
+        return text
     value = Text(row.value) if row.value else Text("(default)", style="dim")
     if row.locked:
         return Text.assemble(value, ("  [environment]", "dim"))
@@ -1112,7 +1115,7 @@ def render_settings(
         detail = error or f"{row.key} - Enter keeps the value; empty restores the default."
         _print_viewport_line(console, f"  {detail}", style="dim")
     else:
-        detail = (
+        detail = error or (
             f"Set by the {row.variable} environment variable."
             if row.locked
             else _SETTINGS_HELP.get(row.key, "")

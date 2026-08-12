@@ -1138,6 +1138,7 @@ def test_settings_marks_environment_rows_as_locked() -> None:
     render_settings(
         console,
         rows=[
+            _settings_row(locked=True),
             _settings_row(
                 key="report.timezone",
                 label="timezone",
@@ -1145,15 +1146,17 @@ def test_settings_marks_environment_rows_as_locked() -> None:
                 choices=TIMEZONE_CHOICES,
                 show_all=False,
                 locked=True,
-            )
+            ),
         ],
         selected=0,
         file_path="/tmp/config.env",
     )
 
     text = stream.getvalue()
-    assert "UTC" in text
-    assert "[environment]" in text
+    choice_line = next(line for line in text.splitlines() if "true / false" in line)
+    assert "[environment]" in choice_line
+    value_line = next(line for line in text.splitlines() if "UTC" in line)
+    assert "[environment]" in value_line
 
 
 def test_settings_renders_the_inline_editor_and_hints() -> None:
@@ -1199,3 +1202,17 @@ def test_settings_renders_validation_error_on_the_detail_line() -> None:
     )
 
     assert "invalid value for harnesses.opencode.cli.timeout_seconds" in stream.getvalue()
+
+
+def test_settings_renders_a_cycle_error_on_the_detail_line() -> None:
+    console, stream = _console()
+
+    render_settings(
+        console,
+        rows=[_settings_row()],
+        selected=0,
+        file_path="/tmp/config.env",
+        error="could not write config file: read-only file system",
+    )
+
+    assert "could not write config file: read-only file system" in stream.getvalue()

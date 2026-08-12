@@ -290,4 +290,6 @@ def test_back_returns_to_the_main_menu(config_file: Path) -> None:
     )
 
     text = stream.getvalue()
-    assert "Review Activity" in text
+    first_menu = text.index("Review Activity")
+    settings_frame = text.index("opencode.enabled")
+    assert first_menu < settings_frame < text.rindex("Review Activity")
