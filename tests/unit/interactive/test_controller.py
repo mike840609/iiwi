@@ -479,3 +479,59 @@ def test_setup_horizontal_keys_on_the_action_row_do_not_generate() -> None:
     )
 
     assert counters.get("generate") is None
+
+
+def test_review_escape_clears_a_committed_search_and_stays_on_review() -> None:
+    stream = StringIO()
+    console = Console(
+        file=stream, color_system=None, force_terminal=False, width=100,
+    )
+    input_source = ScriptedInput(
+        [
+            char("2"),
+            char("r"),
+            char("/"),
+            char("0"),
+            KeyPress(key=Key.ENTER),
+            KeyPress(key=Key.ESCAPE),
+            char("l"),
+            char("j"),
+            char("p"),
+            char("b"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=input_source,
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "Search: 0" in text
+    assert "Session Preview" in text
+    assert "Search:" not in text[text.rfind("Review Sessions"):]
+
+
+def test_review_escape_without_a_search_still_goes_back() -> None:
+    counters: dict[str, int] = {}
+    input_source = ScriptedInput(
+        [
+            char("2"),
+            char("r"),
+            KeyPress(key=Key.ESCAPE),
+            char("e"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan, counters=counters),
+        input_source=input_source,
+        console=_console(),
+    )
+
+    assert counters.get("scan", 0) == 1

@@ -684,6 +684,9 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         _sync_selection(state, actions)
         state.screen = Screen.MAIN
         return
+    if key.key is Key.ESCAPE and state.search_query:
+        _reset_search(state)
+        return
     if key.key is Key.ESCAPE or _char(key, "b"):
         _sync_selection(state, actions)
         state.screen = Screen.MAIN if state.review_from_main else Screen.REPORT_SETUP
