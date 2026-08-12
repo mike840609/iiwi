@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Quick Review says what it is doing while it groups. Synthesis is one
+  `opencode run` with a ten-minute timeout, and it reported nothing at all: the
+  interactive app paints each frame over the last and repaints only between key
+  presses, so after `Exporting sessions` the screen held its final frame for as
+  long as the model took, with no way to tell a slow run from a hung one. That
+  step now shows `Grouping sessions into outcomes` with the time it has been
+  running, animated from Rich's own thread so it keeps moving while the
+  subprocess blocks.
+- Stages that count their work draw a progress bar. Exporting sessions,
+  preparing evidence and summarizing repositories already reported a total and a
+  completed count and rendered them as `8/20` beside a spinner; the same numbers
+  now also fill a bar. The grouping pass above deliberately has no bar: it is a
+  single opaque subprocess with no total to divide by, and Rich draws a
+  totalless bar as a pulse animated through colour — which with colour off, or
+  through a pipe, is a solid full-width bar that reads as finished work. Where
+  there is no fraction to show, the spinner and the elapsed timer say the stage
+  is alive without claiming one.
+- Progress output is silent off an animatable terminal rather than by accident.
+  A redirected or dumb-terminal stream now skips the reporter outright, instead
+  of relying on Rich to draw nothing there — `Progress` leaves a stray newline
+  in that case, which the interactive app would paint over.
+
 ## 0.11.0 - 2026-08-12
 
 - Quick Review. `Generate report` no longer writes a file straight away: it

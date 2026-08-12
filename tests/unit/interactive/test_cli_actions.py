@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -25,8 +26,10 @@ from iiwi.models.repository import (
 )
 from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
+from iiwi.progress import ProgressStage
 from iiwi.services.scan import ScanResult
 from iiwi.summarizers.opencode_run import OpenCodeRunError
+from tests.progress import RecordingProgressReporter
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -153,6 +156,57 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
     assert review.report_type is ReportType.MANAGER
     assert review.detail is DetailLevel.BRIEF
     assert review.detail_overridden is False
+
+
+def test_synthesize_reports_progress_while_the_model_call_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without this the TUI holds its last frame for the whole opencode run."""
+
+    settings = SimpleNamespace(
+        harnesses=SimpleNamespace(
+            opencode=SimpleNamespace(
+                cli=SimpleNamespace(
+                    executable="opencode",
+                    model=None,
+                    run_timeout_seconds=600.0,
+                )
+            )
+        ),
+        report=SimpleNamespace(quick_review_max_evidence_bytes=4321),
+    )
+    recorder = RecordingProgressReporter()
+    stages_during_call: list[object] = []
+
+    class FakeReporter:
+        @contextmanager
+        def progress(self):
+            yield recorder
+
+    class FakeSynthesisService:
+        def __init__(self, runner: object, *, max_evidence_bytes: int) -> None:
+            pass
+
+        def synthesize(self, received: ScanResult) -> SimpleNamespace:
+            stages_during_call.extend(recorder.events)
+            return SimpleNamespace(outcomes=_review().outcomes, warnings=[])
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(cli_actions, "CommandRunner", lambda **kwargs: object())
+    monkeypatch.setattr(cli_actions, "OpenCodeRunner", lambda **kwargs: object())
+    monkeypatch.setattr(cli_actions, "ConsoleReporter", FakeReporter)
+    monkeypatch.setattr(
+        cli_actions,
+        "OutcomeSynthesisService",
+        FakeSynthesisService,
+    )
+    draft = ReportDraft(harness="codex", period=_period(), report_type=ReportType.MANAGER)
+
+    cli_actions._synthesize(draft, _scan())
+
+    assert stages_during_call == [
+        ("start", ProgressStage.SYNTHESIZING_OUTCOMES, None)
+    ]
 
 
 def test_synthesize_translates_real_opencode_failure_for_controller_recovery(
