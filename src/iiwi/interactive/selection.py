@@ -138,6 +138,14 @@ class SelectionState:
         else:
             self.selected_session_ids.update(ids)
 
+    def exclude_repository(self, repository_id: str) -> None:
+        removed = {
+            item.session.session_id
+            for item in self.scan.sessions_by_repository[repository_id]
+        }
+        self.scan = without_repository(self.scan, repository_id)
+        self.selected_session_ids.difference_update(removed)
+
     def select_all(self) -> None:
         self.selected_session_ids.clear()
         self.selected_session_ids.update(self._all_session_ids())

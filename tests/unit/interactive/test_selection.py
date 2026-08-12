@@ -226,3 +226,12 @@ def test_without_repository_keeps_scan_metadata() -> None:
 def test_without_repository_unknown_id_raises_key_error() -> None:
     with pytest.raises(KeyError):
         without_repository(_scan(), "repo-nope")
+
+
+def test_exclude_repository_prunes_scan_and_selection() -> None:
+    state = SelectionState.from_scan(_scan())
+    state.exclude_repository("repo-a")
+    assert "repo-a" not in state.scan.sessions_by_repository
+    assert state.total_count == 1
+    assert state.selected_count == 1
+    assert state.selected_session_ids == {"ses-b1"}
