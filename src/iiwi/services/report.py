@@ -23,6 +23,7 @@ from iiwi.renderers.markdown import (
 from iiwi.security.redactor import redact_text, redact_value
 from iiwi.security.secure_files import atomic_secure_write
 from iiwi.services.scan import ScanResult, ScanService
+from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.sessions.hierarchy import count_child_sessions_by_repository
 from iiwi.summarizers.base import RepositorySummarizer
 from iiwi.summarizers.opencode_run import (
@@ -199,7 +200,8 @@ class ReportService:
             transcript=transcript,
             prompt=build_summary_prompt(days, detail=self._detail),
             title=(
-                f"Iiwi - {self._period.since.date().isoformat()} "
+                f"{IIWI_SESSION_TITLE_PREFIX}narrative "
+                f"{self._period.since.date().isoformat()} "
                 f"to {self._period.until.date().isoformat()}"
             ),
         )

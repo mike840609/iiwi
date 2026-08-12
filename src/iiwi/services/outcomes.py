@@ -28,6 +28,7 @@ from iiwi.models.evidence import (
 )
 from iiwi.security.redactor import redact_text, redact_value
 from iiwi.services.scan import ScanResult
+from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.summarizers.opencode_run import OpenCodeRunner
 from iiwi.summarizers.outcome_prompt import build_outcome_prompt
 
@@ -180,7 +181,7 @@ class OutcomeSynthesisService:
             output = self._runner.run(
                 transcript=_index_json(sent),
                 prompt=build_outcome_prompt(),
-                title="Iiwi outcome synthesis",
+                title=f"{IIWI_SESSION_TITLE_PREFIX}outcome synthesis",
             )
         except OSError as exc:
             raise OutcomeSynthesisError(str(exc)) from exc

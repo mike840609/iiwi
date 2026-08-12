@@ -18,6 +18,7 @@ from iiwi.models.time_range import DateRange
 from iiwi.services import outcomes
 from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.scan import ScanResult
+from iiwi.sessions.filtering import is_iiwi_authored
 
 
 @dataclass
@@ -1142,3 +1143,14 @@ def test_grouping_still_builds_evidence_refs_the_model_never_saw() -> None:
     assert "src/checkout/totals.py" not in transcript
     assert "1a2b3c4" not in transcript
     assert "5d6e7f8" not in transcript
+
+
+def test_the_synthesis_session_title_is_filtered_back_out() -> None:
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    OutcomeSynthesisService(runner).synthesize(one_scan())
+
+    title = runner.calls[0]["title"]
+    assert is_iiwi_authored(
+        AgentSession(harness="opencode", session_id="x", title=title)
+    ), title
