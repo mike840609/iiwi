@@ -25,6 +25,7 @@ class Screen(StrEnum):
     REPORT_PREVIEW = "report_preview"
     RECOVERABLE_ERROR = "recoverable_error"
     HELP = "help"
+    HISTORY = "history"
     EXIT = "exit"
 
 

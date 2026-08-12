@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, tzinfo
 from pathlib import Path
@@ -11,6 +12,7 @@ from rich.console import Console
 from rich.text import Text
 
 from iiwi import __version__
+from iiwi.history import HistoryEntry
 from iiwi.interactive.density import (
     is_subagent,
     last_activity_at,
@@ -872,6 +874,12 @@ def report_preview_capacity(terminal_height: int) -> int:
     return max(0, terminal_height - 8)
 
 
+def history_capacity(terminal_height: int) -> int:
+    """History rows that fit while reserving the header, blanks, and hints."""
+
+    return max(0, terminal_height - 8)
+
+
 def _print_wordmark(console: Console) -> None:
     """Print the wordmark, carrying the version flush right on its last row so
     the art costs four lines rather than five."""
@@ -1474,6 +1482,54 @@ def render_report_result(
     _print_hints(
         console,
         ["↑↓ jk", "Enter Select", "? Help", "q Menu"],
+    )
+
+
+def _history_entry_line(entry: HistoryEntry, *, selected: bool) -> str:
+    period = f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}"
+    narrative = "narrative" if entry.narrative else "structure"
+    return (
+        f"{_CURSOR if selected else ' '} "
+        f"{entry.generated_at:%Y-%m-%d %H:%M}  {period}  "
+        f"{entry.harness:>10}  {entry.session_count:>3} sess "
+        f"{entry.repository_count:>2} repos  {narrative}  {entry.output_path}"
+    )
+
+
+def render_history(
+    console: Console,
+    *,
+    entries: Sequence[HistoryEntry],
+    selected: int,
+    offset: int,
+) -> None:
+    """Render the generated-report log, newest first, as a scrollable list.
+
+    The caller passes entries already ordered newest first. `selected` is the
+    cursor's global entry index; `offset` is the first visible entry index.
+    """
+
+    _print_header(console, "Past Reports")
+    console.print()
+    capacity = history_capacity(console.size.height)
+    if not entries:
+        _print_viewport_line(console, "No reports generated yet.", style="dim")
+        console.print()
+        _print_hints(
+            console,
+            ["↑↓ jk Scroll", "? Help", "b Back"],
+        )
+        return
+    end = min(len(entries), offset + capacity)
+    for index in range(offset, end):
+        _print_viewport_line(
+            console,
+            _history_entry_line(entries[index], selected=index == selected),
+        )
+    console.print()
+    _print_hints(
+        console,
+        ["↑↓ jk Scroll", "Enter Path", "PgUp/PgDn", "g/G Top/Bottom", "? Help", "b Back"],
     )
 
 
