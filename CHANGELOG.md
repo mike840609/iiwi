@@ -66,6 +66,53 @@ All notable changes to this project are documented in this file.
   Interactive generation always writes a file, so the dry-run variant of that
   screen could no longer be reached.
 
+## 0.10.0 - 2026-08-11
+
+The interactive interface is the release. Opening `iiwi` with no arguments
+leads with reviewing what the agent did rather than with generating a report,
+and the two session screens behind that are now one screen.
+
+- The home screen is activity-first. The subtitle reads `See what your agent
+  did`, `Review Activity` is the first action and `Generate Report` the
+  second, and the numeric shortcuts follow the visible order. The direct CLI
+  commands are unchanged.
+- Browse Sessions and Review Sessions are one activity explorer. The two were
+  split by what you could do in them — browsing was read-only, review existed
+  only to produce a report — so finding something worth reporting on meant
+  leaving one screen and finding it again in the other. Both entries now open
+  the same selectable repository and session tree, and `g` generates from it
+  directly. Search, preview, rescan, repository exclusion, selection
+  persistence, viewport behaviour, and Back are unchanged.
+- Report Setup separates the actions from the configuration. `Generate report`
+  and `Preview report` sit at the top, and `Preview report` takes the dry-run
+  path internally so the preview opens without writing a file — `Dry run` is
+  no longer a setting to find and switch. `Harness`, `Period`, and `Advanced
+  settings` remain in the list; `Detail`, `Subagents`, `Narrative`, and
+  `Sanitize` move under `Advanced settings`, which starts collapsed for each
+  new report flow and toggles with Enter.
+- The footer hints are shorter. Each screen lists the actions it is actually
+  for — select, inspect, search, report, help, back on Review Activity — while
+  `a`, `n`, `e`, `R`, `h`/`l`, the paging keys and the rest keep working and
+  are documented under `? Help`. The rows this frees go to content.
+- The main menu opens on the name drawn in ASCII rather than the word `Iiwi`
+  in bold, with the version flush right on the wordmark's last row so the art
+  costs four rows instead of five. Below either gate — 24 rows or 24 columns —
+  the previous one-line header returns unchanged: a wordmark clipped mid-glyph
+  reads as noise rather than as a name, so a small terminal gets the word.
+- The wordmark is drawn in `#E0301E`, the ʻiʻiwi's plumage, at 4.6:1 contrast
+  on both a black and a white terminal. It is the only place a hex colour
+  appears — the rest of the interface stays on plain ANSI names so it follows
+  the terminal's own theme, which is the right rule for colours that carry
+  state and the wrong one for a logo. Rich degrades the colour on terminals
+  without truecolor.
+- The PyPI badge fix that 0.9.1 recorded lands here. It was committed on that
+  release's branch but the squash merge did not carry it, so 0.9.1 shipped
+  with the stuck badge URL its entry claimed to have fixed.
+- Both READMEs carry the name-forms table — which casing the name takes in the
+  distribution and CLI, in imports, in prose, in environment variables, and in
+  the error base class — under `## Development`, beside the commands it
+  applies to.
+
 ## 0.9.1 - 2026-08-10
 
 Documentation only; no functional change. PyPI renders the description that
