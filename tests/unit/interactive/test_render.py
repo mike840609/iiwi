@@ -941,6 +941,26 @@ def test_main_menu_draws_the_wordmark_when_it_fits() -> None:
     assert _WORDMARK[-1] in text
 
 
+def test_main_menu_paints_every_wordmark_row_iiwi_scarlet() -> None:
+    from iiwi.interactive.render import _WORDMARK, render_main_menu
+    console, stream = _color_console()
+    render_main_menu(console, selected=0)
+    text = stream.getvalue()
+    # Exact escape, so a stray `bold` cannot creep back in: terminals render it
+    # as their bright variant, which is the glare this colour exists to avoid.
+    for line in _WORDMARK:
+        assert "\x1b[38;2;224;48;30m" in _row(text, line)
+
+
+def test_main_menu_keeps_the_version_dim_beside_the_scarlet_wordmark() -> None:
+    import iiwi
+    from iiwi.interactive.render import _WORDMARK, render_main_menu
+    console, stream = _color_console()
+    render_main_menu(console, selected=0)
+    last_row = _row(stream.getvalue(), _WORDMARK[-1])
+    assert _glyph_style(last_row, f"v{iiwi.__version__}") == "2"
+
+
 def test_main_menu_version_sits_flush_right_on_the_wordmark() -> None:
     import iiwi
     from iiwi.interactive.render import _WORDMARK, render_main_menu
@@ -1034,10 +1054,11 @@ def test_main_menu_omits_the_version_on_a_narrow_terminal() -> None:
     assert f"v{iiwi.__version__}" not in text
 
 
-def test_main_menu_fits_the_version_at_exactly_eleven_cells() -> None:
+def test_main_menu_fits_the_version_at_exact_width() -> None:
     import iiwi
     from iiwi.interactive.render import render_main_menu
-    console, stream = _console(width=11)
+    width = cell_len("Iiwi") + 1 + cell_len(f"v{iiwi.__version__}")
+    console, stream = _console(width=width)
     render_main_menu(console, selected=0)
     title_line = _row(stream.getvalue(), "Iiwi")
     assert f"v{iiwi.__version__}" in title_line

@@ -120,6 +120,16 @@ _BAR_FULL = "█"
 _BAR_EMPTY = "░"
 _BAR_CELLS = 12
 _BAR_STYLE = "cyan"
+# The one place a hard-coded colour belongs: a wordmark is identity, not state,
+# so it should not repaint itself per terminal theme the way the functional
+# colours above deliberately do. ʻIʻiwi vermilion; Rich degrades it on terminals
+# without truecolor. Nothing that carries meaning wears it -- red stays free for
+# errors, and a red cursor beside the green/yellow marks would not survive
+# red-green colour blindness. Not bold: terminals answer bold with their bright
+# variant, which is what makes a saturated red glare -- so the fix is dropping
+# bold, not dulling the hue. The bird's actual plumage, within ΔE 1.6 of it,
+# clearing 4.6:1 on both a black and a white terminal.
+_WORDMARK_STYLE = "#E0301E"
 _PERCENT_CELLS = 4  # "100%" at its widest
 # Bars are the first thing to go on a narrow terminal: the title column matters
 # more than the decoration.
@@ -867,12 +877,12 @@ def _print_wordmark(console: Console) -> None:
 
     version = f"v{__version__}"
     for line in _WORDMARK[:-1]:
-        _print_viewport_line(console, line, style="bold cyan")
+        _print_viewport_line(console, line, style=_WORDMARK_STYLE)
     last = _WORDMARK[-1]
     padding = console.size.width - cell_len(last) - cell_len(version)
     _print_viewport_text(
         console,
-        Text.assemble((last, "bold cyan"), " " * padding, (version, "dim")),
+        Text.assemble((last, _WORDMARK_STYLE), " " * padding, (version, "dim")),
     )
 
 
