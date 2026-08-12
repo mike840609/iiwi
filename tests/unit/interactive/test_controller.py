@@ -640,3 +640,32 @@ def test_ctrl_c_on_history_returns_to_the_main_menu(
     # (`q Quit`), not the history screen's (`b Back`).
     assert text.count("Past Reports") == 1
     assert text.rstrip().endswith("q Quit")
+
+
+def test_history_q_and_escape_return_to_the_main_menu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    append_history(_history_entry("reports/worklog.md"))
+
+    console = _console()
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput([char("3"), char("q"), char("q")]),
+        console=console,
+    )
+    text = console.file.getvalue()
+    assert text.count("Past Reports") == 1
+    assert text.rstrip().endswith("q Quit")
+
+    console = _console()
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            [char("3"), KeyPress(key=Key.ESCAPE), char("q")]
+        ),
+        console=console,
+    )
+    text = console.file.getvalue()
+    assert text.count("Past Reports") == 1
+    assert text.rstrip().endswith("q Quit")
