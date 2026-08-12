@@ -25,7 +25,7 @@ and are still the supported interface for scripts, CI, and pipelines.
 ## Interactive mode
 
 The bare command uses `↑/↓` or `j/k` to move, `Enter` to select, and `q` to leave the
-current flow. The main screen offers Generate Report, Browse Sessions, Check Setup, and
+current flow. The main screen offers Review Activity, Generate Report, Check Setup, and
 Settings. Completed actions return to an interactive screen or the main menu instead of
 requiring a new process.
 
@@ -45,8 +45,7 @@ selected. `a` selects all sessions, `n` selects none, `g` synthesizes the select
 sessions and opens Quick Review, and `b` returns to the setup summary. A report cannot
 be generated with zero selected sessions. Long session
 lists use the terminal height as a viewport, keeping the active row visible and showing
-`↑ N more` / `↓ N more` when rows exist outside the current window. Browse Sessions also
-answers to `p` on a session row.
+`↑ N more` / `↓ N more` when rows exist outside the current window.
 
 The selection is remembered per harness, period, and subagent setting in a local state
 file. A rescan — including one triggered by changing a setting that clears the scan —
@@ -88,8 +87,7 @@ review and from every future scan. The same setting can be edited with
 Interactive reports use the normal default output path. If that path already exists, the
 recovery screen offers **Overwrite once**; it does not silently replace the file. After a
 successful report, the result screen can return to the main menu, start another report
-with the same option values, or print the report path. Browse Sessions is read-only in
-this release.
+with the same option values, or print the report path.
 
 ## Shared options
 

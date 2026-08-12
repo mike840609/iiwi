@@ -19,6 +19,8 @@ def test_cli_reference_documents_repository_and_session_selection() -> None:
     assert "repository" in reference.casefold()
     assert "individual session" in reference.casefold()
     assert "Direct subcommands remain unchanged" in reference
+    assert "Review Activity" in reference
+    assert "Browse Sessions" not in reference
 
 
 def test_quick_review_docs_distinguish_preview_from_generation() -> None:
