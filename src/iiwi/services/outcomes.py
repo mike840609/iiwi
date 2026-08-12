@@ -92,6 +92,13 @@ def _index_json(sessions: list[_CompactSession]) -> str:
     return _CompactIndex(sessions=sessions).model_dump_json(indent=2, exclude_none=True)
 
 
+# Measured, not guessed: across one live synthesis the all-or-nothing gate
+# refused five of ten proposals at 84.6%, 66.7%, 85.7%, 90.9% and 90.0% word
+# support, and the words that missed were "improvements", "wave", "polish" and
+# "housekeeping" — summarizing vocabulary, not claims about the work. Status and
+# impact keep their own, stricter gates.
+_TITLE_SUPPORT_RATIO = 0.8
+
 _ALLOWED_LINKAGE_KINDS = frozenset({"branch_or_issue", "direct_reference"})
 _COMMIT_PATTERN = re.compile(
     r"\b(?:commit|revision|rev)\b\s*(?:[:=]\s*)?(?P<commit>[0-9a-f]{7,40})\b",
@@ -698,8 +705,11 @@ def _supported_title(
         for word in re.findall(r"[a-z0-9]+", proposed.casefold())
         if len(word) > 2
     ]
+    if not words:
+        return _fallback_title(selected)
     corpus = _corpus(selected, local_texts_by_session)
-    if words and all(word in corpus for word in words):
+    supported = sum(1 for word in words if word in corpus)
+    if supported / len(words) >= _TITLE_SUPPORT_RATIO:
         return proposed
     return _fallback_title(selected)
 

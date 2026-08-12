@@ -8,6 +8,7 @@ import pytest
 
 from iiwi.errors import OutcomeSynthesisError
 from iiwi.models import OutcomeBucket, OutcomeReviewDraft
+from iiwi.models.evidence import EvidenceConfidence, EvidenceItem, SessionEvidence
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -16,7 +17,7 @@ from iiwi.models.repository import (
 from iiwi.models.session import ActivityType, AgentSession, SessionActivity
 from iiwi.models.time_range import DateRange
 from iiwi.services import outcomes
-from iiwi.services.outcomes import OutcomeSynthesisService
+from iiwi.services.outcomes import OutcomeSynthesisService, _supported_title
 from iiwi.services.scan import ScanResult
 from iiwi.sessions.filtering import is_iiwi_authored
 
@@ -1154,3 +1155,57 @@ def test_the_synthesis_session_title_is_filtered_back_out() -> None:
     assert is_iiwi_authored(
         AgentSession(harness="opencode", session_id="x", title=title)
     ), title
+
+
+def _corpus_evidence(words: list[str]) -> SessionEvidence:
+    return SessionEvidence(
+        session_id="ses-corpus",
+        repository_id="repo-a",
+        title="Session corpus",
+        goals=[
+            EvidenceItem(
+                text=" ".join(words),
+                source_activity_ids=["a1"],
+                confidence=EvidenceConfidence.HIGH,
+                extraction_method="test",
+            )
+        ],
+    )
+
+
+def _support(proposed: str, corpus_words: list[str]) -> str:
+    evidence = _corpus_evidence(corpus_words)
+    return _supported_title(proposed, [evidence], {})
+
+
+def test_a_fully_supported_title_is_kept() -> None:
+    assert _support("render viewport flicker", ["render", "viewport", "flicker"]) == (
+        "render viewport flicker"
+    )
+
+
+def test_exactly_eighty_percent_support_is_kept() -> None:
+    # four of five words longer than two characters are in the corpus
+    proposed = "render viewport flicker margin polish"
+    assert _support(proposed, ["render", "viewport", "flicker", "margin"]) == proposed
+
+
+def test_below_eighty_percent_support_falls_back() -> None:
+    # three of four words: 75%
+    proposed = "render viewport flicker polish"
+    assert _support(proposed, ["render", "viewport", "flicker"]) != proposed
+
+
+def test_three_word_titles_still_need_every_word() -> None:
+    # two of three is 66.7%
+    proposed = "render viewport polish"
+    assert _support(proposed, ["render", "viewport"]) != proposed
+
+
+def test_two_word_titles_still_need_every_word() -> None:
+    proposed = "render polish"
+    assert _support(proposed, ["render"]) != proposed
+
+
+def test_a_title_with_no_long_words_falls_back() -> None:
+    assert _support("a an of", ["render"]) != "a an of"
