@@ -26,6 +26,7 @@ def test_rule_summary_separates_completed_and_in_progress() -> None:
         branches=["main"],
         sessions=[
             SessionEvidence(
+                harness="test",
                 session_id="s1",
                 repository_id="git:github.com/mike/iiwi",
                 goals=[item("Add cache", EvidenceStatus.IN_PROGRESS, EvidenceConfidence.HIGH)],
@@ -57,6 +58,7 @@ def test_rule_summary_returns_complete_deduplicated_sorted_lists() -> None:
         display_name="Repo",
         sessions=[
             SessionEvidence(
+                harness="test",
                 session_id="s1",
                 repository_id="repo",
                 outcomes=[
@@ -94,6 +96,7 @@ def test_medium_confidence_completed_evidence_is_marked_inferred() -> None:
         display_name="Iiwi",
         sessions=[
             SessionEvidence(
+                harness="test",
                 session_id="sess-1",
                 repository_id="git:github.com/mike/iiwi",
                 outcomes=[
@@ -134,6 +137,7 @@ def test_unobserved_outcomes_are_listed_in_progress_not_completed() -> None:
         display_name="Iiwi",
         sessions=[
             SessionEvidence(
+                harness="test",
                 session_id="sess-1",
                 repository_id="git:github.com/mike/iiwi",
                 outcomes=[
@@ -163,6 +167,7 @@ def test_low_confidence_outcomes_are_still_excluded() -> None:
         display_name="Iiwi",
         sessions=[
             SessionEvidence(
+                harness="test",
                 session_id="sess-1",
                 repository_id="git:github.com/mike/iiwi",
                 outcomes=[

@@ -27,6 +27,13 @@ def resolved(*activities: SessionActivity) -> ResolvedSession:
     )
 
 
+def test_extract_evidence_keeps_harness() -> None:
+    resolved_session = resolved()
+    resolved_session.session.harness = "claude-code"
+
+    assert extract_evidence(resolved_session).harness == "claude-code"
+
+
 def test_user_request_becomes_goal_with_provenance() -> None:
     evidence = extract_evidence(
         resolved(
@@ -98,9 +105,7 @@ def test_long_command_text_is_capped_and_marked_as_cut() -> None:
     """A heredoc body in `input.command` must not reach the report or an LLM."""
 
     heredoc = (
-        "cat > report.md <<'EOF' "
-        + "AUTH_BYPASS_WRITEUP secret finding paragraph. " * 60
-        + "EOF"
+        "cat > report.md <<'EOF' " + "AUTH_BYPASS_WRITEUP secret finding paragraph. " * 60 + "EOF"
     )
     evidence = extract_evidence(
         resolved(
@@ -164,9 +169,7 @@ def test_file_tool_content_fallback_still_accepts_a_bare_path() -> None:
         )
     )
 
-    assert [item.text for item in evidence.files_changed] == [
-        "src/iiwi/cli.py"
-    ]
+    assert [item.text for item in evidence.files_changed] == ["src/iiwi/cli.py"]
 
 
 def test_extraction_carries_session_title_and_directory() -> None:
@@ -247,9 +250,7 @@ def test_an_observed_success_on_a_non_verification_command_claims_nothing() -> N
 def test_an_exit_code_still_wins_over_the_tool_error_flag() -> None:
     """OpenCode reports a real exit code; it is the more precise signal."""
 
-    evidence = extract_evidence(
-        resolved(command("pytest -q", exit_code=1, tool_failed=False))
-    )
+    evidence = extract_evidence(resolved(command("pytest -q", exit_code=1, tool_failed=False)))
 
     assert len(evidence.errors) == 1
     assert evidence.errors[0].status is EvidenceStatus.BLOCKED
@@ -269,7 +270,7 @@ def test_a_heredoc_body_mentioning_a_test_command_is_not_a_verification() -> Non
         resolved(
             command(
                 "gh pr create --title x --body \"$(cat <<'EOF' "
-                "Ran pytest and ruff to check this. EOF )\"",
+                'Ran pytest and ruff to check this. EOF )"',
                 tool_failed=False,
             )
         )

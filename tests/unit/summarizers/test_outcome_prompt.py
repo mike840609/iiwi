@@ -22,7 +22,7 @@ def test_outcome_prompt_requires_the_constrained_json_contract() -> None:
         "title",
         "status",
         "impact",
-        "source_session_ids",
+        "source_ids",
         "confidence",
         "linkage_signals",
         "kind",
@@ -36,7 +36,7 @@ def test_outcome_prompt_preserves_evidence_first_merge_rules() -> None:
 
     assert "3–5" in prompt
     assert 'Impact must be ""' in prompt
-    assert "unknown session ids" in prompt
+    assert "unknown source ids" in prompt
     assert "shared_work_id" in prompt
     assert "branch_or_issue" in prompt
     assert "direct_reference" in prompt
@@ -46,7 +46,7 @@ def test_outcome_prompt_describes_the_compact_index_it_is_given() -> None:
     prompt = build_outcome_prompt()
 
     assert "compact index" in prompt
-    for field in ("session_id", "repository_id", "title", "branch", "goal", "outcome"):
+    for field in ("source_id", "repository_id", "title", "branch", "goal", "outcome"):
         assert field in prompt
     assert "Empty fields are omitted" in prompt
 

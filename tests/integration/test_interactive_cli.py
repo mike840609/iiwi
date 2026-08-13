@@ -137,7 +137,7 @@ def _synthesis_payload(
                 "title": title,
                 "status": "completed",
                 "impact": impact,
-                "source_session_ids": [session_id],
+                "source_ids": [json.dumps(["opencode", session_id], separators=(",", ":"))],
                 "confidence": "high",
                 "linkage_signals": [],
             }
@@ -261,9 +261,7 @@ def test_bare_command_runs_generate_select_result_main_quit_flow(
         selected_scan: ScanResult,
         _force: bool,
     ) -> InteractiveReportResult:
-        generated.append(
-            [item.session.session_id for item in selected_scan.resolved_sessions]
-        )
+        generated.append([item.session.session_id for item in selected_scan.resolved_sessions])
         return InteractiveReportResult(
             output_path=Path("reports/worklog.md"),
             content="report",
@@ -542,7 +540,10 @@ def test_quick_review_splits_a_real_cross_repository_merge(tmp_path: Path) -> No
                     "title": "Shared rollout",
                     "status": "completed",
                     "impact": "Verified shared delivery",
-                    "source_session_ids": ["ses-a", "ses-b"],
+                    "source_ids": [
+                        json.dumps(["opencode", "ses-a"], separators=(",", ":")),
+                        json.dumps(["opencode", "ses-b"], separators=(",", ":")),
+                    ],
                     "confidence": "high",
                     "linkage_signals": [
                         {"kind": "branch_or_issue", "value": "IIWI-42"},
@@ -597,10 +598,7 @@ def test_twenty_line_quick_review_expands_more_evidence_and_recovers_preview(
         draft=draft,
         scan=scan,
         payload=_synthesis_payload(
-            [
-                (f"ses-{index}", f"Outcome {index}", f"Impact {index}")
-                for index in range(1, 7)
-            ]
+            [(f"ses-{index}", f"Outcome {index}", f"Impact {index}") for index in range(1, 7)]
         ),
         output_path=tmp_path / "preview.md",
         review_calls=review_calls,
@@ -671,10 +669,7 @@ def test_partial_synthesis_retains_failures_without_preselecting_over_five(
             OpenCodeRunner,
             StaticSynthesisRunner(
                 _synthesis_payload(
-                    [
-                        (f"ses-{index}", f"Outcome {index}", "")
-                        for index in range(1, 7)
-                    ]
+                    [(f"ses-{index}", f"Outcome {index}", "") for index in range(1, 7)]
                 )
             ),
         )

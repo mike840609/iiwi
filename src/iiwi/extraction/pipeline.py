@@ -214,6 +214,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
     """Extract conservative evidence from one repository-resolved session."""
 
     evidence = SessionEvidence(
+        harness=resolved.session.harness,
         session_id=resolved.session.session_id,
         repository_id=resolved.repository.repository_id,
         # A harness-recorded title has no length bound of its own: Codex's
@@ -221,18 +222,14 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
         # a real machine is 1,478 characters. Capping here rather than in the
         # summarizer is what also covers the outbound LLM request, which sends
         # this whole model.
-        title=_truncate(_normalize(resolved.session.title))
-        if resolved.session.title
-        else None,
+        title=_truncate(_normalize(resolved.session.title)) if resolved.session.title else None,
         working_directory=resolved.session.working_directory,
     )
     repository_id = resolved.repository.repository_id
 
     for activity in resolved.session.activities:
         content = _normalize(activity.content)
-        if activity.activity_type == ActivityType.USER_MESSAGE and is_meaningful_user_text(
-            content
-        ):
+        if activity.activity_type == ActivityType.USER_MESSAGE and is_meaningful_user_text(content):
             _append_unique(
                 evidence.goals,
                 _item(
@@ -248,8 +245,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
 
         tool_name = (activity.tool_name or "").casefold()
         is_command = activity.activity_type == ActivityType.COMMAND or (
-            activity.activity_type == ActivityType.TOOL_CALL
-            and tool_name in COMMAND_TOOL_NAMES
+            activity.activity_type == ActivityType.TOOL_CALL and tool_name in COMMAND_TOOL_NAMES
         )
         if is_command and content:
             _append_unique(

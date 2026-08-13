@@ -25,10 +25,15 @@ def outcome(identifier: str, rank: int, *, bucket=OutcomeBucket.PRIMARY) -> Outc
     )
 
 
+def test_old_evidence_ref_payload_remains_valid() -> None:
+    ref = EvidenceRef.model_validate({"session_id": "s1", "repository_id": "repo"})
+
+    assert ref.harness is None
+    assert ref.activity_ids == []
+
+
 def test_manager_defaults_to_brief_and_explicit_detail_survives_type_change() -> None:
-    draft = OutcomeReviewDraft(
-        outcomes=[outcome("a", 0)], report_type=ReportType.MANAGER
-    )
+    draft = OutcomeReviewDraft(outcomes=[outcome("a", 0)], report_type=ReportType.MANAGER)
     assert draft.detail is DetailLevel.BRIEF
 
     draft.set_detail(DetailLevel.FULL)
@@ -53,9 +58,7 @@ def test_constructor_detail_remains_explicit_after_report_type_change() -> None:
 
 
 def test_round_trip_keeps_default_detail_linked_to_report_type() -> None:
-    draft = OutcomeReviewDraft(
-        outcomes=[outcome("a", 0)], report_type=ReportType.MANAGER
-    )
+    draft = OutcomeReviewDraft(outcomes=[outcome("a", 0)], report_type=ReportType.MANAGER)
 
     restored = OutcomeReviewDraft.model_validate(draft.model_dump(mode="json"))
 
@@ -65,9 +68,7 @@ def test_round_trip_keeps_default_detail_linked_to_report_type() -> None:
 
 
 def test_round_trip_preserves_explicit_detail_override() -> None:
-    draft = OutcomeReviewDraft(
-        outcomes=[outcome("a", 0)], report_type=ReportType.MANAGER
-    )
+    draft = OutcomeReviewDraft(outcomes=[outcome("a", 0)], report_type=ReportType.MANAGER)
     draft.set_detail(DetailLevel.FULL)
 
     restored = OutcomeReviewDraft.model_validate(draft.model_dump(mode="json"))
@@ -86,9 +87,7 @@ def test_reorder_normalizes_ranks_without_dropping_candidates() -> None:
 def _primary_order(draft: OutcomeReviewDraft) -> list[str]:
     """The primary section as Quick Review lists it — the only order visible there."""
 
-    return [
-        item.id for item in draft.ordered() if item.bucket is OutcomeBucket.PRIMARY
-    ]
+    return [item.id for item in draft.ordered() if item.bucket is OutcomeBucket.PRIMARY]
 
 
 def test_reorder_passes_a_rank_neighbour_hidden_in_another_bucket() -> None:

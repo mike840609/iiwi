@@ -1,5 +1,6 @@
 """Canonical Iiwi domain models."""
 
+from iiwi.models.evidence import SessionEvidence
 from iiwi.models.outcome import (
     EvidenceRef,
     Outcome,
@@ -23,4 +24,5 @@ __all__ = [
     "OutcomeStatus",
     "OutcomeSynthesisResult",
     "ReportType",
+    "SessionEvidence",
 ]
