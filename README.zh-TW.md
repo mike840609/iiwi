@@ -52,12 +52,13 @@ $ iiwi
 Turn coding-agent sessions into engineering reports
 github.com/mike840609/iiwi
 
-▶ Generate Report
-  Browse Sessions
+▶ Review Activity
+  Generate Report
+  History
   Check Setup
   Settings
 
-↑↓ jk │ Enter Select │ 1-4 │ ? Help │ q Quit
+↑↓ jk │ Enter Select │ 1-5 │ ? Help │ q Quit
 ```
 
 選擇 **Generate a report** 後會一次列出所有設定，不再逐題詢問：`↑↓` 移動，`←→` 改值，
@@ -78,6 +79,9 @@ Select sessions to include in the report:
 
 ↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ e Exclude │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
+
+選擇 **History** 會列出工具產生過的所有報告，最新的在前。
+`↑↓` 移動，Enter 顯示該筆的完整輸出路徑。
 
 `Space` 切換整個 repository 或單一 session，`p` 預覽（已去敏的）逐字紀錄，`e` 把某個
 repository 排除在之後所有掃描之外。你的選取會依期間記住。

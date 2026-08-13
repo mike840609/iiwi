@@ -59,12 +59,13 @@ $ iiwi
 Turn coding-agent sessions into engineering reports
 github.com/mike840609/iiwi
 
-▶ Generate Report
-  Browse Sessions
+▶ Review Activity
+  Generate Report
+  History
   Check Setup
   Settings                       # full-screen editor, every choice listed
 
-↑↓ jk │ Enter Select │ 1-4 │ ? Help │ q Quit
+↑↓ jk │ Enter Select │ 1-5 │ ? Help │ q Quit
 ```
 
 Choosing **Generate a report** shows every setting at once instead of asking one
@@ -87,6 +88,9 @@ Select sessions to include in the report:
 
 ↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ e Exclude │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
+
+Choosing **History** lists every report the tool has written, newest first.
+`↑↓` moves; Enter shows the row's full output path.
 
 `Space` toggles a repository or a single session, `p` previews a transcript
 (redacted), and `e` excludes a repository from every future scan. Your selection

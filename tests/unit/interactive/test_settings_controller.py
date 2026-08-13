@@ -70,7 +70,7 @@ def _console() -> tuple[Console, StringIO]:
 
 
 def _open_settings(keys: list[KeyPress]) -> list[KeyPress]:
-    return [char("4"), KeyPress(key=Key.ENTER), *keys]
+    return [char("5"), KeyPress(key=Key.ENTER), *keys]
 
 
 @pytest.fixture

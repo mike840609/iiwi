@@ -152,7 +152,7 @@ def test_doctor_result_uses_a_persistent_result_screen() -> None:
 
     run_interactive(
         actions=_actions(),
-        input_source=ScriptedInput([char("3"), KeyPress(key=Key.ENTER), char("q")]),
+        input_source=ScriptedInput([char("4"), KeyPress(key=Key.ENTER), char("q")]),
         console=console,
     )
 
@@ -169,7 +169,7 @@ def test_settings_entry_opens_the_settings_editor() -> None:
         actions=_actions(),
         input_source=ScriptedInput(
             [
-                char("4"),
+                char("5"),
                 KeyPress(key=Key.ENTER),
                 char("q"),
                 char("q"),

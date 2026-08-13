@@ -202,7 +202,7 @@ def test_recoverable_error_keeps_actions_inside_viewport_with_long_detail() -> N
 def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
     console, main_stream = _console(width=30, height=30)
     interactive_render.render_main_menu(console, selected=0)
-    assert len(main_stream.getvalue().splitlines()) == 15
+    assert len(main_stream.getvalue().splitlines()) == 16
 
     console, setup_stream = _console(width=30, height=30)
     interactive_render.render_report_setup(

@@ -9,9 +9,12 @@ from zoneinfo import ZoneInfo
 from rich.cells import cell_len
 from rich.console import Console
 
+from iiwi.history import HistoryEntry
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.render import (
     build_visible_rows,
+    history_capacity,
+    render_history,
     render_main_menu,
     render_recoverable_error,
     render_report_result,
@@ -156,6 +159,28 @@ def test_main_menu_describes_each_option() -> None:
     assert generate.index("Configure and produce a report") == column
     assert setup.index("Diagnose the harness setup") == column
     assert settings.index("Edit saved settings") == column
+
+
+def test_main_menu_orders_history_before_the_non_functional_rows() -> None:
+    console, stream = _console()
+
+    render_main_menu(console, selected=0)
+
+    text = stream.getvalue()
+    assert "1-5" in text
+    assert text.index("History") < text.index("Check Setup")
+    assert text.index("Check Setup") < text.index("Settings")
+
+
+def test_main_menu_describes_history() -> None:
+    console, stream = _console()
+
+    render_main_menu(console, selected=0)
+
+    history = next(
+        line for line in stream.getvalue().splitlines() if "History" in line
+    )
+    assert "List past reports and their paths" in history
 
 
 def test_main_menu_drops_descriptions_on_a_narrow_terminal() -> None:
@@ -1066,6 +1091,59 @@ def test_main_menu_fits_the_version_at_exact_width() -> None:
     assert f"v{iiwi.__version__}" in title_line
 
 
+def _history_entry(index: int, output_path: str) -> HistoryEntry:
+    return HistoryEntry(
+        generated_at=datetime(2026, 8, 12, 9, 30, tzinfo=ZoneInfo("Asia/Taipei")),
+        harness="opencode",
+        since=datetime(2026, 8, 3, tzinfo=ZoneInfo("Asia/Taipei")),
+        until=datetime(2026, 8, 10, tzinfo=ZoneInfo("Asia/Taipei")),
+        output_path=Path(output_path),
+        repository_count=2,
+        session_count=7,
+        narrative=True,
+        detail="full",
+    )
+
+
+def test_history_renders_entries_with_the_cursor_on_the_selected_row() -> None:
+    console, stream = _console()
+
+    render_history(
+        console,
+        entries=[_history_entry(0, "reports/a.md"), _history_entry(1, "reports/b.md")],
+        selected=1,
+        offset=0,
+    )
+
+    text = stream.getvalue()
+    assert "Past Reports" in text
+    assert "reports/a.md" in text
+    assert "reports/b.md" in text
+    assert "▶" in text
+
+
+def test_history_renders_empty_state_when_there_are_no_entries() -> None:
+    console, stream = _console()
+
+    render_history(console, entries=[], selected=0, offset=0)
+
+    text = stream.getvalue()
+    assert "No reports generated yet." in text
+
+
+def test_history_scrolls_its_viewport() -> None:
+    console, stream = _console()
+    entries = [_history_entry(i, f"reports/{i}.md") for i in range(20)]
+
+    render_history(console, entries=entries, selected=19, offset=10)
+
+    lines = stream.getvalue().splitlines()
+    assert "reports/10.md" in lines[3]
+    assert "reports/0.md" not in lines[3]
+
+
+def test_history_capacity_reserves_the_footer() -> None:
+    assert history_capacity(30) == 22
 def _settings_row(**overrides: object) -> SettingsRow:
     fields = dict(
         key="harnesses.opencode.enabled",
