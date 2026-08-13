@@ -101,6 +101,25 @@ def _daily_draft(*, standup_date: date = date(2026, 8, 13)) -> DailyStandupDraft
     )
 
 
+def _pin_standup_clock(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: SimpleNamespace,
+) -> None:
+    """Hold the clock on the reviewed draft's own date.
+
+    Preview and Generate refuse a review whose local date has passed, so a test
+    reading the real clock stops testing what it names the moment the calendar
+    moves past `_daily_draft`'s date.
+    """
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 8, 13, 10, tzinfo=TZ),
+    )
+
+
 def test_new_draft_uses_saved_manager_type_and_its_brief_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -769,6 +788,10 @@ def test_preview_daily_only_renders_the_supplied_draft(
         def generate(self, *args: object, **kwargs: object) -> None:
             pytest.fail("preview must not generate or write")
 
+    _pin_standup_clock(
+        monkeypatch,
+        SimpleNamespace(report=SimpleNamespace(timezone="Asia/Taipei")),
+    )
     monkeypatch.setattr(cli_actions, "DailyReportService", FakeDailyReportService)
 
     result = cli_actions._preview_daily(draft)
@@ -851,7 +874,7 @@ def test_generate_daily_stops_before_bookkeeping_when_the_artifact_write_fails(
         def generate(self, *args: object, **kwargs: object) -> None:
             raise ReportOutputError("disk unavailable")
 
-    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    _pin_standup_clock(monkeypatch, settings)
     monkeypatch.setattr(cli_actions, "DailyReportService", FailingDailyReportService)
     monkeypatch.setattr(
         cli_actions,
