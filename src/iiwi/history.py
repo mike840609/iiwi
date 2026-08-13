@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -64,8 +64,17 @@ def _json_default(value: object) -> str:
 
 
 def append_history(entry: HistoryEntry, *, path: Path | None = None) -> None:
-    """Record one report, appending it to the end of the log."""
+    """Record one report, appending it to the end of the log.
 
+    The output path is anchored to the generation working directory: it is
+    resolved here, while that directory is still the process CWD, so a later
+    reader in another directory sees a path that still locates the file.
+    `expanduser` runs first so a `~` is expanded against the writing user's
+    home, never the reader's. Entries written before this resolution are
+    left as stored.
+    """
+
+    entry = replace(entry, output_path=entry.output_path.expanduser().resolve())
     destination = path or history_file_path()
     descriptor = _open_for_append(destination)
     with os.fdopen(descriptor, "a", encoding="utf-8") as handle:

@@ -62,7 +62,7 @@ github.com/mike840609/iiwi
 ▶ Generate Report
   Browse Sessions
   Check Setup
-  Settings
+  Settings                       # full-screen editor, every choice listed
 
 ↑↓ jk │ Enter Select │ 1-4 │ ? Help │ q Quit
 ```
