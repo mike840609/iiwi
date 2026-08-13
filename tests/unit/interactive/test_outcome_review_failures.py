@@ -281,7 +281,7 @@ def test_synthesis_retry_reuses_filtered_scan_and_opens_quick_review() -> None:
     screens, output = _run(
         draft,
         log,
-        [*_open_review_keys(), KeyPress(key=Key.ENTER), char("b"), char("q"), char("q")],
+        [*_open_review_keys(), KeyPress(key=Key.ENTER), char("b"), char("q"), char("q"), char("q")],
         synthesize=synthesize,
     )
 
@@ -431,7 +431,7 @@ def test_partial_synthesis_opens_review_with_primary_and_ungrouped_candidates() 
     screens, output = _run(
         draft,
         log,
-        [*_open_review_keys(), char("b"), char("q"), char("q")],
+        [*_open_review_keys(), char("b"), char("q"), char("q"), char("q")],
         synthesize=lambda current, selected_scan: review,
     )
 
@@ -473,6 +473,7 @@ def test_preview_error_back_restores_the_complete_in_memory_review() -> None:
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("b"),
+            char("q"),
             char("q"),
             char("q"),
         ],
@@ -525,6 +526,7 @@ def test_preview_retry_uses_the_same_review_draft_and_succeeds() -> None:
             KeyPress(key=Key.ENTER),
             char("b"),
             char("b"),
+            char("q"),
             char("q"),
             char("q"),
         ],

@@ -373,6 +373,8 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
             char("b"),
             char("q"),
             char("q"),
+            char("q"),
+            char("q"),
         ]
     )
 

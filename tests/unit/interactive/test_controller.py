@@ -500,6 +500,7 @@ def test_review_escape_clears_a_committed_search_and_stays_on_review() -> None:
             char("b"),
             char("q"),
             char("q"),
+            char("q"),
         ]
     )
 
@@ -535,3 +536,77 @@ def test_review_escape_without_a_search_still_goes_back() -> None:
     )
 
     assert counters.get("scan", 0) == 1
+
+
+def test_q_on_quick_review_returns_to_review_screen() -> None:
+    console = _console()
+    stream = console.file
+    keys = ScriptedInput(
+        [
+            char("2"),
+            char("g"),
+            char("q"),
+            char("b"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=keys,
+        console=console,
+    )
+
+    assert "Review Sessions" in stream.getvalue()
+
+
+def test_q_on_session_preview_returns_to_review_screen() -> None:
+    console = _console()
+    stream = console.file
+    keys = ScriptedInput(
+        [
+            char("2"),
+            char("r"),
+            KeyPress(key=Key.RIGHT),
+            char("j"),
+            char("p"),
+            char("q"),
+            char("b"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=keys,
+        console=console,
+    )
+
+    assert "Review Sessions" in stream.getvalue()
+
+
+def test_q_on_report_preview_returns_to_quick_review() -> None:
+    console = _console()
+    stream = console.file
+    keys = ScriptedInput(
+        [
+            char("2"),
+            char("g"),
+            char("p"),
+            char("q"),
+            char("q"),
+            char("b"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=keys,
+        console=console,
+    )
+
+    assert "Quick Review" in stream.getvalue()

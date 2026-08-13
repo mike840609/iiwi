@@ -680,14 +680,10 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         return
     rows = _tree_rows(state.selection.scan, state)
     state.review_cursor = _move(state.review_cursor, key, len(rows))
-    if _char(key, "q"):
-        _sync_selection(state, actions)
-        state.screen = Screen.MAIN
-        return
     if key.key is Key.ESCAPE and state.search_query:
         _reset_search(state)
         return
-    if key.key is Key.ESCAPE or _char(key, "b"):
+    if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
         _sync_selection(state, actions)
         state.screen = Screen.MAIN if state.review_from_main else Screen.REPORT_SETUP
         return
@@ -962,10 +958,7 @@ def _outcome_review_key(
 
     state.outcome_cursor = _move(state.outcome_cursor, key, len(rows))
     target = rows[state.outcome_cursor]
-    if _char(key, "q"):
-        state.screen = Screen.MAIN
-        return
-    if key.key is Key.ESCAPE or _char(key, "b"):
+    if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = Screen.SESSION_REVIEW
         return
     if _exact_char(key, "p"):
@@ -1116,10 +1109,7 @@ def _error_key(
         return
     options = _error_options(error)
     error.selected = _move(error.selected, key, len(options))
-    if _char(key, "q"):
-        state.screen = Screen.MAIN
-        return
-    if key.key is Key.ESCAPE or _char(key, "b"):
+    if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = _error_back_screen(error)
         return
     if key.key is not Key.ENTER:
@@ -1225,10 +1215,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
 
 def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
     assert state.result is not None
-    if _char(key, "q"):
-        state.screen = Screen.MAIN
-        return
-    if key.key is Key.ESCAPE or _char(key, "b"):
+    if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = state.preview_return_screen or Screen.REPORT_RESULT
         state.preview_return_screen = None
         return
@@ -1252,11 +1239,9 @@ def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
 
 def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None:
     assert state.preview_session is not None
-    if _char(key, "q"):
-        state.screen = Screen.MAIN
-        return
-    if key.key is Key.ESCAPE or _char(key, "b"):
+    if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
         state.screen = state.preview_return_screen or Screen.MAIN
+        state.preview_return_screen = None
         return
     lines = build_session_preview_lines(state.preview_session) or [""]
     capacity = report_preview_capacity(console.size.height)
@@ -1277,10 +1262,12 @@ def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None
 
 
 def _help_key(state: _State, key: KeyPress, console: Console) -> None:
-    if _char(key, "q"):
-        state.screen = Screen.MAIN
-        return
-    if key.key in {Key.ESCAPE, Key.ENTER} or _char(key, "b") or _exact_char(key, "?"):
+    if (
+        _char(key, "q")
+        or key.key in {Key.ESCAPE, Key.ENTER}
+        or _char(key, "b")
+        or _exact_char(key, "?")
+    ):
         state.screen = state.help_return_screen or Screen.MAIN
         state.help_return_screen = None
         return

@@ -1358,7 +1358,7 @@ def render_report_result(
     console.print()
     _print_hints(
         console,
-        ["↑↓ jk", "Enter Select", "? Help", "q Menu"],
+        ["↑↓ jk", "Enter Select", "? Help", "q Back"],
     )
 
 
@@ -1551,7 +1551,7 @@ _HELP_LINES = (
     "/              Search repositories and session titles",
     "?              Open this help",
     "b / Esc        Back",
-    "q              Main menu / quit from main menu",
+    "q              Back / quit from the main menu",
     "Ctrl-C         Cancel the current operation and go back",
     "",
     "Quick Review   * these keys mean something else here",

@@ -342,6 +342,7 @@ def test_result_print_path_action_keeps_result_screen_active() -> None:
             KeyPress(key=Key.ENTER),
             char("q"),
             char("q"),
+            char("q"),
         ]
     )
 

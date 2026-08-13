@@ -351,6 +351,7 @@ def test_preview_action_can_preview_generated_report_content() -> None:
             char("b"),
             char("q"),
             char("q"),
+            char("q"),
         ]
     )
 
