@@ -33,6 +33,7 @@
 pipx install iiwi                 # 或：pip install iiwi
 
 iiwi doctor                       # harness 準備好了嗎？
+iiwi daily                        # 審閱昨天、今天與阻礙事項
 iiwi report --period last-week    # 產生報告
 ```
 
@@ -53,12 +54,13 @@ Turn coding-agent sessions into engineering reports
 github.com/mike840609/iiwi
 
 ▶ Review Activity
+  Daily Standup
   Generate Report
   History
   Check Setup
   Settings
 
-↑↓ jk │ Enter Select │ 1-5 │ ? Help │ q Quit
+↑↓ jk │ Enter Select │ 1-6 │ ? Help │ q Quit
 ```
 
 選擇 **Generate a report** 後會一次列出所有設定，不再逐題詢問：`↑↓` 移動，`←→` 改值，
@@ -83,6 +85,11 @@ Select sessions to include in the report:
 選擇 **History** 會列出工具產生過的所有報告，最新的在前。
 `↑↓` 移動，Enter 顯示該筆的完整輸出路徑。
 
+選擇 **Daily Standup**，或執行 `iiwi daily`，會從本地時區的昨天午夜開始掃描所有已啟用的
+harness，並開啟 Yesterday、Today、Blockers 三區的 Quick Review。Preview 與 Generate
+使用同一份已審閱 Markdown，檔名為 `daily-standup-YYYY-MM-DD.md`。來源警告、Today 建議與
+同日審閱狀態保留方式請見 [Daily Standup 指南](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md)。
+
 `Space` 切換整個 repository 或單一 session，`p` 預覽（已去敏的）逐字紀錄，`e` 把某個
 repository 排除在之後所有掃描之外。你的選取會依期間記住。
 
@@ -90,6 +97,7 @@ repository 排除在之後所有掃描之外。你的選取會依期間記住。
 
 ```bash
 iiwi doctor                       # harness 準備好了嗎？
+iiwi daily                        # 審閱昨天、今天與阻礙事項
 iiwi scan --period last-week      # 預覽工作階段如何分組
 iiwi report --period last-week    # 產生報告
 iiwi history                      # 列出已產生過的報告
@@ -138,6 +146,7 @@ iiwi config unset report.timezone                         # 回到預設值
 | 頁面 | 內容 |
 |---|---|
 | [CLI reference](https://github.com/mike840609/iiwi/blob/main/docs/cli-reference.md) | 所有指令、選項與結束代碼 |
+| [Daily Standup](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md) | Yesterday／Today／Blockers 審閱、更新、警告與輸出 |
 | [Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md) | 設定檔、環境變數與優先順序 |
 | [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md) | 資料流向、去敏邊界，以及報告仍會包含什麼 |
 | [Security policy](https://github.com/mike840609/iiwi/blob/main/SECURITY.md) | 威脅模型與漏洞回報方式 |

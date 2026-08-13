@@ -39,6 +39,7 @@ explicit session-based report fallback.
 pipx install iiwi                 # or: pip install iiwi
 
 iiwi doctor                       # is the harness ready?
+iiwi daily                        # review yesterday, today, and blockers
 iiwi report --period last-week    # write the report
 ```
 
@@ -60,12 +61,13 @@ Turn coding-agent sessions into engineering reports
 github.com/mike840609/iiwi
 
 ▶ Review Activity
+  Daily Standup
   Generate Report
   History
   Check Setup
   Settings                       # full-screen editor, every choice listed
 
-↑↓ jk │ Enter Select │ 1-5 │ ? Help │ q Quit
+↑↓ jk │ Enter Select │ 1-6 │ ? Help │ q Quit
 ```
 
 Choosing **Generate a report** shows every setting at once instead of asking one
@@ -91,6 +93,13 @@ Select sessions to include in the report:
 
 Choosing **History** lists every report the tool has written, newest first.
 `↑↓` moves; Enter shows the row's full output path.
+
+Choosing **Daily Standup**, or running `iiwi daily`, scans every enabled harness
+from yesterday's local midnight through now and opens a three-section Quick
+Review for Yesterday, Today, and Blockers. Preview and Generate use the same
+reviewed Markdown, written as `daily-standup-YYYY-MM-DD.md`. See the
+[Daily Standup guide](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md)
+for source warnings, suggested Today work, and same-day review persistence.
 
 `Space` toggles a repository or a single session, `p` previews a transcript
 (redacted), and `e` excludes a repository from every future scan. Your selection
@@ -118,6 +127,7 @@ for the full flow and the Manager/Engineering and Brief/Full responsibilities.
 
 ```bash
 iiwi doctor                       # is the harness ready?
+iiwi daily                        # review yesterday, today, and blockers
 iiwi scan --period last-week      # preview how sessions group
 iiwi report --period last-week    # write the report
 iiwi history                      # reports already written
@@ -169,6 +179,7 @@ for the full data flow and current limits.
 | Page | What's in it |
 |---|---|
 | [CLI reference](https://github.com/mike840609/iiwi/blob/main/docs/cli-reference.md) | Every command, option, and exit code |
+| [Daily Standup](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md) | Yesterday/Today/Blockers review, refresh, warnings, and output |
 | [Evidence-first Quick Review](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md) | Outcome review keys, report modes, recovery, and current exclusions |
 | [Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md) | Settings file, environment variables, precedence |
 | [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md) | Data flow, redaction boundary, what reports still contain |

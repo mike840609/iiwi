@@ -56,6 +56,16 @@ def test_quick_review_guide_states_scope_and_version_one_exclusions() -> None:
     assert "No manual merge" in guide
 
 
+def test_quick_review_guide_names_daily_as_the_persistent_exception() -> None:
+    guide = Path("docs/evidence-first-quick-review.md").read_text(encoding="utf-8")
+    normalized = guide.casefold()
+
+    assert "in-memory only" in normalized
+    assert "daily standup" in normalized
+    assert "same-day" in normalized
+    assert "persistent exception" in normalized
+
+
 def test_readme_distinguishes_transcript_reading_from_quick_review_synthesis() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
 

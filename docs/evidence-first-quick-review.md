@@ -81,7 +81,9 @@ and exposes failures as **Ungrouped candidates**.
 
 ## Version-one exclusions
 
-- **No persistent drafts.** The draft exists only for the current interactive run.
+- **No persistent drafts.** Ordinary report Quick Review is in-memory only: its
+  draft exists for the current interactive run. Daily Standup is the explicit
+  same-day persistent exception; see the [Daily Standup guide](daily-standup.md).
 - **No manual merge.** Reviewers can split a synthesized merge but cannot create a
   new merged outcome by hand.
 - There is no separate outcome editor outside the terminal Quick Review flow.
