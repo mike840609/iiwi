@@ -34,6 +34,27 @@ def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     monkeypatch.setenv("IIWI_DAILY_STATE_DIR", str(tmp_path / "daily"))
 
 
+@pytest.fixture(autouse=True)
+def _isolate_terminal_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate Rich from the contributor's terminal environment.
+
+    Rich reads these variables at Console construction and at render time, so a
+    contributor running with NO_COLOR set, or under a dumb terminal, changed the
+    result of tests that assert styles or table wrapping:
+
+    - NO_COLOR strips styles even from a console built with color_system="truecolor".
+    - TERM=dumb pins Console.size to 80x25, overriding an explicit width=.
+    - COLUMNS/LINES override the size of consoles that do not pass one.
+
+    Per-test monkeypatch.setenv calls take precedence, which is how the
+    deliberate dumb-terminal tests still opt in.
+    """
+
+    for name in ("NO_COLOR", "FORCE_COLOR", "COLUMNS", "LINES"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+
+
 @dataclass
 class FakeCommandRunner:
     stdout: str = ""
