@@ -1023,14 +1023,44 @@ def _move_daily_item(
     state: _State,
     target: DailyReviewRow,
     delta: int,
-) -> None:
+) -> bool:
     assert state.daily_review is not None
     assert target.work_item_id is not None
-    state.daily_review.move(target.section, target.work_item_id, delta)
     rows = _daily_review_rows(state)
-    state.daily_cursor = next(
+    current = next(
         index
         for index, row in enumerate(rows)
+        if row.kind == "item"
+        and row.section is target.section
+        and row.work_item_id == target.work_item_id
+    )
+    neighbour_index = current + delta
+    if not 0 <= neighbour_index < len(rows):
+        return False
+    neighbour = rows[neighbour_index]
+    if neighbour.kind != "item" or neighbour.section is not target.section:
+        return False
+    assert neighbour.work_item_id is not None
+    section_items = {
+        work_item.id: item
+        for work_item, item in state.daily_review.ordered_items(target.section)
+    }
+    item = section_items[target.work_item_id]
+    neighbour_item = section_items[neighbour.work_item_id]
+    if item.rank == neighbour_item.rank:
+        return False
+    item.rank, neighbour_item.rank = neighbour_item.rank, item.rank
+    _focus_daily_item(state, target)
+    return True
+
+
+def _focus_daily_item(state: _State, target: DailyReviewRow) -> None:
+    """Resolve focus by stable row identity after a mutation changes row order."""
+
+    assert target.work_item_id is not None
+    state.daily_cursor = next(
+        index
+        for index, row in enumerate(_daily_review_rows(state))
         if row.kind == "item"
         and row.section is target.section
         and row.work_item_id == target.work_item_id
@@ -1086,12 +1116,12 @@ def _daily_review_key(
     target = rows[state.daily_cursor]
 
     if _exact_char(key, "J") and target.kind == "item":
-        _move_daily_item(state, target, 1)
-        _persist_daily_review(state, actions)
+        if _move_daily_item(state, target, 1):
+            _persist_daily_review(state, actions)
         return
     if _exact_char(key, "K") and target.kind == "item":
-        _move_daily_item(state, target, -1)
-        _persist_daily_review(state, actions)
+        if _move_daily_item(state, target, -1):
+            _persist_daily_review(state, actions)
         return
 
     state.daily_cursor = _move(state.daily_cursor, key, len(rows))
@@ -1134,6 +1164,7 @@ def _daily_review_key(
     assert target.work_item_id is not None
     if key.key is Key.SPACE:
         state.daily_review.toggle_included(target.section, target.work_item_id)
+        _focus_daily_item(state, target)
         _persist_daily_review(state, actions)
     elif _exact_char(key, "v"):
         state.daily_expansions().symmetric_difference_update({target.work_item_id})

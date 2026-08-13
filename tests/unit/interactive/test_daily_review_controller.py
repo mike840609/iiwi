@@ -7,6 +7,7 @@ import pytest
 
 from iiwi.interactive import controller
 from iiwi.interactive.controller import InteractiveActions, InteractiveReportResult
+from iiwi.interactive.daily_review import YESTERDAY_MORE_SECTION
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.models.daily import (
@@ -16,7 +17,7 @@ from iiwi.models.daily import (
     DailyStandupWorkItem,
     DailyStatementSource,
 )
-from iiwi.models.outcome import OutcomeReviewDraft
+from iiwi.models.outcome import OutcomeBucket, OutcomeReviewDraft
 from iiwi.models.time_range import DateRange
 
 
@@ -132,6 +133,46 @@ def _state(draft: DailyStandupDraft | None = None) -> controller._State:
     )
 
 
+def _grouped_draft() -> DailyStandupDraft:
+    draft = _draft()
+    yesterday_b = draft.work_items[1].yesterday
+    assert yesterday_b is not None
+    yesterday_b.rank = 2
+    draft.work_items.extend(
+        [
+            DailyStandupWorkItem(
+                id="more-a",
+                yesterday=DailySectionItem(
+                    statement="More A",
+                    source=DailyStatementSource.ACTIVITY_YESTERDAY,
+                    included=False,
+                    rank=1,
+                    bucket=OutcomeBucket.MORE,
+                ),
+            ),
+            DailyStandupWorkItem(
+                id="more-b",
+                yesterday=DailySectionItem(
+                    statement="More B",
+                    source=DailyStatementSource.ACTIVITY_YESTERDAY,
+                    included=False,
+                    rank=3,
+                    bucket=OutcomeBucket.MORE,
+                ),
+            ),
+        ]
+    )
+    return draft
+
+
+def _focus_item(state: controller._State, identifier: str) -> None:
+    state.daily_cursor = next(
+        index
+        for index, row in enumerate(controller._daily_review_rows(state))
+        if row.kind == "item" and row.work_item_id == identifier
+    )
+
+
 def _key(value: str) -> KeyPress:
     return KeyPress(char=value)
 
@@ -151,6 +192,24 @@ def test_space_toggles_focused_daily_item_and_persists_warning() -> None:
     assert state.daily_review.work_items[0].yesterday.included is False
     assert len(log.persisted) == 1
     assert state.daily_message == "State could not be saved"
+
+
+def test_space_promotion_retains_focus_on_the_same_work_item() -> None:
+    log = ActionLog()
+    state = _state(_grouped_draft())
+    state.daily_expanded = {YESTERDAY_MORE_SECTION}
+    _focus_item(state, "more-b")
+
+    controller._daily_review_key(
+        state,
+        KeyPress(key=Key.SPACE),
+        _actions(log),
+    )
+
+    focused = controller._daily_review_rows(state)[state.daily_cursor]
+    assert focused.kind == "item"
+    assert focused.work_item_id == "more-b"
+    assert len(log.persisted) == 1
 
 
 def test_e_edits_through_model_and_marks_reviewer_ownership_before_persist() -> None:
@@ -181,6 +240,95 @@ def test_uppercase_reorder_stays_inside_section_and_persists() -> None:
         "today-a"
     ]
     assert len(log.persisted) == 1
+
+
+@pytest.mark.parametrize(
+    ("identifier", "key"),
+    [("yesterday-b", "J"), ("more-a", "K")],
+)
+def test_reorder_at_primary_more_boundary_is_noop_without_persistence(
+    identifier: str,
+    key: str,
+) -> None:
+    log = ActionLog()
+    draft = _grouped_draft()
+    state = _state(draft)
+    state.daily_expanded = {YESTERDAY_MORE_SECTION}
+    _focus_item(state, identifier)
+    before = [
+        (work.id, item.rank)
+        for work, item in draft.ordered_items(DailySection.YESTERDAY)
+    ]
+
+    controller._daily_review_key(state, _key(key), _actions(log))
+
+    after = [
+        (work.id, item.rank)
+        for work, item in draft.ordered_items(DailySection.YESTERDAY)
+    ]
+    focused = controller._daily_review_rows(state)[state.daily_cursor]
+    assert after == before
+    assert focused.work_item_id == identifier
+    assert log.persisted == []
+
+
+@pytest.mark.parametrize(
+    ("identifier", "key", "expected"),
+    [
+        ("yesterday-a", "J", ["yesterday-b", "yesterday-a"]),
+        ("more-a", "J", ["more-b", "more-a"]),
+    ],
+)
+def test_reorder_within_each_visible_group_moves_and_persists(
+    identifier: str,
+    key: str,
+    expected: list[str],
+) -> None:
+    log = ActionLog()
+    draft = _grouped_draft()
+    state = _state(draft)
+    state.daily_expanded = {YESTERDAY_MORE_SECTION}
+    _focus_item(state, identifier)
+
+    controller._daily_review_key(state, _key(key), _actions(log))
+
+    visible_group = [
+        row.work_item_id
+        for row in controller._daily_review_rows(state)
+        if row.kind == "item"
+        and row.section is DailySection.YESTERDAY
+        and row.work_item_id in set(expected)
+    ]
+    focused = controller._daily_review_rows(state)[state.daily_cursor]
+    assert visible_group == expected
+    assert focused.work_item_id == identifier
+    assert len(log.persisted) == 1
+
+
+def test_reorder_that_does_not_change_visible_order_does_not_persist() -> None:
+    log = ActionLog()
+    draft = _grouped_draft()
+    yesterday_a = draft.work_items[0].yesterday
+    yesterday_b = draft.work_items[1].yesterday
+    assert yesterday_a is not None
+    assert yesterday_b is not None
+    yesterday_a.rank = 0
+    yesterday_b.rank = 0
+    state = _state(draft)
+    state.daily_expanded = {YESTERDAY_MORE_SECTION}
+    _focus_item(state, "yesterday-a")
+
+    controller._daily_review_key(state, _key("J"), _actions(log))
+
+    visible_primary = [
+        row.work_item_id
+        for row in controller._daily_review_rows(state)
+        if row.kind == "item"
+        and row.section is DailySection.YESTERDAY
+        and row.work_item_id in {"yesterday-a", "yesterday-b"}
+    ]
+    assert visible_primary == ["yesterday-a", "yesterday-b"]
+    assert log.persisted == []
 
 
 def test_v_only_toggles_daily_evidence_ui_state() -> None:
