@@ -129,14 +129,18 @@ class _Outcomes:
         *,
         error: Exception | None = None,
         failed_session_ids: list[str] | None = None,
+        failures: int | None = None,
     ) -> None:
         self.error = error
+        self.failures = failures
         self.failed_session_ids = failed_session_ids or []
         self.calls: list[ScanResult] = []
 
     def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
         self.calls.append(scan)
-        if self.error is not None:
+        if self.error is not None and (
+            self.failures is None or len(self.calls) <= self.failures
+        ):
             raise self.error
         return OutcomeSynthesisResult(
             outcomes=[_outcome()],
@@ -181,6 +185,40 @@ def _reviewed_draft(standup_date: date, statement: str) -> DailyStandupDraft:
                 ),
             )
         ],
+    )
+
+
+def _fallback_draft(*, reviewer_edited: bool = False) -> DailyStandupDraft:
+    """Build the per-session granularity a model-grouped draft has to replace."""
+
+    def _item(suffix: str, activity_id: str, *, edited: bool) -> DailyStandupWorkItem:
+        return DailyStandupWorkItem(
+            id=f"fallback-{suffix}",
+            repository_ids=["repo-a"],
+            today=DailySectionItem(
+                statement=f"Verification passed: raw evidence {suffix}",
+                evidence_refs=[
+                    EvidenceRef(
+                        harness="codex",
+                        session_id="session-1",
+                        repository_id="repo-a",
+                        activity_ids=[activity_id],
+                    )
+                ],
+                source=DailyStatementSource.ACTIVITY_TODAY,
+                user_edited=edited,
+            ),
+        )
+
+    return DailyStandupDraft(
+        standup_date=NOW.date(),
+        scan_since=datetime(2026, 8, 12, tzinfo=TZ),
+        scan_until=NOW,
+        work_items=[
+            _item("a", "activity-1", edited=False),
+            _item("b", "activity-2", edited=reviewer_edited),
+        ],
+        fallback=True,
     )
 
 
@@ -250,9 +288,50 @@ def test_refresh_uses_deterministic_fallback_on_outcome_synthesis_error() -> Non
 
     draft = _service(now_factory=lambda: NOW, outcomes=outcomes).refresh()
 
-    assert len(outcomes.calls) == 1
+    assert len(outcomes.calls) == 2
     assert draft.fallback is True
     assert draft.work_items
+    assert any(
+        "model unavailable" in warning and "not model-grouped" in warning
+        for warning in draft.coverage_warnings
+    )
+
+
+def test_refresh_retries_synthesis_once_before_falling_back() -> None:
+    outcomes = _Outcomes(error=OutcomeSynthesisError("no valid outcome JSON"), failures=1)
+
+    draft = _service(now_factory=lambda: NOW, outcomes=outcomes).refresh()
+
+    assert len(outcomes.calls) == 2
+    assert draft.fallback is False
+    assert draft.coverage_warnings == ["Claude Code activity could not be loaded."]
+    assert draft.work_items[0].today is not None
+    assert draft.work_items[0].today.statement == "Wire Daily workflow"
+
+
+def test_refresh_replaces_an_unreviewed_fallback_draft_with_the_model_draft() -> None:
+    draft = _service(now_factory=lambda: NOW, outcomes=_Outcomes()).refresh(
+        _fallback_draft()
+    )
+
+    included = [
+        item.today.statement
+        for item in draft.work_items
+        if item.today is not None and item.today.included
+    ]
+    assert included == ["Wire Daily workflow"]
+    assert draft.fallback is False
+
+
+def test_refresh_merges_a_fallback_draft_the_reviewer_has_edited() -> None:
+    draft = _service(now_factory=lambda: NOW, outcomes=_Outcomes()).refresh(
+        _fallback_draft(reviewer_edited=True)
+    )
+
+    statements = [
+        item.today.statement for item in draft.work_items if item.today is not None
+    ]
+    assert "Verification passed: raw evidence b" in statements
 
 
 def test_refresh_reconciles_reviewer_wording_from_the_supplied_same_day_draft() -> None:

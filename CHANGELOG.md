@@ -19,9 +19,12 @@ All notable changes to this project are documented in this file.
   `daily-standup-YYYY-MM-DD.md`. Refreshing later in the day keeps every edit,
   exclusion and ordering already made and flags what is new since the last look;
   the reviewed draft is kept owner-only on your machine for that date and
-  cleaned up after 30 days. If grouping is unavailable, Daily falls back to a
-  draft built from local evidence alone, and if a harness cannot be read the
-  review says which one and continues on the rest.
+  cleaned up after 30 days. If grouping is unavailable, Daily retries once and
+  then falls back to a draft built from local evidence alone, saying so in the
+  review and in the written report rather than letting raw evidence pass as a
+  grouped update; a later refresh that does group successfully replaces that
+  fallback instead of leaving its raw text behind. If a harness cannot be read
+  the review says which one and continues on the rest.
 - Blockers reports only failures worth reporting. A command exiting nonzero is
   not by itself a blocker: an agent's shell is mostly exploration, and
   exploration fails constantly without anything being blocked. Measured over one
