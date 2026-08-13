@@ -126,7 +126,10 @@ def outcome(
 def test_one_grouped_outcome_projects_actual_activity_into_both_sections() -> None:
     session = resolved_session(
         "s1",
-        [activity("y1", YESTERDAY), activity("t1", TODAY)],
+        [
+            activity("y1", YESTERDAY, activity_type=ActivityType.FILE_CHANGE),
+            activity("t1", TODAY, activity_type=ActivityType.FILE_CHANGE),
+        ],
     )
     grouped = outcome("o1", [evidence_ref("s1", ["y1", "t1"])], title="Build Daily")
 
@@ -151,11 +154,15 @@ def test_projection_uses_half_open_windows_and_never_guesses_missing_timestamps(
     session = resolved_session(
         "s1",
         [
-            activity("before", window.yesterday_start - timedelta(microseconds=1)),
-            activity("y-start", window.yesterday_start),
-            activity("t-start", window.today_start),
-            activity("now", window.now),
-            activity("untimed", None),
+            activity(
+                "before",
+                window.yesterday_start - timedelta(microseconds=1),
+                activity_type=ActivityType.FILE_CHANGE,
+            ),
+            activity("y-start", window.yesterday_start, activity_type=ActivityType.FILE_CHANGE),
+            activity("t-start", window.today_start, activity_type=ActivityType.FILE_CHANGE),
+            activity("now", window.now, activity_type=ActivityType.FILE_CHANGE),
+            activity("untimed", None, activity_type=ActivityType.FILE_CHANGE),
         ],
     )
     grouped = outcome(
@@ -172,9 +179,15 @@ def test_projection_uses_half_open_windows_and_never_guesses_missing_timestamps(
     assert work.today.evidence_refs[0].activity_ids == ["t-start"]
 
 
-def test_yesterday_in_progress_goal_suggests_today() -> None:
-    session = resolved_session("s1", [activity("goal", YESTERDAY)])
-    grouped = outcome("o1", [evidence_ref("s1", ["goal"])])
+def test_yesterday_in_progress_goal_with_tangible_work_suggests_today() -> None:
+    session = resolved_session(
+        "s1",
+        [
+            activity("goal", YESTERDAY),
+            activity("file", YESTERDAY, activity_type=ActivityType.FILE_CHANGE),
+        ],
+    )
+    grouped = outcome("o1", [evidence_ref("s1", ["goal", "file"])])
 
     draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
 
@@ -187,10 +200,16 @@ def test_yesterday_in_progress_goal_suggests_today() -> None:
 
 
 def test_completed_yesterday_outcome_does_not_suggest_today() -> None:
-    session = resolved_session("s1", [activity("goal", YESTERDAY)])
+    session = resolved_session(
+        "s1",
+        [
+            activity("goal", YESTERDAY),
+            activity("file", YESTERDAY, activity_type=ActivityType.FILE_CHANGE),
+        ],
+    )
     grouped = outcome(
         "o1",
-        [evidence_ref("s1", ["goal"])],
+        [evidence_ref("s1", ["goal", "file"])],
         status=OutcomeStatus.COMPLETED,
     )
 
@@ -274,6 +293,75 @@ def test_later_completion_in_the_same_source_resolves_blocker_candidate() -> Non
     assert draft.work_items[0].blocker is None
 
 
+def test_later_successful_retry_of_an_ordinary_command_resolves_blocker_candidate() -> None:
+    session = resolved_session(
+        "s1",
+        [
+            activity(
+                "failure",
+                YESTERDAY,
+                activity_type=ActivityType.COMMAND,
+                content="git push",
+                exit_code=1,
+            ),
+            activity(
+                "success",
+                TODAY,
+                activity_type=ActivityType.COMMAND,
+                content="git push",
+                exit_code=0,
+            ),
+        ],
+    )
+    # Extraction de-duplicates the identical successful retry from the source ref.
+    grouped = outcome("o1", [evidence_ref("s1", ["failure"])])
+
+    draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
+
+    assert draft.work_items[0].blocker is None
+
+
+def test_failure_after_a_successful_retry_remains_a_blocker_candidate() -> None:
+    session = resolved_session(
+        "s1",
+        [
+            activity(
+                "failure-1",
+                YESTERDAY,
+                activity_type=ActivityType.COMMAND,
+                content="uv run pytest",
+                exit_code=1,
+            ),
+            activity(
+                "success",
+                TODAY.replace(minute=10),
+                activity_type=ActivityType.COMMAND,
+                content="uv run pytest",
+                exit_code=0,
+            ),
+            activity(
+                "failure-2",
+                TODAY.replace(minute=20),
+                activity_type=ActivityType.COMMAND,
+                content="uv run pytest",
+                exit_code=1,
+            ),
+        ],
+    )
+    grouped = outcome(
+        "o1",
+        # The repeated final failure is absent after evidence de-duplication.
+        [evidence_ref("s1", ["failure-1", "success"])],
+    )
+
+    draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
+
+    blocker = draft.work_items[0].blocker
+    assert blocker is not None
+    assert blocker.statement == "uv run pytest"
+    assert blocker.evidence_refs[0].activity_ids == ["failure-2"]
+
+
 def test_completed_grouped_outcome_does_not_create_blocker_candidate() -> None:
     session = resolved_session(
         "s1",
@@ -346,8 +434,12 @@ def test_yesterday_and_today_cap_primary_items_but_blockers_are_not_capped() -> 
             resolved_session(
                 session_id,
                 [
-                    activity(ids[0], YESTERDAY),
-                    activity(ids[1], TODAY),
+                    activity(
+                        ids[0],
+                        YESTERDAY,
+                        activity_type=ActivityType.FILE_CHANGE,
+                    ),
+                    activity(ids[1], TODAY, activity_type=ActivityType.FILE_CHANGE),
                     activity(
                         ids[2],
                         TODAY,
@@ -374,6 +466,65 @@ def test_yesterday_and_today_cap_primary_items_but_blockers_are_not_capped() -> 
     assert all(item.included is False for item in blockers)
 
 
+def test_goal_only_session_does_not_become_factual_yesterday_activity() -> None:
+    session = resolved_session(
+        "s1",
+        [activity("plan", YESTERDAY, content="Plan the migration tomorrow")],
+    )
+    grouped = outcome("o1", [evidence_ref("s1", ["plan"])])
+
+    draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
+
+    assert draft.work_items == []
+
+
+def test_fallback_omits_a_goal_only_session() -> None:
+    session = resolved_session(
+        "s1",
+        [activity("plan", YESTERDAY, content="Plan the migration tomorrow")],
+    )
+
+    draft = build_daily_fallback(daily_scan=daily_scan([session]))
+
+    assert draft.work_items == []
+
+
+def test_fallback_uses_goal_text_to_label_tangible_activity() -> None:
+    session = resolved_session(
+        "s1",
+        [
+            activity("goal", YESTERDAY, content="Migrate the database"),
+            activity(
+                "file",
+                YESTERDAY.replace(hour=11),
+                activity_type=ActivityType.FILE_CHANGE,
+                content="migrations/001.sql",
+            ),
+        ],
+    )
+
+    draft = build_daily_fallback(daily_scan=daily_scan([session]))
+
+    yesterday = draft.work_items[0].yesterday
+    assert yesterday is not None
+    assert yesterday.statement == "Migrate the database"
+
+
+def test_projection_appends_synthesis_warnings_after_scan_warnings() -> None:
+    scan = daily_scan([], warnings=["scan warning"])
+
+    draft = project_daily_standup(
+        daily_scan=scan,
+        outcomes=[],
+        synthesis_warnings=["evidence budget omitted one session"],
+    )
+
+    assert draft.warnings == [
+        "scan warning",
+        "evidence budget omitted one session",
+    ]
+
+
 def test_fallback_uses_local_evidence_priority_and_preserves_scan_metadata() -> None:
     session = resolved_session(
         "s1",
@@ -386,6 +537,12 @@ def test_fallback_uses_local_evidence_priority_and_preserves_scan_metadata() -> 
                 content="Implemented Daily projection",
             ),
             activity("today", TODAY, content="Continue Daily"),
+            activity(
+                "today-file",
+                TODAY.replace(minute=30),
+                activity_type=ActivityType.FILE_CHANGE,
+                content="src/daily.py",
+            ),
         ],
         title="token=secret-title",
     )

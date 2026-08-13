@@ -374,7 +374,7 @@ class CodexRolloutMapper:
             # signals `extraction/pipeline.py` reads to decide an outcome. Codex
             # records exit codes only inside free-form output text, in at least
             # three formats, and a regex over that would fail silently the day
-            # Codex changes it. With none of the three set, `_observed_failure`
+            # Codex changes it. With none of the three set, `observed_command_failure`
             # returns None and the stderr heuristic declines, so a Codex command
             # is reported as what it was, never as passed or failed. Adding any
             # of the three here is what would break that.

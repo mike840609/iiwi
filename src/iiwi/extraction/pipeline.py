@@ -87,7 +87,7 @@ def _exit_code(activity: SessionActivity) -> int | None:
     return None
 
 
-def _observed_failure(activity: SessionActivity) -> bool | None:
+def observed_command_failure(activity: SessionActivity) -> bool | None:
     """Return whether the command was observed to fail, or None if unobserved.
 
     Two harnesses record two different real signals. OpenCode reports a process
@@ -258,7 +258,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                 ),
                 repository_id=repository_id,
             )
-            failed = _observed_failure(activity)
+            failed = observed_command_failure(activity)
             if failed is True:
                 _append_unique(
                     evidence.errors,
