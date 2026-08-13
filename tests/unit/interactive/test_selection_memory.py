@@ -321,6 +321,35 @@ def test_exclude_key_on_a_repository_row_excludes_without_rescan() -> None:
     assert "future scans will skip it" in stream.getvalue()
 
 
+def test_excluded_repository_stays_excluded_when_reentering_review() -> None:
+    recorder = Recorder()
+    console, stream = _console()
+
+    run_interactive(
+        actions=recorder.actions(),
+        input_source=ScriptedInput(
+            [
+                char("2"),
+                char("r"),
+                char("e"),
+                char("b"),
+                char("r"),
+                char("b"),
+                char("b"),
+                char("q"),
+            ]
+        ),
+        console=console,
+    )
+
+    assert recorder.exclude_calls == [("repo-a", "repo-a")]
+    assert recorder.scan_calls == 1
+    assert (
+        stream.getvalue().count("repo-a   1 / 1")
+        + stream.getvalue().count("repo-a   0 / 1")
+    ) == 1
+
+
 def test_exclude_key_on_a_session_row_does_not_exclude() -> None:
     recorder = Recorder()
     console, _ = _console()

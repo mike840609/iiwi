@@ -584,7 +584,9 @@ def test_q_on_session_preview_returns_to_review_screen() -> None:
         console=console,
     )
 
-    assert "Review Sessions" in stream.getvalue()
+    assert stream.getvalue().rindex("Review Sessions") > stream.getvalue().rindex(
+        "Session Preview"
+    )
 
 
 def test_q_on_report_preview_returns_to_quick_review() -> None:
@@ -609,4 +611,4 @@ def test_q_on_report_preview_returns_to_quick_review() -> None:
         console=console,
     )
 
-    assert "Quick Review" in stream.getvalue()
+    assert stream.getvalue().count("Quick Review") >= 2

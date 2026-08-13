@@ -1377,6 +1377,7 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
         state.preview_return_screen = None
     elif state.screen is Screen.SESSION_PREVIEW:
         state.screen = state.preview_return_screen or Screen.MAIN
+        state.preview_return_screen = None
     elif state.screen is Screen.RECOVERABLE_ERROR and state.error is not None:
         state.screen = _error_back_screen(state.error)
     elif state.screen is Screen.HELP:
