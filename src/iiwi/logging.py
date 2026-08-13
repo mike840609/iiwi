@@ -196,13 +196,14 @@ class ConsoleReporter:
         mangle a legitimate value that happens to look like a secret.
         """
 
-        table = Table(title="Iiwi Settings")
+        table = Table(title="Iiwi Settings", padding=(0, 0))
         # `config list`'s whole job is teaching the user the key names they
         # type into `config set`; at the default 80-column terminal, Rich's
         # default ellipsis truncation cuts most keys down to an identical
-        # "harnesses.opencode.…" prefix. Folding wraps instead, so the full
-        # key, value, and default are always readable regardless of width.
-        table.add_column("Setting", overflow="fold")
+        # "harnesses.opencode.…" prefix. Keep setting names on one line at
+        # the supported width; values and defaults still fold when necessary.
+        # Removing cell padding makes room for all setting names at 80 columns.
+        table.add_column("Setting", no_wrap=True, overflow="fold")
         table.add_column("Value", overflow="fold")
         table.add_column("From")
         table.add_column("Default", overflow="fold")
