@@ -6,7 +6,11 @@ from io import StringIO
 import pytest
 from rich.console import Console
 
-from iiwi.errors import DailySourceUnavailableError, ReportOutputError
+from iiwi.errors import (
+    ConfigurationError,
+    DailySourceUnavailableError,
+    ReportOutputError,
+)
 from iiwi.interactive import controller
 from iiwi.interactive.controller import InteractiveActions
 from iiwi.interactive.input import Key, KeyPress
@@ -61,6 +65,31 @@ def test_all_source_error_preserves_original_window_and_offers_recovery() -> Non
         "Continue with empty draft",
         "Back",
     ]
+
+
+def test_configuration_error_from_start_daily_is_recoverable_not_fatal() -> None:
+    """start_daily reads settings, the enabled harnesses and the clock first.
+
+    Every one of those raises ConfigurationError on an unusable config, and
+    _dispatch catches only KeyboardInterrupt and typer.Abort, so anything that
+    escapes here takes the whole interactive app down with a traceback.
+    """
+
+    log = ActionLog()
+    actions = _replace_daily_actions(
+        _actions(log),
+        start_daily=lambda previous: (_ for _ in ()).throw(
+            ConfigurationError("no harness is enabled")
+        ),
+    )
+    state = _state()
+
+    controller._begin_daily_review(state, actions)
+
+    assert state.screen is Screen.RECOVERABLE_ERROR
+    assert state.error is not None
+    assert state.error.kind == "daily-start"
+    assert "no harness is enabled" in state.error.detail
 
 
 def test_daily_source_retry_passes_current_daily_draft() -> None:

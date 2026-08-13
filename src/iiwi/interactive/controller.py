@@ -1011,6 +1011,18 @@ def _begin_daily_review(state: _State, actions: InteractiveActions) -> None:
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
+    except IiwiError as exc:
+        # start_daily reads settings, the enabled harnesses and the clock before
+        # it ever scans, so ConfigurationError reaches here on an unusable
+        # config. Every other menu entry shows that as a recoverable error
+        # rather than letting it escape _dispatch and kill the app.
+        state.error = _ErrorState(
+            kind="daily-start",
+            title="Could not start Daily Standup",
+            detail=str(exc),
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
     _open_daily_review(state, draft)
 
 

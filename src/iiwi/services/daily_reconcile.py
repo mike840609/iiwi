@@ -32,13 +32,17 @@ def reconcile_daily_draft(
         else []
     )
     matches: dict[int, DailyStandupWorkItem] = {}
-    unmatched_fresh: list[DailyStandupWorkItem] = []
+    unmatched_fresh: list[tuple[DailyStandupWorkItem, bool]] = []
     used_previous: set[int] = set()
 
     for fresh_item in fresh.work_items:
-        match = _matching_previous(previous_items, fresh_item)
+        match, contested = _matching_previous(previous_items, fresh_item)
         if match is None or match in used_previous:
-            unmatched_fresh.append(fresh_item)
+            # A fresh item that overlaps reviewed evidence without identifying
+            # one owner is a re-grouping, not new work: the previous items it
+            # overlaps are still in the draft, so including this copy too would
+            # publish the same work twice.
+            unmatched_fresh.append((fresh_item, contested or match is not None))
             continue
         matches[match] = fresh_item
         used_previous.add(match)
@@ -61,8 +65,10 @@ def reconcile_daily_draft(
             )
         )
 
-    for fresh_item in unmatched_fresh:
-        reconciled.append(_new_work_item(fresh_item, next_ranks=next_ranks))
+    for fresh_item, contested in unmatched_fresh:
+        reconciled.append(
+            _new_work_item(fresh_item, next_ranks=next_ranks, contested=contested)
+        )
 
     return fresh.model_copy(update={"work_items": reconciled}, deep=True)
 
@@ -70,7 +76,16 @@ def reconcile_daily_draft(
 def _matching_previous(
     previous_items: list[DailyStandupWorkItem],
     fresh_item: DailyStandupWorkItem,
-) -> int | None:
+) -> tuple[int | None, bool]:
+    """Return the previous item this fresh item continues, and whether it was contested.
+
+    Two candidates mean the evidence does not say which reviewed item this one
+    continues, so nothing is merged — guessing would overwrite a reviewer's
+    decision on the strength of a shared session id. The contested flag carries
+    that ambiguity out to the caller, which is what keeps the unattributable
+    copy from publishing itself alongside the items it may duplicate.
+    """
+
     fresh_exact, fresh_coarse = _evidence_keys(fresh_item)
     exact_matches: list[int] = []
     coarse_matches: list[int] = []
@@ -81,8 +96,10 @@ def _matching_previous(
         elif fresh_coarse & previous_coarse:
             coarse_matches.append(index)
     if exact_matches:
-        return exact_matches[0] if len(exact_matches) == 1 else None
-    return coarse_matches[0] if len(coarse_matches) == 1 else None
+        return (exact_matches[0], False) if len(exact_matches) == 1 else (None, True)
+    if len(coarse_matches) == 1:
+        return coarse_matches[0], False
+    return None, bool(coarse_matches)
 
 
 def _evidence_keys(
@@ -178,7 +195,16 @@ def _new_work_item(
     fresh: DailyStandupWorkItem,
     *,
     next_ranks: dict[str, int],
+    contested: bool = False,
 ) -> DailyStandupWorkItem:
+    """Add a fresh item the reviewer has not seen, excluded when it may duplicate.
+
+    A contested item overlaps evidence already carried by reviewed items that
+    stay in the draft, so it starts excluded — the same rule detected blockers
+    follow. The reviewer sees it flagged as new activity and opts in, rather
+    than finding the same work published two or three times.
+    """
+
     new_item = fresh.model_copy(update={"id": uuid4().hex}, deep=True)
     for attribute in _SECTION_ATTRIBUTES:
         section = getattr(new_item, attribute)
@@ -186,6 +212,8 @@ def _new_work_item(
             continue
         section.rank = _take_rank(next_ranks, attribute)
         section.new_activity = True
+        if contested:
+            section.included = False
     return new_item
 
 

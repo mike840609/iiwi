@@ -154,6 +154,27 @@ def test_daily_review_narrow_short_viewport_keeps_focus_and_hints_visible() -> N
                 assert all(len(line) <= width for line in lines), (width, height, cursor)
 
 
+def test_daily_review_many_warnings_stay_within_the_viewport_budget() -> None:
+    """A scan across three harnesses emits one warning per unusable session.
+
+    Twenty-five is an ordinary day, and every one of them used to print, so the
+    frame overflowed the terminal no matter what the body capacity clamped to.
+    """
+
+    review = _long_daily_review()
+    review.coverage_warnings = ["Codex activity could not be loaded."]
+    review.warnings = [f"Session {index} has no timestamps." for index in range(25)]
+
+    for height in (14, 20, 24):
+        console, stream = _console(width=80, height=height)
+        render.render_daily_review(console, review, cursor=0, expanded=set())
+        lines = _display_lines(stream)
+        assert len(lines) <= height - 1, height
+        # The harness outage is the one warning that must never be collapsed.
+        assert any("Codex activity could not be loaded." in line for line in lines)
+        assert any("more warning(s) not shown" in line for line in lines)
+
+
 def test_daily_summary_collapses_newlines_and_uses_ellipsis_instead_of_wrapping() -> None:
     console, stream = _console(width=40, height=20)
 

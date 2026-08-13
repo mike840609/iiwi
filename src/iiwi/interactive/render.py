@@ -1025,6 +1025,32 @@ def _daily_review_body(
     return body[:capacity]
 
 
+_DAILY_WARNING_LINES = 3
+
+
+def _daily_warning_lines(draft: DailyStandupDraft) -> list[str]:
+    """Return a bounded warning block for the Daily frame.
+
+    `draft.warnings` merges every scanner's warnings across every enabled
+    harness — one per session with timestamp-less activities, one per fallback
+    repository identity — so 25 is an ordinary day. Printing all of them
+    overflows the viewport no matter what `body_capacity` clamps to, which is
+    why the count is capped here and reflected in `fixed_lines`. Coverage
+    warnings come first so a harness outage is never the line that gets
+    collapsed.
+    """
+
+    warnings = [*draft.coverage_warnings, *draft.warnings]
+    if len(warnings) <= _DAILY_WARNING_LINES:
+        return [f"Warning: {redact_text(warning)}" for warning in warnings]
+    shown = warnings[: _DAILY_WARNING_LINES - 1]
+    remaining = len(warnings) - len(shown)
+    return [
+        *(f"Warning: {redact_text(warning)}" for warning in shown),
+        f"Warning: {remaining} more warning(s) not shown",
+    ]
+
+
 def render_daily_review(
     console: Console,
     draft: DailyStandupDraft,
@@ -1039,13 +1065,8 @@ def render_daily_review(
     cursor = min(max(0, cursor), max(0, len(rows) - 1))
     hints = _hint_lines(_DAILY_REVIEW_HINTS, console.size.width)
     terminal_budget = max(0, console.size.height - 1)
-    fixed_lines = (
-        4
-        + len(hints)
-        + len(draft.coverage_warnings)
-        + len(draft.warnings)
-        + int(message is not None)
-    )
+    warning_lines = _daily_warning_lines(draft)
+    fixed_lines = 4 + len(hints) + len(warning_lines) + int(message is not None)
     body_capacity = max(1, terminal_budget - fixed_lines)
     focused_capacity = max(
         1,
@@ -1074,18 +1095,8 @@ def render_daily_review(
     )
     _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
     console.print()
-    for warning in draft.coverage_warnings:
-        _print_viewport_line(
-            console,
-            _single_line(f"Warning: {redact_text(warning)}"),
-            style="yellow",
-        )
-    for warning in draft.warnings:
-        _print_viewport_line(
-            console,
-            _single_line(f"Warning: {redact_text(warning)}"),
-            style="yellow",
-        )
+    for warning in warning_lines:
+        _print_viewport_line(console, _single_line(warning), style="yellow")
     if message is not None:
         _print_viewport_line(
             console,

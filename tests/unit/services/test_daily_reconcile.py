@@ -250,6 +250,44 @@ def test_two_possible_previous_matches_are_preserved_and_fresh_is_new_candidate(
     assert [item.id for item in merged.work_items[:2]] == ["first", "second"]
     assert len(merged.work_items) == 3
     assert merged.work_items[2].id not in {"first", "second", "machine"}
+    # Both reviewed items still publish, so the re-grouped copy must not: three
+    # included bullets for two pieces of work is the same work said twice.
+    contested = merged.work_items[2].today
+    assert contested is not None
+    assert contested.included is False
+    assert contested.new_activity is True
+
+
+def test_second_fresh_item_claiming_one_previous_item_starts_excluded() -> None:
+    previous = _draft(_work("reviewed", today=_section("Reviewed", [_ref("s1", "a1")])))
+    fresh = _draft(
+        _work("machine-a", today=_section("Split one", [_ref("s1", "a1")])),
+        _work("machine-b", today=_section("Split two", [_ref("s1", "a1")])),
+    )
+
+    merged = reconcile_daily_draft(previous, fresh)
+
+    assert len(merged.work_items) == 2
+    assert merged.work_items[0].id == "reviewed"
+    losing = merged.work_items[1].today
+    assert losing is not None
+    assert losing.included is False
+
+
+def test_genuinely_new_work_still_starts_included() -> None:
+    previous = _draft(_work("reviewed", today=_section("Reviewed", [_ref("s1", "a1")])))
+    fresh = _draft(
+        _work("reviewed-again", today=_section("Reviewed", [_ref("s1", "a1")])),
+        _work("machine", today=_section("Brand new", [_ref("s9", "a9")])),
+    )
+
+    merged = reconcile_daily_draft(previous, fresh)
+
+    assert len(merged.work_items) == 2
+    added = merged.work_items[1].today
+    assert added is not None
+    assert added.included is True
+    assert added.new_activity is True
 
 
 def test_identical_session_ids_from_different_harnesses_never_match() -> None:
