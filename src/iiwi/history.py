@@ -145,8 +145,13 @@ def read_history(*, path: Path | None = None) -> list[HistoryEntry]:
 def history_to_json(entries: list[HistoryEntry]) -> str:
     """Render the recorded reports as a JSON array, newest first."""
 
+    serialized = []
+    for entry in reversed(entries):
+        value = asdict(entry)
+        value["harnesses"] = entry.effective_harnesses
+        serialized.append(value)
     return json.dumps(
-        [asdict(entry) for entry in reversed(entries)],
+        serialized,
         indent=2,
         default=_json_default,
         ensure_ascii=False,

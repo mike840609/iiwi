@@ -989,7 +989,7 @@ def _open_daily_review(state: _State, draft: DailyStandupDraft) -> None:
         state.daily_cursor,
         max(0, len(visible_daily_review_rows(draft, state.daily_expansions())) - 1),
     )
-    state.daily_message = draft.warnings[0] if draft.warnings else None
+    state.daily_message = None
     state.daily_result = None
     state.daily_result_cursor = 0
     state.error = None
@@ -1788,7 +1788,7 @@ def _help_key(state: _State, key: KeyPress, console: Console) -> None:
         return
     # The reference outgrew a short terminal, so it scrolls like the previews.
     capacity = help_capacity(console.size.height)
-    max_offset = max(0, len(help_lines()) - capacity)
+    max_offset = max(0, len(help_lines(state.help_return_screen)) - capacity)
     page = max(1, capacity)
     if key.key is Key.UP or _char(key, "k"):
         state.help_offset = max(0, state.help_offset - 1)
@@ -1913,7 +1913,11 @@ def _render_screen(state: _State, console: Console) -> None:
             detail_offset=state.error.detail_offset,
         )
     elif state.screen is Screen.HELP:
-        render_help(console, offset=state.help_offset)
+        render_help(
+            console,
+            offset=state.help_offset,
+            screen=state.help_return_screen,
+        )
 
 
 def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:

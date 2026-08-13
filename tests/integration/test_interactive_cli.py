@@ -139,7 +139,7 @@ def _synthesis_payload(
                 "title": title,
                 "status": "completed",
                 "impact": impact,
-                "source_ids": [json.dumps(["opencode", session_id], separators=(",", ":"))],
+                "source_ids": [outcome_service._source_token("opencode", session_id)],
                 "confidence": "high",
                 "linkage_signals": [],
             }
@@ -574,8 +574,8 @@ def test_quick_review_splits_a_real_cross_repository_merge(tmp_path: Path) -> No
                     "status": "completed",
                     "impact": "Verified shared delivery",
                     "source_ids": [
-                        json.dumps(["opencode", "ses-a"], separators=(",", ":")),
-                        json.dumps(["opencode", "ses-b"], separators=(",", ":")),
+                        outcome_service._source_token("opencode", "ses-a"),
+                        outcome_service._source_token("opencode", "ses-b"),
                     ],
                     "confidence": "high",
                     "linkage_signals": [

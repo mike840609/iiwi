@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from io import StringIO
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 
 from iiwi.interactive import controller
 from iiwi.interactive.controller import InteractiveActions, InteractiveReportResult
@@ -409,3 +411,48 @@ def test_g_generates_daily_result_and_daily_result_path_returns_to_it() -> None:
     assert state.error is not None
     assert state.error.kind == "daily-path"
     assert state.screen is Screen.RECOVERABLE_ERROR
+
+
+def test_daily_warnings_remain_visible_after_a_successful_review_mutation() -> None:
+    log = ActionLog()
+    draft = _draft()
+    draft.warnings = ["Timestamp warning", "Synthesis budget warning"]
+    state = controller._State(screen=Screen.MAIN)
+    controller._open_daily_review(state, draft)
+    state.daily_cursor = 1
+
+    controller._daily_review_key(state, KeyPress(key=Key.SPACE), _actions(log))
+    stream = StringIO()
+    console = Console(
+        file=stream,
+        color_system=None,
+        force_terminal=False,
+        width=100,
+        height=40,
+    )
+    controller._render_screen(state, console)
+
+    assert state.daily_message is None
+    assert "Timestamp warning" in stream.getvalue()
+    assert "Synthesis budget warning" in stream.getvalue()
+
+
+def test_daily_help_describes_only_daily_review_actions() -> None:
+    state = _state()
+    controller._open_help(state)
+    stream = StringIO()
+    console = Console(
+        file=stream,
+        color_system=None,
+        force_terminal=False,
+        width=100,
+        height=40,
+    )
+
+    controller._render_screen(state, console)
+
+    text = stream.getvalue()
+    assert "Daily Quick Review" in text
+    assert "Edit the focused statement" in text
+    assert "Split a merged outcome" not in text
+    assert "status and impact" not in text

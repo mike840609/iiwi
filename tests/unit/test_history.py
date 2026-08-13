@@ -116,6 +116,13 @@ def test_history_to_json_lists_the_newest_first() -> None:
     ]
 
 
+def test_history_to_json_normalizes_legacy_single_harness_coverage() -> None:
+    raw = json.loads(history_to_json([_entry()]))
+
+    assert raw[0]["harness"] == "opencode"
+    assert raw[0]["harnesses"] == ["opencode"]
+
+
 def test_history_entry_serialises_to_isoformat_datetimes(tmp_path) -> None:
     path = tmp_path / "history.jsonl"
     append_history(_entry(), path=path)

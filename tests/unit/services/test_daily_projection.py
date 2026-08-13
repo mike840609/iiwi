@@ -1,12 +1,18 @@
+import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+
+import pytest
 
 from iiwi.models import EvidenceRef, Outcome, OutcomeBucket, OutcomeOrigin, OutcomeStatus
 from iiwi.models.daily import DailySection, DailyStatementSource
 from iiwi.models.repository import RepositoryIdentity, RepositoryIdentityType, ResolvedSession
 from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.services import daily_projection
+from iiwi.services import outcomes as outcomes_module
 from iiwi.services.daily_projection import build_daily_fallback, project_daily_standup
 from iiwi.services.daily_scan import DailyScanResult, daily_window
+from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -264,6 +270,7 @@ def test_unresolved_failed_command_is_an_excluded_blocker_candidate() -> None:
     assert blocker.source is DailyStatementSource.DETECTED_BLOCKER
     assert blocker.statement == "uv run pytest"
     assert blocker.included is False
+    assert draft.work_items[0].today is None
 
 
 def test_later_completion_in_the_same_source_resolves_blocker_candidate() -> None:
@@ -318,7 +325,7 @@ def test_later_successful_retry_of_an_ordinary_command_resolves_blocker_candidat
 
     draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
 
-    assert draft.work_items[0].blocker is None
+    assert not any(work.blocker is not None for work in draft.work_items)
 
 
 def test_failure_after_a_successful_retry_remains_a_blocker_candidate() -> None:
@@ -426,7 +433,7 @@ def test_completed_grouped_outcome_does_not_create_blocker_candidate() -> None:
 
     draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
 
-    assert draft.work_items[0].blocker is None
+    assert draft.work_items == []
 
 
 def test_completion_in_another_source_does_not_resolve_blocker_candidate() -> None:
@@ -579,6 +586,12 @@ def test_fallback_uses_local_evidence_priority_and_preserves_scan_metadata() -> 
                 activity_type=ActivityType.ASSISTANT_MESSAGE,
                 content="Implemented Daily projection",
             ),
+            activity(
+                "yesterday-file",
+                YESTERDAY.replace(hour=11, minute=30),
+                activity_type=ActivityType.FILE_CHANGE,
+                content="src/projection.py",
+            ),
             activity("today", TODAY, content="Continue Daily"),
             activity(
                 "today-file",
@@ -625,6 +638,12 @@ def test_fallback_suggests_best_yesterday_statement_when_an_in_progress_goal_sup
                 activity_type=ActivityType.ASSISTANT_MESSAGE,
                 content="Implemented the first Daily slice",
             ),
+            activity(
+                "file",
+                YESTERDAY.replace(hour=11, minute=30),
+                activity_type=ActivityType.FILE_CHANGE,
+                content="src/daily.py",
+            ),
         ],
     )
 
@@ -656,3 +675,209 @@ def test_fallback_redacts_session_title_when_no_statement_evidence_exists() -> N
     today = draft.work_items[0].today
     assert today is not None
     assert today.statement == "Fix token=[REDACTED]"
+
+
+def test_projection_skips_only_the_session_whose_evidence_extraction_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broken = resolved_session(
+        "broken",
+        [activity("broken-file", TODAY, activity_type=ActivityType.FILE_CHANGE)],
+    )
+    healthy = resolved_session(
+        "healthy",
+        [activity("healthy-file", TODAY, activity_type=ActivityType.FILE_CHANGE)],
+    )
+    original = daily_projection.extract_evidence
+
+    def extract(resolved: ResolvedSession):
+        if resolved.session.session_id == "broken":
+            raise ValueError("malformed transcript")
+        return original(resolved)
+
+    monkeypatch.setattr(daily_projection, "extract_evidence", extract)
+
+    draft = project_daily_standup(
+        daily_scan=daily_scan([broken, healthy]),
+        outcomes=[
+            outcome("broken", [evidence_ref("broken", ["broken-file"])]),
+            outcome("healthy", [evidence_ref("healthy", ["healthy-file"])]),
+        ],
+    )
+
+    assert [item.source_outcome_ids for item in draft.work_items] == [["healthy"]]
+    assert any("1 session" in warning and "omitted" in warning for warning in draft.warnings)
+    assert draft.coverage_warnings == []
+
+
+def test_fallback_skips_only_the_session_whose_evidence_extraction_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broken = resolved_session(
+        "broken",
+        [activity("broken-file", TODAY, activity_type=ActivityType.FILE_CHANGE)],
+    )
+    healthy = resolved_session(
+        "healthy",
+        [activity("healthy-file", TODAY, activity_type=ActivityType.FILE_CHANGE)],
+        title="Healthy work",
+    )
+    original = daily_projection.extract_evidence
+
+    def extract(resolved: ResolvedSession):
+        if resolved.session.session_id == "broken":
+            raise ValueError("malformed transcript")
+        return original(resolved)
+
+    monkeypatch.setattr(daily_projection, "extract_evidence", extract)
+
+    draft = build_daily_fallback(daily_scan=daily_scan([broken, healthy]))
+
+    assert len(draft.work_items) == 1
+    assert draft.work_items[0].today is not None
+    assert draft.work_items[0].today.statement == "Healthy work"
+    assert any("1 session" in warning and "omitted" in warning for warning in draft.warnings)
+    assert draft.coverage_warnings == []
+
+
+def test_plan_followed_by_an_ordinary_command_is_not_factual_daily_activity() -> None:
+    session = resolved_session(
+        "s1",
+        [
+            activity("plan", TODAY, content="Plan the migration"),
+            activity(
+                "command",
+                TODAY.replace(minute=10),
+                activity_type=ActivityType.COMMAND,
+                content="echo ready",
+                exit_code=0,
+            ),
+        ],
+    )
+    grouped = outcome("o1", [evidence_ref("s1", ["plan", "command"])])
+
+    draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
+
+    assert draft.work_items == []
+
+
+def test_low_confidence_assistant_completion_claim_is_not_factual_daily_activity() -> None:
+    session = resolved_session(
+        "s1",
+        [
+            activity(
+                "claim",
+                TODAY,
+                activity_type=ActivityType.ASSISTANT_MESSAGE,
+                content="Implemented the migration",
+            )
+        ],
+    )
+    grouped = outcome("o1", [evidence_ref("s1", ["claim"])])
+
+    draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
+
+    assert draft.work_items == []
+
+
+def test_successful_verification_remains_factual_daily_activity() -> None:
+    session = resolved_session(
+        "s1",
+        [
+            activity(
+                "verification",
+                TODAY,
+                activity_type=ActivityType.COMMAND,
+                content="uv run pytest -q",
+                exit_code=0,
+            )
+        ],
+    )
+    grouped = outcome("o1", [evidence_ref("s1", ["verification"])])
+
+    draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
+
+    assert draft.work_items[0].today is not None
+
+
+def test_redacted_model_identifiers_keep_raw_provenance_for_daily_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_session_id = "raw-session"
+    raw_goal_id = "raw-goal"
+    raw_file_id = "raw-file"
+    session = resolved_session(
+        raw_session_id,
+        [
+            activity(raw_goal_id, TODAY, content="Implement durable provenance"),
+            activity(
+                raw_file_id,
+                TODAY.replace(minute=10),
+                activity_type=ActivityType.FILE_CHANGE,
+                content="src/provenance.py",
+            ),
+        ],
+    )
+    original_redact = outcomes_module.redact_value
+
+    def rewrite_identifiers(value: object) -> object:
+        redacted = original_redact(value)
+        if not isinstance(redacted, dict) or "session_id" not in redacted:
+            return redacted
+        rewritten = {**redacted, "session_id": "anon-session"}
+        for collection in ("goals", "commands", "files_changed", "errors", "outcomes"):
+            rewritten[collection] = [
+                {
+                    **item,
+                    "source_activity_ids": [
+                        f"anon-{activity_id}" for activity_id in item["source_activity_ids"]
+                    ],
+                }
+                for item in rewritten[collection]
+            ]
+        return rewritten
+
+    class EchoRunner:
+        transcript = ""
+
+        def run(self, *, transcript: str, prompt: str, title: str) -> str:
+            del prompt, title
+            self.transcript = transcript
+            source_id = json.loads(transcript)["sessions"][0]["source_id"]
+            return json.dumps(
+                {
+                    "outcomes": [
+                        {
+                            "title": "Implement durable provenance",
+                            "status": "in_progress",
+                            "impact": "",
+                            "source_ids": [source_id],
+                            "confidence": "high",
+                            "linkage_signals": [],
+                        }
+                    ]
+                }
+            )
+
+    monkeypatch.setattr(outcomes_module, "redact_value", rewrite_identifiers)
+    runner = EchoRunner()
+
+    synthesis = OutcomeSynthesisService(runner).synthesize(daily_scan([session]).scan)
+    draft = project_daily_standup(
+        daily_scan=daily_scan([session]),
+        outcomes=synthesis.outcomes,
+    )
+
+    sent_source_id = json.loads(runner.transcript)["sessions"][0]["source_id"]
+    assert raw_session_id not in sent_source_id
+    assert "anon-session" not in sent_source_id
+    assert synthesis.outcomes[0].evidence_refs[0].session_id == raw_session_id
+    assert set(synthesis.outcomes[0].evidence_refs[0].activity_ids) == {
+        raw_goal_id,
+        raw_file_id,
+    }
+    assert draft.work_items[0].today is not None
+    assert draft.work_items[0].today.evidence_refs[0].activity_ids == [
+        raw_file_id,
+        raw_goal_id,
+    ]

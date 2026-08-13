@@ -864,6 +864,49 @@ def test_generate_daily_stops_before_bookkeeping_when_the_artifact_write_fails(
         cli_actions._generate_daily(_daily_draft())
 
 
+def test_generate_daily_rejects_a_stale_review_before_any_side_effect(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = SimpleNamespace(
+        report=SimpleNamespace(output_directory=tmp_path, timezone="Asia/Taipei")
+    )
+    events: list[str] = []
+
+    class FakeDailyReportService:
+        def generate(self, *args: object, **kwargs: object) -> SimpleNamespace:
+            events.append("write")
+            return SimpleNamespace(
+                output_path=tmp_path / "daily-standup-2026-08-13.md",
+                content="# Daily\n",
+                repository_count=2,
+                session_count=3,
+            )
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 8, 14, 0, 1, tzinfo=TZ),
+    )
+    monkeypatch.setattr(cli_actions, "DailyReportService", FakeDailyReportService)
+    monkeypatch.setattr(
+        cli_actions,
+        "save_daily_draft",
+        lambda draft: events.append("state"),
+    )
+    monkeypatch.setattr(
+        cli_actions,
+        "append_history",
+        lambda entry: events.append("history"),
+    )
+
+    with pytest.raises(ReportOutputError, match="Refresh Daily Standup"):
+        cli_actions._generate_daily(_daily_draft())
+
+    assert events == []
+
+
 def test_generate_daily_contains_state_and_history_bookkeeping_failures(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

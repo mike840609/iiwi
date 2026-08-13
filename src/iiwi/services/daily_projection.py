@@ -14,7 +14,12 @@ from iiwi.models.daily import (
     DailyStandupWorkItem,
     DailyStatementSource,
 )
-from iiwi.models.evidence import EvidenceItem, EvidenceStatus, SessionEvidence
+from iiwi.models.evidence import (
+    EvidenceConfidence,
+    EvidenceItem,
+    EvidenceStatus,
+    SessionEvidence,
+)
 from iiwi.models.outcome import EvidenceRef, Outcome, OutcomeBucket, OutcomeStatus
 from iiwi.models.repository import ResolvedSession
 from iiwi.models.session import ActivityType, SessionActivity
@@ -25,6 +30,19 @@ Source = tuple[str, str]
 ActivityKey = tuple[str, str, str]
 
 
+def daily_extraction_warning(failure_count: int) -> str | None:
+    """Describe local evidence omissions without implying source-coverage loss."""
+
+    if failure_count == 0:
+        return None
+    noun = "session" if failure_count == 1 else "sessions"
+    verb = "was" if failure_count == 1 else "were"
+    return (
+        f"{failure_count} {noun} could not be indexed for Daily review "
+        f"and {verb} omitted."
+    )
+
+
 def project_daily_standup(
     *,
     daily_scan: DailyScanResult,
@@ -33,7 +51,12 @@ def project_daily_standup(
 ) -> DailyStandupDraft:
     """Project existing outcome titles using only their timestamped evidence."""
 
-    activity_times, evidence_by_source, activities_by_source = _index_scan(daily_scan)
+    (
+        activity_times,
+        evidence_by_source,
+        activities_by_source,
+        extraction_warnings,
+    ) = _index_scan(daily_scan)
     tangible_activity_keys = _tangible_activity_keys(
         evidence_by_source=evidence_by_source,
         activities_by_source=activities_by_source,
@@ -114,14 +137,19 @@ def project_daily_standup(
     return _draft(
         daily_scan=daily_scan,
         work_items=work_items,
-        extra_warnings=synthesis_warnings,
+        extra_warnings=[*extraction_warnings, *synthesis_warnings],
     )
 
 
 def build_daily_fallback(*, daily_scan: DailyScanResult) -> DailyStandupDraft:
     """Build a deterministic Daily draft from local evidence without a model call."""
 
-    activity_times, evidence_by_source, activities_by_source = _index_scan(daily_scan)
+    (
+        activity_times,
+        evidence_by_source,
+        activities_by_source,
+        extraction_warnings,
+    ) = _index_scan(daily_scan)
     tangible_activity_keys = _tangible_activity_keys(
         evidence_by_source=evidence_by_source,
         activities_by_source=activities_by_source,
@@ -129,7 +157,9 @@ def build_daily_fallback(*, daily_scan: DailyScanResult) -> DailyStandupDraft:
     work_items: list[DailyStandupWorkItem] = []
     for resolved in daily_scan.scan.resolved_sessions:
         source = (resolved.session.harness, resolved.session.session_id)
-        evidence = evidence_by_source[source]
+        evidence = evidence_by_source.get(source)
+        if evidence is None:
+            continue
         yesterday = _fallback_activity_item(
             resolved=resolved,
             evidence=evidence,
@@ -205,7 +235,12 @@ def build_daily_fallback(*, daily_scan: DailyScanResult) -> DailyStandupDraft:
         )
 
     _rank_and_bucket(work_items)
-    return _draft(daily_scan=daily_scan, work_items=work_items, fallback=True)
+    return _draft(
+        daily_scan=daily_scan,
+        work_items=work_items,
+        fallback=True,
+        extra_warnings=extraction_warnings,
+    )
 
 
 def _draft(
@@ -220,7 +255,7 @@ def _draft(
         scan_since=daily_scan.window.yesterday_start,
         scan_until=daily_scan.window.now,
         work_items=work_items,
-        warnings=[*daily_scan.scan.warnings, *extra_warnings],
+        warnings=_stable_unique([*daily_scan.scan.warnings, *extra_warnings]),
         coverage_warnings=list(daily_scan.coverage_warnings),
         successful_harnesses=list(daily_scan.successful_harnesses),
         unavailable_harnesses=list(daily_scan.unavailable_harnesses),
@@ -236,18 +271,26 @@ def _index_scan(
     dict[ActivityKey, datetime],
     dict[Source, SessionEvidence],
     dict[Source, list[SessionActivity]],
+    list[str],
 ]:
     activity_times: dict[ActivityKey, datetime] = {}
     evidence_by_source: dict[Source, SessionEvidence] = {}
     activities_by_source: dict[Source, list[SessionActivity]] = {}
+    extraction_failure_count = 0
     for resolved in daily_scan.scan.resolved_sessions:
         source = (resolved.session.harness, resolved.session.session_id)
-        evidence_by_source[source] = extract_evidence(resolved)
+        try:
+            evidence_by_source[source] = extract_evidence(resolved)
+        except Exception:
+            extraction_failure_count += 1
+            continue
         activities_by_source[source] = resolved.session.activities
         for activity in resolved.session.activities:
             if activity.timestamp is not None:
                 activity_times[(*source, activity.activity_id)] = activity.timestamp
-    return activity_times, evidence_by_source, activities_by_source
+    warning = daily_extraction_warning(extraction_failure_count)
+    warnings = [warning] if warning is not None else []
+    return activity_times, evidence_by_source, activities_by_source, warnings
 
 
 def _tangible_activity_keys(
@@ -257,13 +300,24 @@ def _tangible_activity_keys(
 ) -> set[ActivityKey]:
     keys: set[ActivityKey] = set()
     for source, evidence in evidence_by_source.items():
-        for item in (*evidence.files_changed, *evidence.outcomes):
+        for item in evidence.files_changed:
             keys.update((*source, activity_id) for activity_id in item.source_activity_ids)
+        for item in evidence.outcomes:
+            if item.confidence in {
+                EvidenceConfidence.HIGH,
+                EvidenceConfidence.MEDIUM,
+            } and item.status in {
+                EvidenceStatus.COMPLETED,
+                EvidenceStatus.IN_PROGRESS,
+            }:
+                keys.update(
+                    (*source, activity_id) for activity_id in item.source_activity_ids
+                )
         for activity in activities_by_source[source]:
             tool_name = (activity.tool_name or "").casefold()
-            if activity.activity_type in {ActivityType.COMMAND, ActivityType.FILE_CHANGE} or (
+            if activity.activity_type is ActivityType.FILE_CHANGE or (
                 activity.activity_type is ActivityType.TOOL_CALL
-                and tool_name in COMMAND_TOOL_NAMES | FILE_TOOL_NAMES
+                and tool_name in FILE_TOOL_NAMES
             ):
                 keys.add((*source, activity.activity_id))
     return keys

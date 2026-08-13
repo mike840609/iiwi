@@ -28,7 +28,7 @@ from iiwi.interactive.density import (
     session_meta,
     volume_label,
 )
-from iiwi.interactive.models import ReportDraft
+from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.interactive.selection import SelectionMark, SelectionState, noise_reason
 from iiwi.interactive.settings import SettingsRow
 from iiwi.models.daily import (
@@ -47,6 +47,7 @@ from iiwi.models.outcome import (
 from iiwi.models.repository import ResolvedSession
 from iiwi.models.session import ActivityType, AgentSession
 from iiwi.models.time_range import DateRange
+from iiwi.renderers.daily_markdown import safe_daily_text
 from iiwi.security.redactor import redact_text
 from iiwi.services.scan import ScanResult
 
@@ -483,7 +484,7 @@ def _evidence_detail_lines(console: Console, outcome: Outcome) -> list[Text]:
                 console,
                 indent="      ",
                 label=label,
-                value=value,
+                value=_single_line(redact_text(value)),
                 limit=1,
             )[0]
             for label, value in values
@@ -846,7 +847,7 @@ def _daily_evidence_lines(
                 console,
                 indent="      ",
                 label="Repository",
-                value=", ".join(work_item.repository_ids),
+                value=", ".join(redact_text(value) for value in work_item.repository_ids),
                 limit=1,
             )
         )
@@ -864,7 +865,7 @@ def _daily_evidence_lines(
                         console,
                         indent="      ",
                         label=label,
-                        value=value,
+                        value=_single_line(redact_text(value)),
                         limit=1,
                     )
                 )
@@ -883,7 +884,9 @@ def _daily_item_block(
     repositories = ""
     if work_item.repository_ids:
         repository_text = _truncated_text(
-            Text(f"[{', '.join(work_item.repository_ids)}]"),
+            Text(
+                f"[{', '.join(safe_daily_text(value) for value in work_item.repository_ids)}]"
+            ),
             max(8, min(18, console.size.width // 3)),
         )
         repositories = f"{repository_text.plain} "
@@ -893,7 +896,7 @@ def _daily_item_block(
         ("●" if item.included else "○", "green" if item.included else "dim"),
         " ",
         (repositories, "dim"),
-        (_single_line(item.statement), style),
+        (safe_daily_text(item.statement), style),
     )
     source_label = _DAILY_SOURCE_LABELS[item.source]
     labels = [source_label] if source_label is not None else []
@@ -1040,6 +1043,7 @@ def render_daily_review(
         4
         + len(hints)
         + len(draft.coverage_warnings)
+        + len(draft.warnings)
         + int(message is not None)
     )
     body_capacity = max(1, terminal_budget - fixed_lines)
@@ -1073,11 +1077,21 @@ def render_daily_review(
     for warning in draft.coverage_warnings:
         _print_viewport_line(
             console,
-            _single_line(f"Warning: {warning}"),
+            _single_line(f"Warning: {redact_text(warning)}"),
+            style="yellow",
+        )
+    for warning in draft.warnings:
+        _print_viewport_line(
+            console,
+            _single_line(f"Warning: {redact_text(warning)}"),
             style="yellow",
         )
     if message is not None:
-        _print_viewport_line(console, _single_line(message), style="yellow")
+        _print_viewport_line(
+            console,
+            _single_line(redact_text(message)),
+            style="yellow",
+        )
     for line in _daily_review_body(
         blocks,
         start=start,
@@ -2229,12 +2243,29 @@ _HELP_LINES = (
     "p              Preview the report without writing it",
     "g              Generate the report",
 )
+_DAILY_HELP_LINES = (
+    "Daily Quick Review",
+    "↑↓ / jk        Move between sections and statements",
+    "Space          Include or exclude the focused statement",
+    "e              Edit the focused statement",
+    "J / K          Reorder the focused statement within its section",
+    "v              Show or hide the focused statement's evidence",
+    "a              Add a statement to the focused section",
+    "p              Preview the Daily Standup without writing it",
+    "g              Generate the Daily Standup",
+    "?              Open or close this help",
+    "b / Esc        Back to the main menu",
+    "q              Main menu",
+    "Ctrl-C         Cancel the current operation and go back",
+)
 _HELP_HINTS = ["↑↓ jk Scroll", "b / Esc / Enter Back"]
 
 
-def help_lines() -> list[str]:
+def help_lines(screen: Screen | None = None) -> list[str]:
     """Return every keyboard-reference line, in display order."""
 
+    if screen is Screen.DAILY_REVIEW:
+        return list(_DAILY_HELP_LINES)
     return list(_HELP_LINES)
 
 
@@ -2250,13 +2281,18 @@ def help_capacity(terminal_height: int) -> int:
     return max(0, terminal_height - 6)
 
 
-def render_help(console: Console, *, offset: int = 0) -> None:
+def render_help(
+    console: Console,
+    *,
+    offset: int = 0,
+    screen: Screen | None = None,
+) -> None:
     """Render the shared keyboard shortcut reference."""
 
     _print_header(console, "Keyboard shortcuts")
     console.print()
     visible, hidden_above, hidden_below = _detail_window(
-        help_lines(),
+        help_lines(screen),
         offset=offset,
         capacity=help_capacity(console.size.height),
     )

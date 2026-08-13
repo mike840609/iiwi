@@ -12,6 +12,7 @@ from iiwi.models.daily import (
     DailyStatementSource,
 )
 from iiwi.models.outcome import EvidenceRef
+from iiwi.renderers.daily_markdown import render_daily_standup
 
 
 def _console(*, width: int = 100, height: int = 40) -> tuple[Console, StringIO]:
@@ -189,3 +190,38 @@ def test_daily_result_offers_main_and_report_path_only() -> None:
     assert "Back to main menu" in text
     assert "Print report path" in text
     assert "Generate another report" not in text
+
+
+def test_daily_statement_is_the_same_safe_single_line_in_review_and_artifact() -> None:
+    draft = _draft()
+    statement = "Shipped [the link](https://example.com)\n- hidden bullet\n*hidden emphasis* <tag>"
+    expected = (
+        r"Shipped \[the link\](https://example.com) - hidden bullet "
+        r"\*hidden emphasis\* \<tag\>"
+    )
+    draft.work_items[0].yesterday.statement = statement  # type: ignore[union-attr]
+    console, stream = _console(height=60)
+
+    render.render_daily_review(console, draft, cursor=1, expanded=set())
+    artifact = render_daily_standup(draft)
+
+    assert expected in stream.getvalue()
+    assert f"- [iiwi] {expected}\n" in artifact
+    assert "\n- hidden bullet" not in artifact
+    assert "\n*hidden emphasis*" not in artifact
+
+
+def test_daily_review_redacts_raw_durable_provenance_before_display() -> None:
+    draft = _draft()
+    draft.work_items[1].repository_ids = ["token=repository-secret"]
+    today = draft.work_items[1].today
+    assert today is not None
+    today.evidence_refs[0].session_id = "token=session-secret"
+    console, stream = _console(height=60)
+
+    render.render_daily_review(console, draft, cursor=4, expanded={"today"})
+
+    text = stream.getvalue()
+    assert "repository-secret" not in text
+    assert "session-secret" not in text
+    assert text.count("[REDACTED]") >= 2

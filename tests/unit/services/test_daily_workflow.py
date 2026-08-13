@@ -124,8 +124,14 @@ class _Coordinator:
 
 
 class _Outcomes:
-    def __init__(self, *, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        error: Exception | None = None,
+        failed_session_ids: list[str] | None = None,
+    ) -> None:
         self.error = error
+        self.failed_session_ids = failed_session_ids or []
         self.calls: list[ScanResult] = []
 
     def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
@@ -135,6 +141,7 @@ class _Outcomes:
         return OutcomeSynthesisResult(
             outcomes=[_outcome()],
             warnings=["synthesis warning"],
+            failed_session_ids=self.failed_session_ids,
         )
 
 
@@ -208,6 +215,15 @@ def test_refresh_bypasses_synthesis_for_a_successful_zero_activity_scan() -> Non
     assert outcomes.calls == []
     assert draft.work_items == []
     assert draft.fallback is False
+
+
+def test_refresh_keeps_synthesis_extraction_omissions_as_review_only_warnings() -> None:
+    outcomes = _Outcomes(failed_session_ids=["session-omitted"])
+
+    draft = _service(now_factory=lambda: NOW, outcomes=outcomes).refresh()
+
+    assert any("1 session" in warning and "omitted" in warning for warning in draft.warnings)
+    assert draft.coverage_warnings == ["Claude Code activity could not be loaded."]
 
 
 def test_refresh_bypasses_synthesis_for_a_metadata_only_resolved_session() -> None:

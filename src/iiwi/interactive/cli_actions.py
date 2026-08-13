@@ -19,6 +19,7 @@ from iiwi.errors import (
     DailySourceUnavailableError,
     IiwiError,
     OutcomeSynthesisError,
+    ReportOutputError,
 )
 from iiwi.history import HistoryEntry, HistoryKind, append_history
 from iiwi.interactive.controller import (
@@ -552,6 +553,13 @@ def _generate_daily(draft: DailyStandupDraft) -> InteractiveReportResult:
     from iiwi import cli
 
     settings = cli._load_settings()
+    now = cli._now_in_timezone(settings.report.timezone)
+    if now.date() != draft.standup_date:
+        raise ReportOutputError(
+            f"Daily Standup review is for {draft.standup_date:%Y-%m-%d}, but the "
+            f"current local date is {now.date():%Y-%m-%d}. Refresh Daily Standup "
+            "before generating."
+        )
     output_path = daily_output_path(
         settings.report.output_directory,
         draft.standup_date,
@@ -561,7 +569,6 @@ def _generate_daily(draft: DailyStandupDraft) -> InteractiveReportResult:
     with contextlib.suppress(OSError, IiwiError):
         save_daily_draft(draft)
 
-    now = cli._now_in_timezone(settings.report.timezone)
     with contextlib.suppress(OSError):
         append_history(
             HistoryEntry(

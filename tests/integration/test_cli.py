@@ -121,7 +121,7 @@ def test_history_json_normalizes_legacy_reports_and_daily_standups(
         "unavailable_harnesses": legacy["unavailable_harnesses"],
     } == {
         "kind": "report",
-        "harnesses": [],
+        "harnesses": ["opencode"],
         "unavailable_harnesses": [],
     }
 

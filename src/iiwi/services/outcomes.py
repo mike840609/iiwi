@@ -129,20 +129,20 @@ class OutcomeSynthesisService:
             try:
                 extracted = extract_evidence(resolved)
                 redacted = redact_value(extracted.model_dump(mode="json"))
-                evidence = SessionEvidence.model_validate(redacted)
-                source_id = _source_id(evidence)
-                # Every dict here is keyed on the post-redaction source id,
-                # the opaque value given to the model and accepted only by
-                # exact lookup downstream.
-                evidence_by_source[source_id] = evidence
+                model_evidence = SessionEvidence.model_validate(redacted)
+                source_id = _source_id(extracted)
+                # Durable provenance stays raw and local. The model sees only
+                # this opaque token and the separately redacted compact fields.
+                evidence_by_source[source_id] = extracted
                 compact_by_source[source_id] = _compact_session(
-                    evidence,
+                    model_evidence,
+                    source_id=source_id,
                     branch=resolved.session.branch or resolved.repository.branch,
                 )
                 if resolved.session.created_at is not None:
                     started_at[source_id] = resolved.session.created_at
                 local_texts_by_source[source_id] = _local_texts(
-                    evidence,
+                    model_evidence,
                     # These come from the resolved session rather than the
                     # redacted evidence, so they are redacted here: the corpus
                     # validates model output, and the model only ever saw the
@@ -383,7 +383,11 @@ class OutcomeSynthesisService:
             source_groups.append(
                 OutcomeSourceGroup(
                     id=key,
-                    title=key if group_by_repository else _fallback_title(evidence_items),
+                    title=(
+                        redact_text(key)
+                        if group_by_repository
+                        else _fallback_title(evidence_items)
+                    ),
                     impact=_supported_impact(
                         proposal.impact,
                         evidence_items,
@@ -407,16 +411,7 @@ class OutcomeSynthesisService:
             Outcome(
                 id=_synthesized_id(
                     redact_text(resolved.session.title or resolved.session.session_id),
-                    [
-                        json.dumps(
-                            [
-                                resolved.session.harness,
-                                redact_text(resolved.session.session_id),
-                            ],
-                            separators=(",", ":"),
-                            ensure_ascii=False,
-                        )
-                    ],
+                    [_source_token(resolved.session.harness, resolved.session.session_id)],
                     discriminator="failed",
                 ),
                 title=redact_text(resolved.session.title or resolved.session.session_id),
@@ -427,8 +422,8 @@ class OutcomeSynthesisService:
                 bucket=OutcomeBucket.UNGROUPED,
                 evidence_refs=[
                     EvidenceRef(
-                        session_id=redact_text(resolved.session.session_id),
-                        repository_id=redact_text(resolved.repository.repository_id),
+                        session_id=resolved.session.session_id,
+                        repository_id=resolved.repository.repository_id,
                         harness=resolved.session.harness,
                     )
                 ],
@@ -474,7 +469,12 @@ def _most_recent_first(
     return [*dated, *(source_id for source_id in scanned if source_id not in started_at)]
 
 
-def _compact_session(evidence: SessionEvidence, *, branch: str | None) -> _CompactSession:
+def _compact_session(
+    evidence: SessionEvidence,
+    *,
+    source_id: str,
+    branch: str | None,
+) -> _CompactSession:
     """Reduce redacted evidence to the fields grouping actually reads.
 
     Every field but the branch is already redacted; the branch comes from the
@@ -482,7 +482,7 @@ def _compact_session(evidence: SessionEvidence, *, branch: str | None) -> _Compa
     """
 
     return _CompactSession(
-        source_id=_source_id(evidence),
+        source_id=source_id,
         repository_id=evidence.repository_id,
         title=_omit_if_blank(evidence.title),
         branch=_omit_if_blank(redact_text(branch) if branch else None),
@@ -646,11 +646,18 @@ def _activity_ids(evidence: SessionEvidence) -> list[str]:
 
 
 def _source_id(evidence: SessionEvidence) -> str:
-    return json.dumps(
-        [evidence.harness, evidence.session_id],
+    return _source_token(evidence.harness, evidence.session_id)
+
+
+def _source_token(harness: str, session_id: str) -> str:
+    """Return an opaque model token without exposing durable identifiers."""
+
+    durable_key = json.dumps(
+        [harness, session_id],
         separators=(",", ":"),
         ensure_ascii=False,
     )
+    return f"source-{sha256(durable_key.encode()).hexdigest()}"
 
 
 def _commit_from_evidence(evidence: SessionEvidence) -> str | None:
@@ -761,14 +768,15 @@ def _evidence_weight(evidence: SessionEvidence) -> int:
 
 def _fallback_title(selected: list[SessionEvidence]) -> str:
     if len(selected) == 1:
-        return selected[0].title or selected[0].session_id
+        return redact_text(selected[0].title or selected[0].session_id)
     repositories = sorted({item.repository_id for item in selected})
     if len(repositories) > 1:
-        return " / ".join(repositories)
+        return " / ".join(redact_text(repository) for repository in repositories)
     anchor = max(selected, key=_evidence_weight)
     others = len(selected) - 1
     plural = "session" if others == 1 else "sessions"
-    return f"{anchor.title or anchor.session_id} and {others} more {plural}"
+    title = redact_text(anchor.title or anchor.session_id)
+    return f"{title} and {others} more {plural}"
 
 
 def _supported_status(
