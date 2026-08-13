@@ -145,3 +145,17 @@ def test_cleanup_ignores_unlink_oserror(monkeypatch, tmp_path) -> None:
     cleanup_daily_state(STANDUP_DATE, directory=tmp_path)
 
     assert expired.exists()
+
+
+def test_suite_never_resolves_daily_state_to_the_real_user_data_directory(
+    tmp_path,
+) -> None:
+    """cleanup_daily_state() unlinks expired drafts under the resolved directory.
+
+    DailyWorkflowService.refresh() calls it with no directory= override, so an
+    unset IIWI_DAILY_STATE_DIR points the suite at the developer's real state
+    and deletes it. The autouse fixture in tests/conftest.py holds this line.
+    """
+
+    assert os.environ[DAILY_STATE_DIR_VARIABLE]
+    assert daily_state_directory() == tmp_path / "daily"
