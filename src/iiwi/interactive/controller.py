@@ -736,9 +736,15 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
                 )
                 state.screen = Screen.RECOVERABLE_ERROR
                 return
-            _rescan_review(state, actions)
-            if state.screen is Screen.SESSION_REVIEW:
-                state.review_message = message
+            state.selection.exclude_repository(row.repository_id)
+            state.draft.scan = state.selection.scan
+            _clear_outcome_review(state)
+            _sync_selection(state, actions)
+            rows = _tree_rows(state.selection.scan, state)
+            state.review_cursor = min(
+                state.review_cursor, max(0, len(rows) - 1)
+            )
+            state.review_message = message
         return
     if key.key is Key.SPACE and rows:
         row = rows[state.review_cursor]

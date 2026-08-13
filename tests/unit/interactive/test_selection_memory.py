@@ -304,20 +304,20 @@ def test_a_failing_selection_save_does_not_crash_the_tui() -> None:
     )
 
 
-def test_exclude_key_on_a_repository_row_excludes_and_rescans() -> None:
+def test_exclude_key_on_a_repository_row_excludes_without_rescan() -> None:
     recorder = Recorder()
     console, stream = _console()
 
     run_interactive(
         actions=recorder.actions(),
         input_source=ScriptedInput(
-            [char("2"), char("r"), char("e"), char("b"), char("b"), char("q"), char("q")]
+            [char("2"), char("r"), char("e"), char("b"), char("b"), char("q")]
         ),
         console=console,
     )
 
     assert recorder.exclude_calls == [("repo-a", "repo-a")]
-    assert recorder.scan_calls == 2
+    assert recorder.scan_calls == 1
     assert "future scans will skip it" in stream.getvalue()
 
 
