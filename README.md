@@ -63,7 +63,7 @@ github.com/mike840609/iiwi
   Generate Report
   History
   Check Setup
-  Settings
+  Settings                       # full-screen editor, every choice listed
 
 ↑↓ jk │ Enter Select │ 1-5 │ ? Help │ q Quit
 ```

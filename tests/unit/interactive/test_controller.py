@@ -179,7 +179,6 @@ def _actions(
         edit_gap=lambda label, current: current,
         save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
-        edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
         save_selection=lambda harness, period, include_subagents, selected: None,
         exclude_repository=lambda repository_id, display_name: "excluded",
@@ -512,7 +511,7 @@ def test_main_menu_history_opens_and_returns(
 
     text = console.file.getvalue()
     assert "Past Reports" in text
-    assert "reports/worklog.md" in text
+    assert "No reports generated yet." not in text
 
 
 def test_history_enter_shows_the_recorded_path(
@@ -552,14 +551,13 @@ def test_history_enter_shows_the_cursor_row_not_the_first_row(
     )
 
     text = console.file.getvalue()
-    # The history screen lists both paths; the path screen must show the
-    # cursor's row. Newest first: index 0 is second.md, cursor moves to
-    # index 1 = first.md. The last occurrence of each path after the first
-    # "Report path" title is the error screen's detail, so rindex ordering
-    # pins which path the error screen displayed.
+    # The history list rows truncate long absolute paths, so the only place
+    # a stored path appears in full is the path screen's detail. Newest
+    # first: index 0 is second.md, cursor moves to index 1 = first.md. The
+    # path screen must show the cursor's row.
     first_title = text.index("Report path")
     assert text.rindex("reports/first.md") > first_title
-    assert text.rindex("reports/second.md") < first_title
+    assert "reports/second.md" not in text
 
 
 def test_history_g_and_G_jump_follow_the_viewport(

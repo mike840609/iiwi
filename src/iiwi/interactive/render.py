@@ -24,6 +24,7 @@ from iiwi.interactive.density import (
 )
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.selection import SelectionMark, SelectionState, noise_reason
+from iiwi.interactive.settings import SettingsRow
 from iiwi.models.outcome import (
     Outcome,
     OutcomeBucket,
@@ -83,6 +84,35 @@ _SETUP_HELP = {
     "Sanitize": "Ask OpenCode to redact session content on export.",
     "Generate report": "Scan the period and produce the report.",
 }
+# The settings editor explains each row's purpose on the detail line; the
+# row itself always shows its value, never what it does.
+_SETTINGS_HELP = {
+    "harnesses.opencode.enabled": "False makes --harness opencode fail with a configuration error.",
+    "harnesses.opencode.source": "Source identifier; only cli is implemented.",
+    "harnesses.opencode.cli.executable": "The opencode executable name or path.",
+    "harnesses.opencode.cli.timeout_seconds": "Timeout for opencode commands.",
+    "harnesses.opencode.cli.run_timeout_seconds": (
+        "How long one opencode run may take before falling back."
+    ),
+    "harnesses.opencode.cli.model": "Model passed to opencode run; empty uses opencode's default.",
+    "harnesses.opencode.cli.sanitize": "Ask opencode export to redact session content.",
+    "harnesses.claude_code.enabled": "False forbids reading ~/.claude/projects.",
+    "harnesses.claude_code.projects_directory": (
+        "Directory holding Claude Code session transcripts."
+    ),
+    "harnesses.codex.enabled": "False forbids reading ~/.codex.",
+    "harnesses.codex.home_directory": "Directory holding the Codex state database and sessions.",
+    "report.timezone": "Calendar-week and timestamp timezone; Enter types any IANA zone.",
+    "report.output_directory": (
+        "Default Markdown output directory; relative paths resolve against "
+        "where Iiwi runs."
+    ),
+    "report.exclude_repositories": "Comma-separated repository ids left out of every scan.",
+    "report.quick_review_report_type": "Default Quick Review audience.",
+    "report.quick_review_max_evidence_bytes": (
+        "Largest evidence payload one Quick Review run may send."
+    ),
+}
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
 _ERROR_HINTS = [
     "↑↓ jk",
@@ -130,9 +160,10 @@ _BAR_STYLE = "cyan"
 # errors, and a red cursor beside the green/yellow marks would not survive
 # red-green colour blindness. Not bold: terminals answer bold with their bright
 # variant, which is what makes a saturated red glare -- so the fix is dropping
-# bold, not dulling the hue. The bird's actual plumage, within ΔE 1.6 of it,
-# clearing 4.6:1 on both a black and a white terminal.
-_WORDMARK_STYLE = "#E0301E"
+# bold, not dulling the hue. A half-step off the bird's actual plumage, ΔE 8.9
+# from it and still reading as the same red, clearing 4.6:1 on both a black and
+# a white terminal.
+_WORDMARK_STYLE = "#D93B28"
 _PERCENT_CELLS = 4  # "100%" at its widest
 # Bars are the first thing to go on a narrow terminal: the title column matters
 # more than the decoration.
@@ -1035,6 +1066,86 @@ def render_report_setup(
             "? More",
             "b Back",
         ],
+    )
+
+
+def _settings_value_text(row: SettingsRow) -> Text:
+    """The value column: every choice with the active one highlighted, or the
+    current value — never blank."""
+    if row.show_all:
+        parts: list[Text] = []
+        for index, choice in enumerate(row.choices):
+            if index:
+                parts.append(Text(" / "))
+            parts.append(
+                Text(choice, style=_CURSOR_STYLE if choice == row.value else "dim")
+            )
+        text = Text.assemble(*parts)
+        if row.locked:
+            return Text.assemble(text, ("  [environment]", "dim"))
+        return text
+    value = Text(row.value) if row.value else Text("(default)", style="dim")
+    if row.locked:
+        return Text.assemble(value, ("  [environment]", "dim"))
+    return value
+
+
+def render_settings(
+    console: Console,
+    *,
+    rows: list[SettingsRow],
+    selected: int,
+    file_path: str,
+    editing: bool = False,
+    edit_value: str = "",
+    error: str | None = None,
+) -> None:
+    """The saved-settings editor: one row per setting, values always visible."""
+
+    _print_header(console, "Settings")
+    if console.size.height >= _MIN_SUBTITLE_HEIGHT:
+        _print_viewport_line(
+            console,
+            f"  Settings file: {file_path}",
+            style="bright_black",
+        )
+    console.print()
+    label_cells = max((cell_len(row.label) for row in rows), default=0)
+    previous_section = ""
+    for index, row in enumerate(rows):
+        if row.section and row.section != previous_section:
+            if previous_section:
+                console.print()
+            _print_viewport_line(console, f"  {row.section}", style="bright_black")
+            previous_section = row.section
+        focused = selected == index
+        lead = Text(_CURSOR if focused else " ", style=_CURSOR_STYLE if focused else "")
+        label = Text(f"{row.label:<{label_cells}}", style=_CURSOR_STYLE if focused else "")
+        text = Text.assemble(lead, " ", label, "  ", _settings_value_text(row))
+        _print_viewport_text(console, text)
+    console.print()
+    row = rows[selected]
+    if editing:
+        _print_viewport_line(
+            console,
+            f"  {row.key} [{row.value}]: {edit_value}",
+            style=_CURSOR_STYLE,
+        )
+        detail = error or f"{row.key} - Enter keeps the value; empty restores the default."
+        _print_viewport_line(console, f"  {detail}", style="dim")
+    else:
+        detail = error or (
+            f"Set by the {row.variable} environment variable."
+            if row.locked
+            else _SETTINGS_HELP.get(row.key, "")
+        )
+        _print_viewport_line(console, f"  {detail}", style="dim")
+    console.print()
+    _print_hints(
+        console,
+        ["Enter Keep", "Esc Cancel", "? Help"]
+        if editing
+        else ["↑↓ jk", "←→ Cycle", "Enter Edit", "? Help", "b Back"],
     )
 
 

@@ -11,6 +11,7 @@ from typing import Protocol, Self
 import typer
 from rich.console import Console
 
+from iiwi import config_store
 from iiwi.errors import (
     ConfigurationError,
     IiwiError,
@@ -44,6 +45,7 @@ from iiwi.interactive.render import (
     render_session_browser,
     render_session_preview,
     render_session_review,
+    render_settings,
     report_generate_row,
     report_preview_capacity,
     report_result_options,
@@ -51,6 +53,12 @@ from iiwi.interactive.render import (
     visible_outcome_review_rows,
 )
 from iiwi.interactive.selection import SelectionState
+from iiwi.interactive.settings import (
+    SettingsRow,
+    build_settings_rows,
+    next_choice,
+    write_setting,
+)
 from iiwi.models.outcome import Outcome, OutcomeReviewDraft
 from iiwi.models.report_options import ReportType
 from iiwi.models.session import AgentSession
@@ -99,7 +107,6 @@ class InteractiveActions:
     edit_gap: Callable[[str, str | None], str | None]
     save_report_type: Callable[[ReportType], None]
     doctor: Callable[[str], list[str]]
-    edit_settings: Callable[[], None]
     restore_selection: Callable[[str, DateRange, bool], set[str] | None]
     save_selection: Callable[[str, DateRange, bool, set[str]], None]
     exclude_repository: Callable[[str, str], str]
@@ -147,6 +154,12 @@ class _State:
     searching: bool = False
     help_return_screen: Screen | None = None
     help_offset: int = 0
+    settings_rows: list[SettingsRow] | None = None
+    settings_cursor: int = 0
+    settings_editing: bool = False
+    settings_edit_value: str = ""
+    settings_error: str | None = None
+    settings_file_path: str | None = None
 
     def expansions(self) -> set[str]:
         if self.expanded_repositories is None:
@@ -417,13 +430,13 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
         )
         state.screen = Screen.RECOVERABLE_ERROR
     else:
-        actions.edit_settings()
-        state.error = _ErrorState(
-            kind="settings-result",
-            title="Settings",
-            detail="Settings editor finished.",
-        )
-        state.screen = Screen.RECOVERABLE_ERROR
+        state.settings_rows = build_settings_rows()
+        state.settings_cursor = 0
+        state.settings_editing = False
+        state.settings_edit_value = ""
+        state.settings_error = None
+        state.settings_file_path = str(config_store.config_file_path())
+        state.screen = Screen.SETTINGS
 
 
 def _clear_expansions_if_scan_was_invalidated(
@@ -492,6 +505,68 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
             state.setup_cursor = min(state.setup_cursor, advanced_index)
         return
     _edit_setup_field(state, actions, field=row)
+
+
+def _persist_setting(state: _State, key: str, value: str) -> None:
+    """Write one setting through config_store and refresh the rows on success."""
+
+    try:
+        write_setting(key, value)
+    except ConfigurationError as exc:
+        state.settings_error = str(exc)
+        return
+    state.settings_error = None
+    state.settings_rows = build_settings_rows()
+
+
+def _settings_edit_key(state: _State, key: KeyPress) -> None:
+    """The inline editor: type, backspace, Enter writes, Esc cancels."""
+
+    assert state.settings_rows is not None
+    if key.key is Key.ESCAPE:
+        state.settings_editing = False
+        state.settings_edit_value = ""
+        state.settings_error = None
+        return
+    if key.key is Key.BACKSPACE:
+        state.settings_edit_value = state.settings_edit_value[:-1]
+        return
+    if key.key is Key.ENTER:
+        row = state.settings_rows[state.settings_cursor]
+        _persist_setting(state, row.key, state.settings_edit_value.strip())
+        if state.settings_error is None:
+            state.settings_editing = False
+            state.settings_edit_value = ""
+        return
+    if key.char is not None:
+        state.settings_edit_value += key.char
+
+
+def _settings_key(state: _State, key: KeyPress) -> None:
+    """The saved-settings editor: cycle choices, edit rows inline, b leaves."""
+
+    assert state.settings_rows is not None
+    if state.settings_editing:
+        _settings_edit_key(state, key)
+        return
+    state.settings_cursor = _move(state.settings_cursor, key, len(state.settings_rows))
+    if key.key is Key.ESCAPE or _char(key, "b") or _char(key, "q"):
+        state.screen = Screen.MAIN
+        return
+    row = state.settings_rows[state.settings_cursor]
+    if row.locked:
+        return
+    right = key.key is Key.RIGHT or _char(key, "l")
+    left = key.key is Key.LEFT or _char(key, "h")
+    if (right or left) and row.choices:
+        value = next_choice(row, row.value, right=right)
+        if value != row.value:
+            _persist_setting(state, row.key, value)
+        return
+    if key.key is Key.ENTER and row.editable:
+        state.settings_editing = True
+        state.settings_edit_value = row.value
+        state.settings_error = None
 
 
 def _tree_rows(scan: ScanResult, state: _State) -> list:
@@ -1098,7 +1173,7 @@ def _outcome_review_key(
 
 
 def _error_options(error: _ErrorState) -> list[str]:
-    if error.kind in {"doctor-result", "settings-result"}:
+    if error.kind in {"doctor-result"}:
         return ["Main menu"]
     if error.kind == "report-path":
         return ["Back"]
@@ -1126,7 +1201,7 @@ def _error_back_screen(error: _ErrorState) -> Screen:
         return Screen.REPORT_RESULT
     if error.kind == "history-path":
         return Screen.HISTORY
-    if error.kind in {"doctor-result", "settings-result"}:
+    if error.kind == "doctor-result":
         return Screen.MAIN
     if error.kind == "outcome-synthesis":
         return Screen.SESSION_REVIEW
@@ -1406,6 +1481,17 @@ def _render_screen(state: _State, console: Console) -> None:
             selected=state.setup_cursor,
             advanced=state.setup_advanced,
         )
+    elif state.screen is Screen.SETTINGS:
+        assert state.settings_rows is not None
+        render_settings(
+            console,
+            rows=state.settings_rows,
+            selected=state.settings_cursor,
+            file_path=state.settings_file_path or "",
+            editing=state.settings_editing,
+            edit_value=state.settings_edit_value,
+            error=state.settings_error,
+        )
     elif state.screen is Screen.SESSION_BROWSER:
         assert state.browser_scan is not None
         render_session_browser(
@@ -1489,7 +1575,10 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
 
     if state.screen is Screen.MAIN:
         state.screen = Screen.EXIT
-    elif state.screen in {Screen.REPORT_SETUP, Screen.SESSION_BROWSER}:
+    elif (
+        state.screen in {Screen.REPORT_SETUP, Screen.SESSION_BROWSER}
+        or state.screen is Screen.SETTINGS
+    ):
         state.screen = Screen.MAIN
     elif state.screen is Screen.SESSION_REVIEW:
         if state.selection is not None and state.draft is not None:
@@ -1524,6 +1613,8 @@ def _dispatch(
         _main_key(state, key, actions)
     elif state.screen is Screen.REPORT_SETUP:
         _setup_key(state, key, actions)
+    elif state.screen is Screen.SETTINGS:
+        _settings_key(state, key)
     elif state.screen is Screen.SESSION_BROWSER:
         _browser_key(state, key, actions)
     elif state.screen is Screen.SESSION_REVIEW:

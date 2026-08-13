@@ -31,6 +31,7 @@ from iiwi.models.outcome import (
 from iiwi.models.report_options import ReportType
 from iiwi.models.time_range import DateRange
 from iiwi.process import CommandRunner
+from iiwi.progress import ProgressStage
 from iiwi.security.redactor import redact_text
 from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.scan import ScanResult
@@ -184,11 +185,19 @@ def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
         executable=cli_settings.executable,
         model=cli_settings.model,
     )
+    reporter = ConsoleReporter()
     try:
-        result = OutcomeSynthesisService(
-            runner,
-            max_evidence_bytes=settings.report.quick_review_max_evidence_bytes,
-        ).synthesize(scan)
+        # Synthesis is one `opencode run` that can take minutes, and the TUI holds
+        # the last painted frame until it returns; without this the app looks hung
+        # right after "Exporting sessions".
+        # ponytail: one animated status line, no percentage — the work is a single
+        # subprocess, so there is nothing finer to report.
+        with reporter.progress() as progress:
+            progress.start(ProgressStage.SYNTHESIZING_OUTCOMES)
+            result = OutcomeSynthesisService(
+                runner,
+                max_evidence_bytes=settings.report.quick_review_max_evidence_bytes,
+            ).synthesize(scan)
     except (OpenCodeRunError, OSError) as exc:
         raise OutcomeSynthesisError(str(exc)) from exc
     arguments: dict[str, object] = {
@@ -335,12 +344,6 @@ def _doctor(harness_name: str) -> list[str]:
     ]
 
 
-def _edit_settings() -> None:
-    from iiwi import cli
-
-    cli.config_init()
-
-
 def _restore_selection(
     harness: str,
     period: DateRange,
@@ -423,7 +426,6 @@ def build_interactive_actions() -> InteractiveActions:
         edit_gap=_edit_gap,
         save_report_type=_save_report_type,
         doctor=_doctor,
-        edit_settings=_edit_settings,
         restore_selection=_restore_selection,
         save_selection=_save_selection,
         exclude_repository=_exclude_repository,

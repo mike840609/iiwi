@@ -548,7 +548,7 @@ def test_history_json_flag_emits_entries(monkeypatch, tmp_path) -> None:
     assert payload[0]["repository_count"] == 2
     assert payload[0]["session_count"] == 10
     assert payload[0]["narrative"] is True
-    assert payload[0]["output_path"] == "reports/worklog.md"
+    assert payload[0]["output_path"] == str(Path("reports/worklog.md").resolve())
 
 
 def test_history_emits_json_automatically_when_piped(monkeypatch, tmp_path) -> None:
