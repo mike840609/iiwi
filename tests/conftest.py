@@ -19,12 +19,19 @@ def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     in tmp_path, preventing nondeterministic failures when config set creates a
     real file.
 
+    IIWI_DAILY_STATE_DIR belongs here for a stronger reason than determinism:
+    DailyWorkflowService.refresh() calls cleanup_daily_state(), which unlinks
+    every expired YYYY-MM-DD.json under the resolved directory. Unset, that is
+    the developer's real user-data directory, so running the suite would delete
+    their saved standup review state.
+
     Per-test monkeypatch.setenv calls take precedence and will override this default.
     """
 
     monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
     monkeypatch.setenv("IIWI_STATE_FILE", str(tmp_path / "state.json"))
+    monkeypatch.setenv("IIWI_DAILY_STATE_DIR", str(tmp_path / "daily"))
 
 
 @dataclass

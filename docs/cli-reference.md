@@ -3,7 +3,8 @@
 Every command, option, and exit code. For a guided tour instead, see the
 [README](../README.md); for settings, the
 [configuration guide](configuration.md); and for outcome review, the
-[evidence-first Quick Review guide](evidence-first-quick-review.md).
+[evidence-first Quick Review guide](evidence-first-quick-review.md). Daily users
+can go directly to the [Daily Standup guide](daily-standup.md).
 
 ## Commands
 
@@ -12,6 +13,7 @@ Every command, option, and exit code. For a guided tour instead, see the
 | `doctor` | Checks that the selected harness and `git` are ready to use. |
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
+| `daily` | Reviews Yesterday, Today, and Blockers from every enabled harness. |
 | `history` | Lists the reports this tool has written. |
 | `update` | Checks PyPI for a newer release. |
 | `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
@@ -25,9 +27,9 @@ and are still the supported interface for scripts, CI, and pipelines.
 ## Interactive mode
 
 The bare command uses `↑/↓` or `j/k` to move, `Enter` to select, and `q` to leave the
-current flow. The main screen offers Generate Report, Browse Sessions, Check Setup, and
-Settings. Completed actions return to an interactive screen or the main menu instead of
-requiring a new process.
+current flow. The main screen offers Review Activity, Daily Standup, Generate Report,
+History, Check Setup, and Settings. Completed actions return to an interactive screen or
+the main menu instead of requiring a new process.
 
 Generate Report opens a summary before scanning. Harness, period, detail, subagent
 inclusion, narrative mode, sanitize mode, and dry-run mode can be changed independently;
@@ -91,6 +93,22 @@ successful report, the result screen can return to the main menu, start another 
 with the same option values, or print the report path. The main menu also lists past
 reports under **History**, where Enter shows a report's recorded output path. Browse
 Sessions is read-only in this release.
+
+## daily
+
+`iiwi daily` opens the same Daily Standup flow as the main-menu entry. It needs
+an interactive terminal and has no period picker, harness picker, Report type,
+Detail, Split, Next week, or `--no-review` option. It scans all enabled harnesses,
+including child and subagent sessions, from yesterday's local midnight through
+one captured current time.
+
+Daily Quick Review has fixed Yesterday, Today, and Blockers sections. It supports
+include/exclude, statement edit, section-local reorder, Evidence, manual Add,
+Preview, Generate, and Back. `p Preview` renders without writing; `g Generate`
+writes the same reviewed bytes to `daily-standup-YYYY-MM-DD.md` and safely
+replaces that date's previous Daily output. Missing harnesses remain visible as
+artifact coverage warnings. See the [Daily Standup guide](daily-standup.md) for
+the complete review, refresh, fallback, and local-state behavior.
 
 ## Shared options
 

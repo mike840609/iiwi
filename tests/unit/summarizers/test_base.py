@@ -13,8 +13,10 @@ def _evidence(*sessions: SessionEvidence) -> RepositoryEvidence:
 
 def test_session_refs_carries_session_id_and_title_in_order() -> None:
     evidence = _evidence(
-        SessionEvidence(session_id="s1", repository_id="repo", title="Fix the exporter"),
-        SessionEvidence(session_id="s2", repository_id="repo"),
+        SessionEvidence(
+            harness="test", session_id="s1", repository_id="repo", title="Fix the exporter"
+        ),
+        SessionEvidence(harness="test", session_id="s2", repository_id="repo"),
     )
 
     assert session_refs(evidence) == [
@@ -26,11 +28,12 @@ def test_session_refs_carries_session_id_and_title_in_order() -> None:
 def test_session_refs_normalizes_free_text_titles_to_one_line() -> None:
     evidence = _evidence(
         SessionEvidence(
+            harness="test",
             session_id="s1",
             repository_id="repo",
             title="Fix the exporter\n```\n- injected list item",
         ),
-        SessionEvidence(session_id="s2", repository_id="repo", title="  \n  "),
+        SessionEvidence(harness="test", session_id="s2", repository_id="repo", title="  \n  "),
     )
 
     assert session_refs(evidence) == [
@@ -41,11 +44,19 @@ def test_session_refs_normalizes_free_text_titles_to_one_line() -> None:
 
 def test_session_directories_deduplicates_sorts_and_skips_blank() -> None:
     evidence = _evidence(
-        SessionEvidence(session_id="s1", repository_id="repo", working_directory="/worktrees/b"),
-        SessionEvidence(session_id="s2", repository_id="repo", working_directory="/worktrees/a"),
-        SessionEvidence(session_id="s3", repository_id="repo", working_directory="/worktrees/b"),
-        SessionEvidence(session_id="s4", repository_id="repo", working_directory="   "),
-        SessionEvidence(session_id="s5", repository_id="repo"),
+        SessionEvidence(
+            harness="test", session_id="s1", repository_id="repo", working_directory="/worktrees/b"
+        ),
+        SessionEvidence(
+            harness="test", session_id="s2", repository_id="repo", working_directory="/worktrees/a"
+        ),
+        SessionEvidence(
+            harness="test", session_id="s3", repository_id="repo", working_directory="/worktrees/b"
+        ),
+        SessionEvidence(
+            harness="test", session_id="s4", repository_id="repo", working_directory="   "
+        ),
+        SessionEvidence(harness="test", session_id="s5", repository_id="repo"),
     )
 
     assert session_directories(evidence) == ["/worktrees/a", "/worktrees/b"]

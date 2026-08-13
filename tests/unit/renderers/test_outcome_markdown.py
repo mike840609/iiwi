@@ -178,3 +178,29 @@ def test_empty_optional_sections_are_omitted() -> None:
 
     assert "## Blockers" not in output
     assert "## Next Week" not in output
+
+
+def test_full_evidence_redacts_credentials_in_every_reference_field() -> None:
+    """EvidenceRef carries raw provenance so reconciliation can match on it.
+
+    The outcomes template writes all four of its fields verbatim, so it is the
+    last point before the artifact exists and has to redact.
+    """
+
+    report = review_report()
+    report.outcomes[0].evidence_refs = [
+        EvidenceRef(
+            session_id="ses-ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            repository_id="git:example.com/token=ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            commit="sk-cccccccccccccccccccc",
+            file="src/AKIAIOSFODNN7EXAMPLE.pem",
+        )
+    ]
+
+    output = MarkdownRenderer().render_outcomes(report, detail=DetailLevel.FULL)
+
+    assert "### Evidence" in output
+    assert "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" not in output
+    assert "ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" not in output
+    assert "sk-cccccccccccccccccccc" not in output
+    assert "AKIAIOSFODNN7EXAMPLE" not in output

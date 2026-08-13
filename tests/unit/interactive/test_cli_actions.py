@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -9,9 +10,20 @@ import pytest
 from typer.testing import CliRunner
 
 from iiwi import cli
-from iiwi.errors import OutcomeSynthesisError
+from iiwi.errors import (
+    DailySourceUnavailableError,
+    OutcomeSynthesisError,
+    ReportOutputError,
+)
+from iiwi.history import HistoryKind
 from iiwi.interactive import cli_actions
 from iiwi.interactive.models import ReportDraft
+from iiwi.models.daily import (
+    DailySectionItem,
+    DailyStandupDraft,
+    DailyStandupWorkItem,
+    DailyStatementSource,
+)
 from iiwi.models.outcome import (
     Outcome,
     OutcomeOrigin,
@@ -64,6 +76,28 @@ def _review() -> OutcomeReviewDraft:
             )
         ],
         report_type=ReportType.MANAGER,
+    )
+
+
+def _daily_draft(*, standup_date: date = date(2026, 8, 13)) -> DailyStandupDraft:
+    return DailyStandupDraft(
+        standup_date=standup_date,
+        scan_since=datetime(2026, 8, 12, tzinfo=TZ),
+        scan_until=datetime(2026, 8, 13, 10, tzinfo=TZ),
+        work_items=[
+            DailyStandupWorkItem(
+                id="manual",
+                today=DailySectionItem(
+                    statement="Keep the reviewed plan",
+                    source=DailyStatementSource.USER_ADDED,
+                    user_edited=True,
+                ),
+            )
+        ],
+        successful_harnesses=["opencode", "codex"],
+        unavailable_harnesses=["claude-code"],
+        repository_count=2,
+        session_count=3,
     )
 
 
@@ -587,3 +621,385 @@ def test_save_and_restore_round_trip_through_the_state_file(
         "ses-a",
         "ses-b",
     }
+
+
+def test_start_daily_builds_every_enabled_harness_with_one_shared_window(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = SimpleNamespace(
+        report=SimpleNamespace(
+            timezone="Asia/Taipei",
+            quick_review_max_evidence_bytes=40000,
+        ),
+        harnesses=SimpleNamespace(
+            opencode=SimpleNamespace(
+                cli=SimpleNamespace(
+                    executable="opencode",
+                    model=None,
+                    run_timeout_seconds=600.0,
+                    sanitize=True,
+                )
+            )
+        ),
+    )
+    calls: list[tuple[object, bool, cli.Harness, bool]] = []
+
+    class EmptyScanService:
+        def __init__(self, period: DateRange) -> None:
+            self.period = period
+
+        def scan(self) -> ScanResult:
+            return ScanResult(
+                period=self.period,
+                candidate_session_count=0,
+                loaded_session_count=0,
+                failed_session_count=0,
+            )
+
+    def build_scan_service(
+        received_settings: object,
+        period: DateRange,
+        root_only: bool,
+        *,
+        harness: cli.Harness,
+        sanitize: bool,
+        progress: object = None,
+    ) -> EmptyScanService:
+        del progress
+        assert received_settings is settings
+        calls.append((period, root_only, harness, sanitize))
+        return EmptyScanService(period)
+
+    monkeypatch.setenv("IIWI_DAILY_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 8, 13, 10, tzinfo=TZ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_enabled_harnesses",
+        lambda value: [
+            cli.Harness.OPENCODE,
+            cli.Harness.CLAUDE_CODE,
+            cli.Harness.CODEX,
+        ],
+    )
+    monkeypatch.setattr(cli, "_build_scan_service", build_scan_service)
+
+    draft = cli_actions._start_daily(None)
+
+    assert draft.work_items == []
+    assert [call[2] for call in calls] == [
+        cli.Harness.OPENCODE,
+        cli.Harness.CLAUDE_CODE,
+        cli.Harness.CODEX,
+    ]
+    assert len({id(call[0]) for call in calls}) == 1
+    assert all(call[1] is False for call in calls)
+    assert [call[3] for call in calls] == [True, False, False]
+
+
+def test_continue_daily_empty_reuses_original_error_window_and_same_day_review() -> None:
+    previous = _daily_draft()
+    error = DailySourceUnavailableError(
+        unavailable_harnesses=("opencode", "claude-code", "codex"),
+        standup_date=date(2026, 8, 13),
+        since=datetime(2026, 8, 12, tzinfo=TZ),
+        until=datetime(2026, 8, 13, 23, 59, tzinfo=TZ),
+    )
+
+    draft = cli_actions._continue_daily_empty(error, previous)
+
+    assert draft.standup_date == error.standup_date
+    assert draft.scan_since == error.since
+    assert draft.scan_until == error.until
+    assert draft.successful_harnesses == []
+    assert draft.unavailable_harnesses == list(error.unavailable_harnesses)
+    assert len(draft.coverage_warnings) == 1
+    assert "unavailable" in draft.coverage_warnings[0].casefold()
+    assert draft.work_items[0].today is not None
+    assert draft.work_items[0].today.statement == "Keep the reviewed plan"
+    # reconcile takes every scalar from the fresh draft, so zeros here would
+    # report "0 sess 0 repos" for a standup that still carries reviewed items.
+    assert draft.repository_count == previous.repository_count
+    assert draft.session_count == previous.session_count
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("disk full"), ReportOutputError("secure write failed")],
+)
+def test_persist_daily_returns_a_review_warning_without_printing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure: Exception,
+) -> None:
+    monkeypatch.setattr(
+        cli_actions,
+        "save_daily_draft",
+        lambda draft: (_ for _ in ()).throw(failure),
+    )
+
+    warning = cli_actions._persist_daily(_daily_draft())
+
+    assert warning is not None
+    assert "save" in warning.casefold()
+    assert capsys.readouterr().out == ""
+
+
+def test_preview_daily_only_renders_the_supplied_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = _daily_draft()
+    received: list[DailyStandupDraft] = []
+
+    class FakeDailyReportService:
+        def preview(self, current: DailyStandupDraft) -> SimpleNamespace:
+            received.append(current)
+            return SimpleNamespace(
+                output_path=None,
+                content="# Daily\n",
+                repository_count=2,
+                session_count=3,
+            )
+
+        def generate(self, *args: object, **kwargs: object) -> None:
+            pytest.fail("preview must not generate or write")
+
+    monkeypatch.setattr(cli_actions, "DailyReportService", FakeDailyReportService)
+
+    result = cli_actions._preview_daily(draft)
+
+    assert received == [draft]
+    assert result.output_path is None
+    assert result.content == "# Daily\n"
+
+
+def test_generate_daily_orders_artifact_state_and_history(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    draft = _daily_draft()
+    now = datetime(2026, 8, 13, 11, tzinfo=TZ)
+    settings = SimpleNamespace(
+        report=SimpleNamespace(
+            output_directory=tmp_path,
+            timezone="Asia/Taipei",
+        )
+    )
+    events: list[tuple[str, object]] = []
+
+    class FakeDailyReportService:
+        def generate(
+            self,
+            current: DailyStandupDraft,
+            *,
+            output_path: Path,
+        ) -> SimpleNamespace:
+            assert current is draft
+            events.append(("write", output_path))
+            return SimpleNamespace(
+                output_path=output_path,
+                content="# Daily\n",
+                repository_count=2,
+                session_count=3,
+            )
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
+    monkeypatch.setattr(cli_actions, "DailyReportService", FakeDailyReportService)
+    monkeypatch.setattr(
+        cli_actions,
+        "save_daily_draft",
+        lambda current: events.append(("state", current)),
+    )
+    monkeypatch.setattr(
+        cli_actions,
+        "append_history",
+        lambda entry: events.append(("history", entry)),
+    )
+
+    result = cli_actions._generate_daily(draft)
+
+    expected_path = tmp_path / "daily-standup-2026-08-13.md"
+    assert [event[0] for event in events] == ["write", "state", "history"]
+    assert events[0][1] == expected_path
+    assert events[1][1] is draft
+    entry = events[2][1]
+    assert entry.kind is HistoryKind.DAILY_STANDUP
+    assert entry.generated_at == now
+    assert entry.since == draft.scan_since
+    assert entry.until == draft.scan_until
+    assert entry.output_path == expected_path
+    assert entry.harnesses == ("opencode", "codex")
+    assert entry.unavailable_harnesses == ("claude-code",)
+    assert result.output_path == expected_path
+
+
+def test_generate_daily_stops_before_bookkeeping_when_the_artifact_write_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = SimpleNamespace(
+        report=SimpleNamespace(output_directory=tmp_path, timezone="Asia/Taipei")
+    )
+
+    class FailingDailyReportService:
+        def generate(self, *args: object, **kwargs: object) -> None:
+            raise ReportOutputError("disk unavailable")
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(cli_actions, "DailyReportService", FailingDailyReportService)
+    monkeypatch.setattr(
+        cli_actions,
+        "save_daily_draft",
+        lambda draft: pytest.fail("state must follow a successful artifact write"),
+    )
+    monkeypatch.setattr(
+        cli_actions,
+        "append_history",
+        lambda entry: pytest.fail("history must follow a successful artifact write"),
+    )
+
+    with pytest.raises(ReportOutputError, match="disk unavailable"):
+        cli_actions._generate_daily(_daily_draft())
+
+
+def test_generate_daily_rejects_a_stale_review_before_any_side_effect(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = SimpleNamespace(
+        report=SimpleNamespace(output_directory=tmp_path, timezone="Asia/Taipei")
+    )
+    events: list[str] = []
+
+    class FakeDailyReportService:
+        def generate(self, *args: object, **kwargs: object) -> SimpleNamespace:
+            events.append("write")
+            return SimpleNamespace(
+                output_path=tmp_path / "daily-standup-2026-08-13.md",
+                content="# Daily\n",
+                repository_count=2,
+                session_count=3,
+            )
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 8, 14, 0, 1, tzinfo=TZ),
+    )
+    monkeypatch.setattr(cli_actions, "DailyReportService", FakeDailyReportService)
+    monkeypatch.setattr(
+        cli_actions,
+        "save_daily_draft",
+        lambda draft: events.append("state"),
+    )
+    monkeypatch.setattr(
+        cli_actions,
+        "append_history",
+        lambda entry: events.append("history"),
+    )
+
+    with pytest.raises(ReportOutputError, match="Refresh Daily Standup"):
+        cli_actions._generate_daily(_daily_draft())
+
+    assert events == []
+
+
+def test_preview_daily_refuses_the_same_stale_standup_date_generate_does(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """docs/daily-standup.md promises Preview renders what Generate writes.
+
+    Without this the reviewer who left Daily open across local midnight gets a
+    complete preview dated yesterday and an error screen from `g`.
+    """
+
+    settings = SimpleNamespace(
+        report=SimpleNamespace(output_directory=tmp_path, timezone="Asia/Taipei")
+    )
+    rendered: list[str] = []
+
+    class FakeDailyReportService:
+        def preview(self, *args: object, **kwargs: object) -> SimpleNamespace:
+            rendered.append("preview")
+            return SimpleNamespace(
+                output_path=None,
+                content="# Daily\n",
+                repository_count=2,
+                session_count=3,
+            )
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 8, 14, 0, 1, tzinfo=TZ),
+    )
+    monkeypatch.setattr(cli_actions, "DailyReportService", FakeDailyReportService)
+
+    with pytest.raises(ReportOutputError, match="Refresh Daily Standup"):
+        cli_actions._preview_daily(_daily_draft())
+
+    assert rendered == []
+
+
+def test_generate_daily_contains_state_and_history_bookkeeping_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = SimpleNamespace(
+        report=SimpleNamespace(output_directory=tmp_path, timezone="Asia/Taipei")
+    )
+    events: list[str] = []
+
+    class FakeDailyReportService:
+        def generate(self, *args: object, **kwargs: object) -> SimpleNamespace:
+            events.append("write")
+            return SimpleNamespace(
+                output_path=tmp_path / "daily-standup-2026-08-13.md",
+                content="# Daily\n",
+                repository_count=2,
+                session_count=3,
+            )
+
+    def fail_state(draft: DailyStandupDraft) -> None:
+        events.append("state")
+        raise ReportOutputError("state unavailable")
+
+    def fail_history(entry: object) -> None:
+        events.append("history")
+        raise OSError("history unavailable")
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 8, 13, 11, tzinfo=TZ),
+    )
+    monkeypatch.setattr(cli_actions, "DailyReportService", FakeDailyReportService)
+    monkeypatch.setattr(cli_actions, "save_daily_draft", fail_state)
+    monkeypatch.setattr(cli_actions, "append_history", fail_history)
+
+    result = cli_actions._generate_daily(_daily_draft())
+
+    assert events == ["write", "state", "history"]
+    assert result.content == "# Daily\n"
+
+
+def test_build_interactive_actions_wires_all_daily_callbacks() -> None:
+    actions = cli_actions.build_interactive_actions()
+
+    assert actions.start_daily is cli_actions._start_daily
+    assert actions.continue_daily_empty is cli_actions._continue_daily_empty
+    assert actions.persist_daily is cli_actions._persist_daily
+    assert actions.preview_daily is cli_actions._preview_daily
+    assert actions.generate_daily is cli_actions._generate_daily
+    assert actions.edit_daily_statement is cli_actions._edit_daily_statement
+    assert actions.add_daily_statement is cli_actions._add_daily_statement

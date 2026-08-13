@@ -19,7 +19,7 @@ from rich.table import Column, Table
 from rich.text import Text
 
 from iiwi.config_store import SettingRow
-from iiwi.history import HistoryEntry
+from iiwi.history import HistoryEntry, HistoryKind
 from iiwi.progress import (
     NullProgressReporter,
     ProgressReporter,
@@ -196,13 +196,14 @@ class ConsoleReporter:
         mangle a legitimate value that happens to look like a secret.
         """
 
-        table = Table(title="Iiwi Settings")
+        table = Table(title="Iiwi Settings", padding=(0, 0))
         # `config list`'s whole job is teaching the user the key names they
         # type into `config set`; at the default 80-column terminal, Rich's
         # default ellipsis truncation cuts most keys down to an identical
-        # "harnesses.opencode.…" prefix. Folding wraps instead, so the full
-        # key, value, and default are always readable regardless of width.
-        table.add_column("Setting", overflow="fold")
+        # "harnesses.opencode.…" prefix. Keep setting names on one line at
+        # the supported width; values and defaults still fold when necessary.
+        # Removing cell padding makes room for all setting names at 80 columns.
+        table.add_column("Setting", no_wrap=True, overflow="fold")
         table.add_column("Value", overflow="fold")
         table.add_column("From")
         table.add_column("Default", overflow="fold")
@@ -221,19 +222,20 @@ class ConsoleReporter:
         table = Table(title="Generated Reports")
         table.add_column("Generated")
         table.add_column("Period")
-        table.add_column("Harness")
+        table.add_column("Harness", no_wrap=True)
         table.add_column("Sessions", justify="right")
         table.add_column("Repos", justify="right")
         table.add_column("Narrative")
         table.add_column("Path", overflow="fold")
         for entry in reversed(entries):
+            is_daily = entry.kind is HistoryKind.DAILY_STANDUP
             table.add_row(
                 f"{entry.generated_at:%Y-%m-%d %H:%M}",
                 f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}",
-                entry.harness,
+                "Daily Standup" if is_daily else entry.harness,
                 str(entry.session_count),
                 str(entry.repository_count),
-                "yes" if entry.narrative else "no",
+                "—" if is_daily else ("yes" if entry.narrative else "no"),
                 str(entry.output_path),
             )
         self.console.print(table)

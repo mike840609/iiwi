@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Daily Standup. `iiwi daily`, or **Daily Standup** from the main menu, turns
+  yesterday's and today's coding-agent activity into a short update you review
+  before anything is written. There is no period or harness picker: it reads
+  every enabled harness over one local-calendar window, from yesterday at 00:00
+  through the moment it started, and projects that evidence into **Yesterday**,
+  **Today** and **Blockers**. Activity timestamps decide which section a piece
+  of work lands in, so `Activity today` means work actually happened today,
+  while `Suggested from yesterday` appears only where yesterday carries explicit
+  unfinished evidence and is a proposal to confirm rather than a claim that the
+  work continued. `Space` includes or excludes a line, `e` edits it, `J`/`K`
+  reorder, `a` adds an item the sessions do not cover, `v` shows the evidence
+  behind a line, `p` renders the draft without writing it and `g` writes
+  `daily-standup-YYYY-MM-DD.md`. Refreshing later in the day keeps every edit,
+  exclusion and ordering already made and flags what is new since the last look;
+  the reviewed draft is kept owner-only on your machine for that date and
+  cleaned up after 30 days. If grouping is unavailable, Daily falls back to a
+  draft built from local evidence alone, and if a harness cannot be read the
+  review says which one and continues on the rest.
+- Blockers reports only failures worth reporting. A command exiting nonzero is
+  not by itself a blocker: an agent's shell is mostly exploration, and
+  exploration fails constantly without anything being blocked. Measured over one
+  real Daily window — 115 sessions across three harnesses and eight
+  repositories — 62 commands were observed to fail, and 50 of them were
+  `git log`, `rg`, `ls`, `sed -n`, `sleep; gh pr view` and
+  `echo "=== HEAD ==="`. Only the verification commands iiwi already recognizes
+  can become candidates, a candidate resolved by a later completion or a later
+  successful rerun drops out, and whatever survives starts excluded so an error
+  is never published without review.
 - Quick Review says what it is doing while it groups. Synthesis is one
   `opencode run` with a ten-minute timeout, and it reported nothing at all: the
   interactive app paints each frame over the last and repaints only between key

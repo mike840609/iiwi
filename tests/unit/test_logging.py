@@ -1,10 +1,13 @@
 from datetime import datetime
 from io import StringIO
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 from rich.console import Console
 
+import iiwi.history as history_module
+from iiwi.history import HistoryEntry
 from iiwi.logging import ConsoleReporter, RichProgressReporter
 from iiwi.models.repository import (
     RepositoryIdentity,
@@ -24,6 +27,42 @@ def forced_console(stream: StringIO, *, width: int = 100) -> Console:
         color_system=None,
         width=width,
     )
+
+
+def test_history_table_labels_daily_standups_without_a_fake_harness() -> None:
+    stream = StringIO()
+    reporter = ConsoleReporter(console=forced_console(stream, width=160))
+    generated_at = datetime(2026, 8, 13, 9, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    common = {
+        "generated_at": generated_at,
+        "since": datetime(2026, 8, 12, tzinfo=generated_at.tzinfo),
+        "until": datetime(2026, 8, 13, tzinfo=generated_at.tzinfo),
+        "repository_count": 2,
+        "session_count": 7,
+    }
+
+    reporter.history_table(
+        [
+            HistoryEntry(
+                **common,
+                output_path=Path("reports/report.md"),
+                harness="opencode",
+                narrative=True,
+                detail="full",
+            ),
+            HistoryEntry(
+                **common,
+                output_path=Path("reports/daily.md"),
+                kind=history_module.HistoryKind.DAILY_STANDUP,
+                harnesses=("opencode", "codex"),
+            ),
+        ]
+    )
+
+    output = stream.getvalue()
+    assert "opencode" in output
+    assert "Daily Standup" in output
+    assert "multiple" not in output
 
 
 def test_progress_renders_one_transient_stage_line(monkeypatch: pytest.MonkeyPatch) -> None:

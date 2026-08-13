@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from datetime import datetime
+from dataclasses import replace
+from datetime import date, datetime
 from io import StringIO
 from pathlib import Path
 from typing import cast
@@ -20,7 +21,8 @@ from iiwi.interactive.controller import (
     run_interactive,
 )
 from iiwi.interactive.input import Key, KeyPress
-from iiwi.interactive.models import ReportDraft
+from iiwi.interactive.models import ReportDraft, Screen
+from iiwi.models.daily import DailyStandupDraft
 from iiwi.models.outcome import (
     Outcome,
     OutcomeBucket,
@@ -137,7 +139,7 @@ def _synthesis_payload(
                 "title": title,
                 "status": "completed",
                 "impact": impact,
-                "source_session_ids": [session_id],
+                "source_ids": [outcome_service._source_token("opencode", session_id)],
                 "confidence": "high",
                 "linkage_signals": [],
             }
@@ -250,6 +252,37 @@ def test_bare_real_tty_dispatches_key_driven_controller(
     assert called[0]["console"] is not None
 
 
+def test_direct_daily_initial_screen_refreshes_before_the_first_frame(tmp_path: Path) -> None:
+    daily = DailyStandupDraft(
+        standup_date=date(2026, 8, 13),
+        scan_since=datetime(2026, 8, 12, tzinfo=TZ),
+        scan_until=datetime(2026, 8, 13, 10, tzinfo=TZ),
+    )
+    starts: list[DailyStandupDraft | None] = []
+    actions = _quick_review_actions(
+        draft=ReportDraft(harness="opencode", period=_period()),
+        scan=_scan(),
+        payload={"outcomes": []},
+        output_path=tmp_path / "unused.md",
+        review_calls=[],
+    )
+
+    def start(previous: DailyStandupDraft | None) -> DailyStandupDraft:
+        starts.append(previous)
+        return daily
+
+    stream = StringIO()
+    run_interactive(
+        actions=replace(actions, start_daily=start),
+        input_source=ScriptedInput([char("q"), char("q")]),
+        console=Console(file=stream, color_system=None, force_terminal=False),
+        initial_screen=Screen.DAILY_REVIEW,
+    )
+
+    assert starts == [None]
+    assert "Daily Standup" in stream.getvalue()
+
+
 def test_bare_command_runs_generate_select_result_main_quit_flow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -261,9 +294,7 @@ def test_bare_command_runs_generate_select_result_main_quit_flow(
         selected_scan: ScanResult,
         _force: bool,
     ) -> InteractiveReportResult:
-        generated.append(
-            [item.session.session_id for item in selected_scan.resolved_sessions]
-        )
+        generated.append([item.session.session_id for item in selected_scan.resolved_sessions])
         return InteractiveReportResult(
             output_path=Path("reports/worklog.md"),
             content="report",
@@ -303,7 +334,7 @@ def test_bare_command_runs_generate_select_result_main_quit_flow(
     )
     scripted = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             char("r"),
             KeyPress(key=Key.SPACE),
             KeyPress(key=Key.SPACE),
@@ -437,7 +468,7 @@ def test_quick_review_writes_the_exact_reviewed_draft(tmp_path: Path) -> None:
         },
     )
     keys = [
-        char("2"),
+        char("3"),
         char("r"),
         char("g"),
         char("j"),
@@ -542,7 +573,10 @@ def test_quick_review_splits_a_real_cross_repository_merge(tmp_path: Path) -> No
                     "title": "Shared rollout",
                     "status": "completed",
                     "impact": "Verified shared delivery",
-                    "source_session_ids": ["ses-a", "ses-b"],
+                    "source_ids": [
+                        outcome_service._source_token("opencode", "ses-a"),
+                        outcome_service._source_token("opencode", "ses-b"),
+                    ],
                     "confidence": "high",
                     "linkage_signals": [
                         {"kind": "branch_or_issue", "value": "IIWI-42"},
@@ -559,7 +593,7 @@ def test_quick_review_splits_a_real_cross_repository_merge(tmp_path: Path) -> No
         actions=actions,
         input_source=ScriptedInput(
             [
-                char("2"),
+                char("3"),
                 char("r"),
                 char("g"),
                 char("j"),
@@ -597,17 +631,14 @@ def test_twenty_line_quick_review_expands_more_evidence_and_recovers_preview(
         draft=draft,
         scan=scan,
         payload=_synthesis_payload(
-            [
-                (f"ses-{index}", f"Outcome {index}", f"Impact {index}")
-                for index in range(1, 7)
-            ]
+            [(f"ses-{index}", f"Outcome {index}", f"Impact {index}") for index in range(1, 7)]
         ),
         output_path=tmp_path / "preview.md",
         review_calls=review_calls,
         preview_failures=1,
     )
     keys = [
-        char("2"),
+        char("3"),
         char("r"),
         char("g"),
         char("j"),
@@ -671,10 +702,7 @@ def test_partial_synthesis_retains_failures_without_preselecting_over_five(
             OpenCodeRunner,
             StaticSynthesisRunner(
                 _synthesis_payload(
-                    [
-                        (f"ses-{index}", f"Outcome {index}", "")
-                        for index in range(1, 7)
-                    ]
+                    [(f"ses-{index}", f"Outcome {index}", "") for index in range(1, 7)]
                 )
             ),
         )

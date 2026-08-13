@@ -187,7 +187,7 @@ def _actions(
 
 def test_numeric_generate_then_back_returns_to_main_without_restarting() -> None:
     counters: dict[str, int] = {}
-    input_source = ScriptedInput([char("2"), char("b"), char("q")])
+    input_source = ScriptedInput([char("3"), char("b"), char("q")])
 
     run_interactive(
         actions=_actions(counters=counters),
@@ -242,7 +242,7 @@ def test_setup_detail_edit_does_not_require_a_scan() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     input_source = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
@@ -271,7 +271,7 @@ def test_harness_source_error_is_recoverable_by_changing_harness() -> None:
         raise HarnessSourceError("session store missing")
 
     input_source = ScriptedInput(
-        [char("2"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
+        [char("3"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
     )
 
     run_interactive(
@@ -287,7 +287,7 @@ def test_harness_source_error_is_recoverable_by_changing_harness() -> None:
 def test_zero_sessions_is_recoverable_by_changing_period() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("2"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
+        [char("3"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
     )
 
     run_interactive(
@@ -337,7 +337,7 @@ def test_setup_g_enters_quick_review_then_generate_writes() -> None:
             sessions_by_repository={"repo-a": sessions},
         )
 
-    input_source = ScriptedInput([char("2"), char("g"), char("g"), char("q"), char("q")])
+    input_source = ScriptedInput([char("3"), char("g"), char("g"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=populated_scan, counters=counters),
@@ -353,7 +353,7 @@ def test_setup_edits_the_field_under_the_cursor() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     input_source = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
@@ -404,7 +404,7 @@ def test_setup_g_on_an_empty_scan_does_not_reach_the_result_screen() -> None:
             sessions_by_repository={},
         )
 
-    input_source = ScriptedInput([char("2"), char("g"), char("b"), char("q"), char("q")])
+    input_source = ScriptedInput([char("3"), char("g"), char("b"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=empty_scan, counters=counters),
@@ -454,7 +454,7 @@ def _setup_populated_scan(draft: ReportDraft) -> ScanResult:
 def test_setup_enter_on_the_action_row_enters_quick_review_then_generate_writes() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("2"), KeyPress(key=Key.ENTER), char("g"), char("q"), char("q")]
+        [char("3"), KeyPress(key=Key.ENTER), char("g"), char("q"), char("q")]
     )
 
     run_interactive(
@@ -470,7 +470,7 @@ def test_setup_enter_on_the_action_row_enters_quick_review_then_generate_writes(
 def test_setup_horizontal_keys_on_the_action_row_do_not_generate() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("2"), char("l"), KeyPress(key=Key.RIGHT), char("q"), char("q")]
+        [char("3"), char("l"), KeyPress(key=Key.RIGHT), char("q"), char("q")]
     )
 
     run_interactive(
@@ -505,7 +505,7 @@ def test_main_menu_history_opens_and_returns(
 
     run_interactive(
         actions=_actions(),
-        input_source=ScriptedInput([char("3"), char("b"), char("q")]),
+        input_source=ScriptedInput([char("4"), char("b"), char("q")]),
         console=console,
     )
 
@@ -524,7 +524,7 @@ def test_history_enter_shows_the_recorded_path(
     run_interactive(
         actions=_actions(),
         input_source=ScriptedInput(
-            [char("3"), KeyPress(key=Key.ENTER), char("b"), char("b"), char("q")]
+            [char("4"), KeyPress(key=Key.ENTER), char("b"), char("b"), char("q")]
         ),
         console=console,
     )
@@ -545,7 +545,7 @@ def test_history_enter_shows_the_cursor_row_not_the_first_row(
     run_interactive(
         actions=_actions(),
         input_source=ScriptedInput(
-            [char("3"), char("j"), KeyPress(key=Key.ENTER), char("q"), char("q")]
+            [char("4"), char("j"), KeyPress(key=Key.ENTER), char("q"), char("q")]
         ),
         console=console,
     )
@@ -571,7 +571,7 @@ def test_history_g_and_G_jump_follow_the_viewport(
     run_interactive(
         actions=_actions(),
         input_source=ScriptedInput(
-            [char("3"), char("G"), KeyPress(key=Key.ENTER), char("b"),
+            [char("4"), char("G"), KeyPress(key=Key.ENTER), char("b"),
              char("g"), KeyPress(key=Key.ENTER), char("b"), char("b"), char("q")]
         ),
         console=console,
@@ -593,7 +593,7 @@ def test_history_empty_state_ignores_enter(
 
     run_interactive(
         actions=_actions(),
-        input_source=ScriptedInput([char("3"), KeyPress(key=Key.ENTER), char("b"), char("q")]),
+        input_source=ScriptedInput([char("4"), KeyPress(key=Key.ENTER), char("b"), char("q")]),
         console=console,
     )
 
@@ -621,7 +621,7 @@ def test_ctrl_c_on_history_returns_to_the_main_menu(
                 return super().read_key()
             raise KeyboardInterrupt
 
-    input_source = ScriptedWithInterrupt([char("3"), char("b"), char("q")])
+    input_source = ScriptedWithInterrupt([char("4"), char("b"), char("q")])
     console = _console()
 
     run_interactive(
@@ -649,7 +649,7 @@ def test_history_q_and_escape_return_to_the_main_menu(
     console = _console()
     run_interactive(
         actions=_actions(),
-        input_source=ScriptedInput([char("3"), char("q"), char("q")]),
+        input_source=ScriptedInput([char("4"), char("q"), char("q")]),
         console=console,
     )
     text = console.file.getvalue()
@@ -660,7 +660,7 @@ def test_history_q_and_escape_return_to_the_main_menu(
     run_interactive(
         actions=_actions(),
         input_source=ScriptedInput(
-            [char("3"), KeyPress(key=Key.ESCAPE), char("q")]
+            [char("4"), KeyPress(key=Key.ESCAPE), char("q")]
         ),
         console=console,
     )

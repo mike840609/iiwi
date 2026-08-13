@@ -10,6 +10,20 @@ def test_readme_documents_release_gate_commands() -> None:
     assert "iiwi report --period last-week" in readme
 
 
+def test_daily_standup_is_linked_from_every_entrypoint_document() -> None:
+    paths = (
+        Path("README.md"),
+        Path("README.zh-TW.md"),
+        Path("docs/cli-reference.md"),
+    )
+
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        assert "iiwi daily" in text
+        assert "daily-standup.md" in text
+    assert Path("docs/daily-standup.md").is_file()
+
+
 def test_readme_documents_the_harness_option() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
 

@@ -48,7 +48,7 @@ class _ProposedOutcome(BaseModel):
     title: str
     status: OutcomeStatus
     impact: str = ""
-    source_session_ids: list[str]
+    source_ids: list[str]
     confidence: EvidenceConfidence
     linkage_signals: list[_LinkSignal] = Field(default_factory=list)
 
@@ -67,7 +67,7 @@ class _CompactSession(BaseModel):
     only cost budget the grouping cannot spend.
     """
 
-    session_id: str
+    source_id: str
     repository_id: str
     title: str | None = None
     branch: str | None = None
@@ -120,28 +120,29 @@ class OutcomeSynthesisService:
         self._max_evidence_bytes = max_evidence_bytes
 
     def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
-        evidence_by_session: dict[str, SessionEvidence] = {}
-        compact_by_session: dict[str, _CompactSession] = {}
-        local_texts_by_session: dict[str, list[str]] = {}
+        evidence_by_source: dict[str, SessionEvidence] = {}
+        compact_by_source: dict[str, _CompactSession] = {}
+        local_texts_by_source: dict[str, list[str]] = {}
         started_at: dict[str, datetime] = {}
         failed_sessions = []
         for resolved in scan.resolved_sessions:
             try:
                 extracted = extract_evidence(resolved)
                 redacted = redact_value(extracted.model_dump(mode="json"))
-                evidence = SessionEvidence.model_validate(redacted)
-                # Every dict here is keyed on the post-redaction session id,
-                # because that is the id the model is given and the id every
-                # lookup downstream carries.
-                evidence_by_session[evidence.session_id] = evidence
-                compact_by_session[evidence.session_id] = _compact_session(
-                    evidence,
+                model_evidence = SessionEvidence.model_validate(redacted)
+                source_id = _source_id(extracted)
+                # Durable provenance stays raw and local. The model sees only
+                # this opaque token and the separately redacted compact fields.
+                evidence_by_source[source_id] = extracted
+                compact_by_source[source_id] = _compact_session(
+                    model_evidence,
+                    source_id=source_id,
                     branch=resolved.session.branch or resolved.repository.branch,
                 )
                 if resolved.session.created_at is not None:
-                    started_at[evidence.session_id] = resolved.session.created_at
-                local_texts_by_session[evidence.session_id] = _local_texts(
-                    evidence,
+                    started_at[source_id] = resolved.session.created_at
+                local_texts_by_source[source_id] = _local_texts(
+                    model_evidence,
                     # These come from the resolved session rather than the
                     # redacted evidence, so they are redacted here: the corpus
                     # validates model output, and the model only ever saw the
@@ -160,22 +161,18 @@ class OutcomeSynthesisService:
             except Exception:  # Extraction failures remain visible candidates.
                 failed_sessions.append(resolved)
 
-        if not evidence_by_session:
-            raise OutcomeSynthesisError(
-                "could not extract evidence from any selected session"
-            )
+        if not evidence_by_source:
+            raise OutcomeSynthesisError("could not extract evidence from any selected session")
 
         sent = _sessions_within_budget(
             [
-                compact_by_session[evidence.session_id]
-                for evidence in _most_recent_first(evidence_by_session, started_at)
+                compact_by_source[source_id]
+                for source_id in _most_recent_first(evidence_by_source, started_at)
             ],
             max_bytes=self._max_evidence_bytes,
         )
-        sent_by_session = {
-            entry.session_id: evidence_by_session[entry.session_id] for entry in sent
-        }
-        held_back = len(evidence_by_session) - len(sent_by_session)
+        sent_by_source = {entry.source_id: evidence_by_source[entry.source_id] for entry in sent}
+        held_back = len(evidence_by_source) - len(sent_by_source)
         warnings = (
             [
                 f"{held_back} older session(s) did not fit the Quick Review "
@@ -195,15 +192,15 @@ class OutcomeSynthesisService:
             raise OutcomeSynthesisError(str(exc)) from exc
         payload = self._parse_payload(output)
         outcomes: list[Outcome] = []
-        used_session_ids: set[str] = set()
+        used_source_ids: set[str] = set()
         seen_proposals: set[tuple[object, ...]] = set()
         for proposal in payload.outcomes:
-            selected = self._selected_evidence(proposal, sent_by_session)
+            selected = self._selected_evidence(proposal, sent_by_source)
             if not selected:
                 # No known session survived: skip the proposal and leave its
                 # sessions available as ungrouped candidates.
                 continue
-            used_session_ids.update(item.session_id for item in selected)
+            used_source_ids.update(_source_id(item) for item in selected)
             signature = _proposal_signature(proposal, selected)
             if signature in seen_proposals:
                 continue
@@ -213,7 +210,7 @@ class OutcomeSynthesisService:
                 self._outcomes_for_proposal(
                     proposal,
                     selected,
-                    local_texts_by_session,
+                    local_texts_by_source,
                     proposal_index=proposal_index,
                 )
             )
@@ -225,8 +222,8 @@ class OutcomeSynthesisService:
 
         omitted = [
             evidence
-            for session_id, evidence in evidence_by_session.items()
-            if session_id not in used_session_ids
+            for source_id, evidence in evidence_by_source.items()
+            if source_id not in used_source_ids
         ]
         ungrouped = [
             *self._ungrouped_evidence_outcomes(omitted, rank_start=len(outcomes)),
@@ -257,13 +254,13 @@ class OutcomeSynthesisService:
     @staticmethod
     def _selected_evidence(
         proposal: _ProposedOutcome,
-        evidence_by_session: dict[str, SessionEvidence],
+        evidence_by_source: dict[str, SessionEvidence],
     ) -> list[SessionEvidence]:
         selected = []
-        for session_id in proposal.source_session_ids:
+        for source_id in proposal.source_ids:
             # Unknown ids are dropped rather than fatal: the surviving sessions
             # still bound every claim, so a narrower selection is only safer.
-            evidence = evidence_by_session.get(session_id)
+            evidence = evidence_by_source.get(source_id)
             if evidence is not None and evidence not in selected:
                 selected.append(evidence)
         return selected
@@ -272,7 +269,7 @@ class OutcomeSynthesisService:
         self,
         proposal: _ProposedOutcome,
         selected: list[SessionEvidence],
-        local_texts_by_session: dict[str, list[str]],
+        local_texts_by_source: dict[str, list[str]],
         *,
         proposal_index: int,
     ) -> list[Outcome]:
@@ -281,17 +278,17 @@ class OutcomeSynthesisService:
             by_repository.setdefault(evidence.repository_id, []).append(evidence)
 
         if len(by_repository) == 1 or self._may_merge_cross_repository(
-            proposal, selected, local_texts_by_session
+            proposal, selected, local_texts_by_source
         ):
             return [
                 self._outcome(
                     proposal,
                     selected,
-                    local_texts_by_session,
+                    local_texts_by_source,
                     source_groups=self._source_groups(
                         proposal,
                         selected,
-                        local_texts_by_session,
+                        local_texts_by_source,
                         group_by_repository=len(by_repository) > 1,
                     )
                     if len(selected) > 1
@@ -303,11 +300,11 @@ class OutcomeSynthesisService:
             self._outcome(
                 proposal,
                 repository_evidence,
-                local_texts_by_session,
+                local_texts_by_source,
                 source_groups=self._source_groups(
                     proposal,
                     repository_evidence,
-                    local_texts_by_session,
+                    local_texts_by_source,
                     group_by_repository=False,
                 )
                 if len(repository_evidence) > 1
@@ -321,15 +318,13 @@ class OutcomeSynthesisService:
     def _may_merge_cross_repository(
         proposal: _ProposedOutcome,
         selected: list[SessionEvidence],
-        local_texts_by_session: dict[str, list[str]],
+        local_texts_by_source: dict[str, list[str]],
     ) -> bool:
         if proposal.confidence is not EvidenceConfidence.HIGH:
             return False
 
         def observed_by_repository(value: str) -> bool:
-            return _value_is_observed_in_every_repository(
-                value, selected, local_texts_by_session
-            )
+            return _value_is_observed_in_every_repository(value, selected, local_texts_by_source)
 
         if any(
             signal.kind == "shared_work_id"
@@ -352,24 +347,22 @@ class OutcomeSynthesisService:
     def _outcome(
         proposal: _ProposedOutcome,
         selected: list[SessionEvidence],
-        local_texts_by_session: dict[str, list[str]],
+        local_texts_by_source: dict[str, list[str]],
         *,
         source_groups: list[OutcomeSourceGroup] | None = None,
         discriminator: str,
     ) -> Outcome:
-        session_ids = [item.session_id for item in selected]
-        title = _supported_title(proposal.title, selected, local_texts_by_session)
+        source_ids = [_source_id(item) for item in selected]
+        title = _supported_title(proposal.title, selected, local_texts_by_source)
         status = _supported_status(proposal.status, selected)
-        impact = _supported_impact(proposal.impact, selected, local_texts_by_session)
+        impact = _supported_impact(proposal.impact, selected, local_texts_by_source)
         return Outcome(
-            id=_synthesized_id(title, session_ids, discriminator=discriminator),
+            id=_synthesized_id(title, source_ids, discriminator=discriminator),
             title=title,
             status=status,
             impact=impact,
             rank=0,
-            evidence_refs=[
-                reference for item in selected for reference in _evidence_refs(item)
-            ],
+            evidence_refs=[reference for item in selected for reference in _evidence_refs(item)],
             source_groups=source_groups or [],
         )
 
@@ -377,32 +370,32 @@ class OutcomeSynthesisService:
     def _source_groups(
         proposal: _ProposedOutcome,
         selected: list[SessionEvidence],
-        local_texts_by_session: dict[str, list[str]],
+        local_texts_by_source: dict[str, list[str]],
         *,
         group_by_repository: bool,
     ) -> list[OutcomeSourceGroup]:
         groups: dict[str, list[SessionEvidence]] = {}
         for evidence in selected:
-            key = evidence.repository_id if group_by_repository else evidence.session_id
+            key = evidence.repository_id if group_by_repository else _source_id(evidence)
             groups.setdefault(key, []).append(evidence)
         source_groups: list[OutcomeSourceGroup] = []
         for key, evidence_items in groups.items():
             source_groups.append(
                 OutcomeSourceGroup(
                     id=key,
-                    title=key
-                    if group_by_repository
-                    else _fallback_title(evidence_items),
+                    title=(
+                        redact_text(key)
+                        if group_by_repository
+                        else _fallback_title(evidence_items)
+                    ),
                     impact=_supported_impact(
                         proposal.impact,
                         evidence_items,
-                        local_texts_by_session,
+                        local_texts_by_source,
                     ),
                     status=_supported_status(proposal.status, evidence_items),
                     evidence_refs=[
-                        reference
-                        for item in evidence_items
-                        for reference in _evidence_refs(item)
+                        reference for item in evidence_items for reference in _evidence_refs(item)
                     ],
                 )
             )
@@ -418,7 +411,7 @@ class OutcomeSynthesisService:
             Outcome(
                 id=_synthesized_id(
                     redact_text(resolved.session.title or resolved.session.session_id),
-                    [resolved.session.session_id],
+                    [_source_token(resolved.session.harness, resolved.session.session_id)],
                     discriminator="failed",
                 ),
                 title=redact_text(resolved.session.title or resolved.session.session_id),
@@ -429,8 +422,9 @@ class OutcomeSynthesisService:
                 bucket=OutcomeBucket.UNGROUPED,
                 evidence_refs=[
                     EvidenceRef(
-                        session_id=redact_text(resolved.session.session_id),
-                        repository_id=redact_text(resolved.repository.repository_id),
+                        session_id=resolved.session.session_id,
+                        repository_id=resolved.repository.repository_id,
+                        harness=resolved.session.harness,
                     )
                 ],
             )
@@ -447,7 +441,7 @@ class OutcomeSynthesisService:
             Outcome(
                 id=_synthesized_id(
                     _fallback_title([evidence]),
-                    [evidence.session_id],
+                    [_source_id(evidence)],
                     discriminator="omitted",
                 ),
                 title=_fallback_title([evidence]),
@@ -463,19 +457,24 @@ class OutcomeSynthesisService:
 
 
 def _most_recent_first(
-    evidence_by_session: dict[str, SessionEvidence],
+    evidence_by_source: dict[str, SessionEvidence],
     started_at: dict[str, datetime],
-) -> list[SessionEvidence]:
+) -> list[str]:
     """Order evidence newest first, leaving undated sessions in scan order."""
 
-    scanned = list(evidence_by_session.values())
-    dated = [item for item in scanned if item.session_id in started_at]
+    scanned = list(evidence_by_source)
+    dated = [source_id for source_id in scanned if source_id in started_at]
     # Python's sort keeps equal timestamps in scan order, both ways round.
-    dated.sort(key=lambda item: started_at[item.session_id], reverse=True)
-    return [*dated, *(item for item in scanned if item.session_id not in started_at)]
+    dated.sort(key=lambda source_id: started_at[source_id], reverse=True)
+    return [*dated, *(source_id for source_id in scanned if source_id not in started_at)]
 
 
-def _compact_session(evidence: SessionEvidence, *, branch: str | None) -> _CompactSession:
+def _compact_session(
+    evidence: SessionEvidence,
+    *,
+    source_id: str,
+    branch: str | None,
+) -> _CompactSession:
     """Reduce redacted evidence to the fields grouping actually reads.
 
     Every field but the branch is already redacted; the branch comes from the
@@ -483,7 +482,7 @@ def _compact_session(evidence: SessionEvidence, *, branch: str | None) -> _Compa
     """
 
     return _CompactSession(
-        session_id=evidence.session_id,
+        source_id=source_id,
         repository_id=evidence.repository_id,
         title=_omit_if_blank(evidence.title),
         branch=_omit_if_blank(redact_text(branch) if branch else None),
@@ -583,36 +582,36 @@ def _proposal_signature(
         normalize(proposal.title),
         proposal.status,
         normalize(proposal.impact),
-        tuple(sorted(item.session_id for item in selected)),
+        tuple(sorted(_source_id(item) for item in selected)),
         proposal.confidence,
         tuple(
-            sorted(
-                (signal.kind, normalize(signal.value))
-                for signal in proposal.linkage_signals
-            )
+            sorted((signal.kind, normalize(signal.value)) for signal in proposal.linkage_signals)
         ),
     )
 
 
 def _synthesized_id(
     title: str,
-    session_ids: list[str],
+    source_ids: list[str],
     *,
     discriminator: str,
 ) -> str:
     normalized_title = " ".join(title.split()).casefold()
-    value = "\0".join([normalized_title, *sorted(session_ids), discriminator])
+    value = "\0".join([normalized_title, *sorted(source_ids), discriminator])
     return sha256(value.encode()).hexdigest()[:16]
 
 
 def _evidence_refs(evidence: SessionEvidence) -> list[EvidenceRef]:
     files = [item.text for item in evidence.files_changed]
     commit = _commit_from_evidence(evidence)
+    activity_ids = _activity_ids(evidence)
     if not files:
         return [
             EvidenceRef(
                 session_id=evidence.session_id,
                 repository_id=evidence.repository_id,
+                harness=evidence.harness,
+                activity_ids=activity_ids,
                 commit=commit,
             )
         ]
@@ -620,11 +619,45 @@ def _evidence_refs(evidence: SessionEvidence) -> list[EvidenceRef]:
         EvidenceRef(
             session_id=evidence.session_id,
             repository_id=evidence.repository_id,
+            harness=evidence.harness,
+            activity_ids=activity_ids,
             commit=commit,
             file=file,
         )
         for file in files
     ]
+
+
+def _activity_ids(evidence: SessionEvidence) -> list[str]:
+    return sorted(
+        {
+            activity_id
+            for collection in (
+                evidence.goals,
+                evidence.commands,
+                evidence.files_changed,
+                evidence.errors,
+                evidence.outcomes,
+            )
+            for item in collection
+            for activity_id in item.source_activity_ids
+        }
+    )
+
+
+def _source_id(evidence: SessionEvidence) -> str:
+    return _source_token(evidence.harness, evidence.session_id)
+
+
+def _source_token(harness: str, session_id: str) -> str:
+    """Return an opaque model token without exposing durable identifiers."""
+
+    durable_key = json.dumps(
+        [harness, session_id],
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return f"source-{sha256(durable_key.encode()).hexdigest()}"
 
 
 def _commit_from_evidence(evidence: SessionEvidence) -> str | None:
@@ -641,6 +674,7 @@ def _local_texts(
     extra_values: list[str | None] | None = None,
 ) -> list[str]:
     texts = [
+        evidence.harness,
         evidence.session_id,
         evidence.repository_id,
         evidence.title,
@@ -662,36 +696,36 @@ def _local_texts(
 
 def _corpus(
     selected: list[SessionEvidence],
-    local_texts_by_session: dict[str, list[str]],
+    local_texts_by_source: dict[str, list[str]],
 ) -> str:
     return "\n".join(
         text
         for evidence in selected
-        for text in local_texts_by_session.get(evidence.session_id, _local_texts(evidence))
+        for text in local_texts_by_source.get(_source_id(evidence), _local_texts(evidence))
     ).casefold()
 
 
 def _value_is_observed(
     value: str,
     selected: list[SessionEvidence],
-    local_texts_by_session: dict[str, list[str]],
+    local_texts_by_source: dict[str, list[str]],
 ) -> bool:
     normalized = " ".join(value.split()).casefold()
     if not normalized:
         return False
-    return normalized in _corpus(selected, local_texts_by_session)
+    return normalized in _corpus(selected, local_texts_by_source)
 
 
 def _value_is_observed_in_every_repository(
     value: str,
     selected: list[SessionEvidence],
-    local_texts_by_session: dict[str, list[str]],
+    local_texts_by_source: dict[str, list[str]],
 ) -> bool:
     evidence_by_repository: dict[str, list[SessionEvidence]] = {}
     for evidence in selected:
         evidence_by_repository.setdefault(evidence.repository_id, []).append(evidence)
     return all(
-        _value_is_observed(value, repository_evidence, local_texts_by_session)
+        _value_is_observed(value, repository_evidence, local_texts_by_source)
         for repository_evidence in evidence_by_repository.values()
     )
 
@@ -699,16 +733,12 @@ def _value_is_observed_in_every_repository(
 def _supported_title(
     proposed: str,
     selected: list[SessionEvidence],
-    local_texts_by_session: dict[str, list[str]],
+    local_texts_by_source: dict[str, list[str]],
 ) -> str:
-    words = [
-        word
-        for word in re.findall(r"[a-z0-9]+", proposed.casefold())
-        if len(word) > 2
-    ]
+    words = [word for word in re.findall(r"[a-z0-9]+", proposed.casefold()) if len(word) > 2]
     if not words:
         return _fallback_title(selected)
-    corpus = _corpus(selected, local_texts_by_session)
+    corpus = _corpus(selected, local_texts_by_source)
     supported = sum(1 for word in words if word in corpus)
     if supported / len(words) >= _TITLE_SUPPORT_RATIO:
         return proposed
@@ -738,14 +768,15 @@ def _evidence_weight(evidence: SessionEvidence) -> int:
 
 def _fallback_title(selected: list[SessionEvidence]) -> str:
     if len(selected) == 1:
-        return selected[0].title or selected[0].session_id
+        return redact_text(selected[0].title or selected[0].session_id)
     repositories = sorted({item.repository_id for item in selected})
     if len(repositories) > 1:
-        return " / ".join(repositories)
+        return " / ".join(redact_text(repository) for repository in repositories)
     anchor = max(selected, key=_evidence_weight)
     others = len(selected) - 1
     plural = "session" if others == 1 else "sessions"
-    return f"{anchor.title or anchor.session_id} and {others} more {plural}"
+    title = redact_text(anchor.title or anchor.session_id)
+    return f"{title} and {others} more {plural}"
 
 
 def _supported_status(
@@ -756,8 +787,7 @@ def _supported_status(
         return OutcomeStatus.IN_PROGRESS
     for evidence in selected:
         if any(
-            item.status is EvidenceStatus.COMPLETED
-            and item.confidence is EvidenceConfidence.HIGH
+            item.status is EvidenceStatus.COMPLETED and item.confidence is EvidenceConfidence.HIGH
             for item in evidence.outcomes
         ):
             return OutcomeStatus.COMPLETED
@@ -767,9 +797,9 @@ def _supported_status(
 def _supported_impact(
     proposed: str,
     selected: list[SessionEvidence],
-    local_texts_by_session: dict[str, list[str]],
+    local_texts_by_source: dict[str, list[str]],
 ) -> str:
     value = " ".join(proposed.split())
     if not value:
         return ""
-    return proposed if value.casefold() in _corpus(selected, local_texts_by_session) else ""
+    return proposed if value.casefold() in _corpus(selected, local_texts_by_source) else ""
