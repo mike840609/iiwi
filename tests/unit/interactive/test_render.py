@@ -18,11 +18,13 @@ from iiwi.interactive.render import (
     render_report_setup,
     render_session_browser,
     render_session_review,
+    render_settings,
     report_generate_row,
     report_result_options,
     report_setup_rows,
 )
 from iiwi.interactive.selection import SelectionState
+from iiwi.interactive.settings import TIMEZONE_CHOICES, SettingsRow
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -1062,3 +1064,192 @@ def test_main_menu_fits_the_version_at_exact_width() -> None:
     render_main_menu(console, selected=0)
     title_line = _row(stream.getvalue(), "Iiwi")
     assert f"v{iiwi.__version__}" in title_line
+
+
+def _settings_row(**overrides: object) -> SettingsRow:
+    fields = dict(
+        key="harnesses.opencode.enabled",
+        label="opencode.enabled",
+        value="true",
+        source="default",
+        default="true",
+        choices=("true", "false"),
+        show_all=True,
+        locked=False,
+        variable="IIWI_HARNESSES__OPENCODE__ENABLED",
+    )
+    fields.update(overrides)
+    return SettingsRow(**fields)
+
+
+def test_settings_renders_section_headers() -> None:
+    console, stream = _console()
+    rows = [
+        _settings_row(section="OpenCode"),
+        _settings_row(
+            key="harnesses.opencode.cli.model",
+            label="opencode.cli.model",
+            value="",
+            default="",
+            choices=(),
+            show_all=False,
+            section="OpenCode",
+        ),
+        _settings_row(
+            key="report.timezone",
+            label="timezone",
+            value="UTC",
+            default="Asia/Taipei",
+            choices=TIMEZONE_CHOICES,
+            show_all=False,
+            locked=True,
+            section="General",
+        ),
+    ]
+
+    render_settings(console, rows=rows, selected=0, file_path="/tmp/config.env")
+
+    text = stream.getvalue()
+    # Each section header appears once, before its first row, with a blank
+    # line separating blocks.
+    assert text.count("OpenCode") == 1
+    assert text.count("General") == 1
+    assert text.index("  OpenCode") < text.index("opencode.enabled")
+    assert text.index("  General") < text.index("timezone")
+    assert "\n\n  General" in text
+
+
+def test_settings_renders_choice_rows_with_every_option() -> None:
+    console, stream = _console()
+    rows = [
+        _settings_row(),
+        _settings_row(
+            key="harnesses.opencode.cli.model",
+            label="opencode.cli.model",
+            value="",
+            default="",
+            choices=(),
+            show_all=False,
+        ),
+    ]
+
+    render_settings(console, rows=rows, selected=0, file_path="/tmp/config.env")
+
+    text = stream.getvalue()
+    assert "Settings" in text
+    assert "Settings file: /tmp/config.env" in text
+    assert "opencode.enabled" in text
+    assert "true / false" in text
+    assert "(default)" in text
+
+
+def test_settings_highlights_only_the_active_choice() -> None:
+    console, stream = _color_console()
+
+    render_settings(
+        console,
+        rows=[
+            _settings_row(value="false"),
+            _settings_row(
+                key="report.quick_review_report_type",
+                label="quick_review_report_type",
+                value="engineering",
+                choices=("manager", "engineering"),
+            ),
+        ],
+        selected=1,
+        file_path="/tmp/config.env",
+    )
+
+    text = stream.getvalue()
+    # Active choices are bold cyan; the rest are dim.
+    assert "\x1b[1;36mfalse\x1b[0m" in text
+    assert "\x1b[2mtrue\x1b[0m" in text
+    assert "\x1b[1;36mengineering\x1b[0m" in text
+    assert "\x1b[2mmanager\x1b[0m" in text
+
+
+def test_settings_marks_environment_rows_as_locked() -> None:
+    console, stream = _console()
+
+    render_settings(
+        console,
+        rows=[
+            _settings_row(locked=True),
+            _settings_row(
+                key="report.timezone",
+                label="timezone",
+                value="UTC",
+                choices=TIMEZONE_CHOICES,
+                show_all=False,
+                locked=True,
+            ),
+        ],
+        selected=0,
+        file_path="/tmp/config.env",
+    )
+
+    text = stream.getvalue()
+    choice_line = next(line for line in text.splitlines() if "true / false" in line)
+    assert "[environment]" in choice_line
+    value_line = next(line for line in text.splitlines() if "UTC" in line)
+    assert "[environment]" in value_line
+
+
+def test_settings_renders_the_inline_editor_and_hints() -> None:
+    console, stream = _console()
+    rows = [
+        _settings_row(),
+        _settings_row(
+            key="harnesses.opencode.cli.model",
+            label="opencode.cli.model",
+            value="",
+            default="",
+            choices=(),
+            show_all=False,
+        ),
+    ]
+
+    render_settings(
+        console,
+        rows=rows,
+        selected=1,
+        file_path="/tmp/config.env",
+        editing=True,
+        edit_value="deepseek",
+    )
+
+    text = stream.getvalue()
+    assert "harnesses.opencode.cli.model []: deepseek" in text
+    assert "Enter Keep" in text
+    assert "Esc Cancel" in text
+
+
+def test_settings_renders_validation_error_on_the_detail_line() -> None:
+    console, stream = _console()
+
+    render_settings(
+        console,
+        rows=[_settings_row()],
+        selected=0,
+        file_path="/tmp/config.env",
+        editing=True,
+        edit_value="abc",
+        error="invalid value for harnesses.opencode.cli.timeout_seconds: nope",
+    )
+
+    assert "invalid value for harnesses.opencode.cli.timeout_seconds" in stream.getvalue()
+
+
+def test_settings_renders_a_cycle_error_on_the_detail_line() -> None:
+    console, stream = _console()
+
+    render_settings(
+        console,
+        rows=[_settings_row()],
+        selected=0,
+        file_path="/tmp/config.env",
+        error="could not write config file: read-only file system",
+    )
+
+    assert "could not write config file: read-only file system" in stream.getvalue()

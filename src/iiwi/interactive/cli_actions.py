@@ -344,12 +344,6 @@ def _doctor(harness_name: str) -> list[str]:
     ]
 
 
-def _edit_settings() -> None:
-    from iiwi import cli
-
-    cli.config_init()
-
-
 def _restore_selection(
     harness: str,
     period: DateRange,
@@ -432,7 +426,6 @@ def build_interactive_actions() -> InteractiveActions:
         edit_gap=_edit_gap,
         save_report_type=_save_report_type,
         doctor=_doctor,
-        edit_settings=_edit_settings,
         restore_selection=_restore_selection,
         save_selection=_save_selection,
         exclude_repository=_exclude_repository,
