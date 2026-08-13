@@ -68,13 +68,36 @@ def _work(
     )
 
 
-def _draft(*items: DailyStandupWorkItem) -> DailyStandupDraft:
+def _draft(
+    *items: DailyStandupWorkItem,
+    standup_date: date = date(2026, 8, 13),
+) -> DailyStandupDraft:
     return DailyStandupDraft(
-        standup_date=date(2026, 8, 13),
+        standup_date=standup_date,
         scan_since=datetime.fromisoformat("2026-08-12T00:00:00+08:00"),
         scan_until=datetime.fromisoformat("2026-08-13T10:00:00+08:00"),
         work_items=list(items),
     )
+
+
+def test_previous_review_state_from_another_date_is_not_carried_forward() -> None:
+    previous = _draft(
+        _work(
+            "old-plan",
+            today=_section(
+                "Yesterday's plan",
+                source=DailyStatementSource.USER_ADDED,
+                user_edited=True,
+            ),
+        ),
+        standup_date=date(2026, 8, 12),
+    )
+    fresh = _draft(standup_date=date(2026, 8, 13))
+
+    merged = reconcile_daily_draft(previous, fresh)
+
+    assert merged.standup_date == date(2026, 8, 13)
+    assert merged.work_items == []
 
 
 def test_reviewer_wording_inclusion_and_section_order_survive_machine_refresh() -> None:

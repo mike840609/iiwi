@@ -26,7 +26,11 @@ def reconcile_daily_draft(
 ) -> DailyStandupDraft:
     """Preserve review decisions while admitting only evidence-identified activity."""
 
-    previous_items = previous.work_items if previous is not None else []
+    previous_items = (
+        previous.work_items
+        if previous is not None and previous.standup_date == fresh.standup_date
+        else []
+    )
     matches: dict[int, DailyStandupWorkItem] = {}
     unmatched_fresh: list[DailyStandupWorkItem] = []
     used_previous: set[int] = set()
