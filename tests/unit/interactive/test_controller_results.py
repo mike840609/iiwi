@@ -152,7 +152,7 @@ def test_doctor_result_uses_a_persistent_result_screen() -> None:
 
     run_interactive(
         actions=_actions(),
-        input_source=ScriptedInput([char("3"), KeyPress(key=Key.ENTER), char("q")]),
+        input_source=ScriptedInput([char("5"), KeyPress(key=Key.ENTER), char("q")]),
         console=console,
     )
 
@@ -169,7 +169,7 @@ def test_settings_entry_opens_the_settings_editor() -> None:
         actions=_actions(),
         input_source=ScriptedInput(
             [
-                char("4"),
+                char("6"),
                 KeyPress(key=Key.ENTER),
                 char("q"),
                 char("q"),
@@ -192,7 +192,7 @@ def test_print_report_path_opens_a_persistent_path_screen() -> None:
         actions=_actions(),
         input_source=ScriptedInput(
             [
-                char("2"),
+                char("3"),
                 char("r"),
                 char("g"),
                 char("g"),
@@ -219,7 +219,7 @@ def test_p_opens_session_preview_from_review_and_back_returns_to_it() -> None:
         actions=_actions(),
         input_source=ScriptedInput(
             [
-                char("2"),
+                char("3"),
                 char("r"),
                 KeyPress(key=Key.RIGHT),
                 KeyPress(key=Key.DOWN),
@@ -268,7 +268,7 @@ def test_p_on_a_repository_row_does_not_open_a_preview() -> None:
         actions=_actions(),
         input_source=ScriptedInput(
             [
-                char("2"),
+                char("3"),
                 char("r"),
                 char("p"),
                 char("b"),

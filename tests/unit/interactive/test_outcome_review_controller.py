@@ -216,7 +216,7 @@ def _run(
 
 
 def _open_review_keys() -> list[KeyPress]:
-    return [char("2"), char("r"), char("g")]
+    return [char("3"), char("r"), char("g")]
 
 
 def test_g_synthesizes_selected_scan_once_and_opens_outcome_review(
@@ -255,7 +255,7 @@ def test_setup_generate_enters_quick_review_before_rendering_output(
         monkeypatch,
         draft,
         log,
-        [char("2"), *setup_keys, char("b"), char("q"), char("q")],
+        [char("3"), *setup_keys, char("b"), char("q"), char("q")],
     )
 
     assert Screen.OUTCOME_REVIEW in screens

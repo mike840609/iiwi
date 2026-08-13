@@ -34,6 +34,7 @@ class EvidenceItem(BaseModel):
 
 
 class SessionEvidence(BaseModel):
+    harness: str
     session_id: str
     repository_id: str
     title: str | None = None

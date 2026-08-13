@@ -44,11 +44,15 @@ def service_for_raw(value: str) -> OutcomeSynthesisService:
     return OutcomeSynthesisService(StaticRunner(value))
 
 
+def source_id(session_id: str, *, harness: str = "test") -> str:
+    return outcomes._source_token(harness, session_id)
+
+
 def payload(
     *,
     title: str = "Completed outcome",
     impact: str = "Verified result",
-    source_session_ids: list[str],
+    source_ids: list[str],
     confidence: str = "high",
     linkage_signals: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
@@ -58,7 +62,7 @@ def payload(
                 "title": title,
                 "status": "completed",
                 "impact": impact,
-                "source_session_ids": source_session_ids,
+                "source_ids": source_ids,
                 "confidence": confidence,
                 "linkage_signals": linkage_signals or [],
             }
@@ -67,7 +71,7 @@ def payload(
 
 
 def payload_for_sessions(session_ids: list[str]) -> dict[str, object]:
-    return payload(source_session_ids=session_ids)
+    return payload(source_ids=[source_id(session_id) for session_id in session_ids])
 
 
 def payload_with_six_single_session_outcomes() -> dict[str, object]:
@@ -77,7 +81,7 @@ def payload_with_six_single_session_outcomes() -> dict[str, object]:
                 "title": f"Outcome {index}",
                 "status": "completed",
                 "impact": "",
-                "source_session_ids": [f"ses-{index}"],
+                "source_ids": [source_id(f"ses-{index}")],
                 "confidence": "high",
                 "linkage_signals": [],
             }
@@ -91,7 +95,10 @@ def cross_repo_payload(
 ) -> dict[str, object]:
     return payload(
         title="Shared rollout",
-        source_session_ids=["ses-a", "ses-b"],
+        source_ids=[
+            source_id("ses-a"),
+            source_id("ses-b"),
+        ],
         confidence=confidence,
         linkage_signals=linkage_signals,
     )
@@ -118,6 +125,7 @@ def resolved(
     session_id: str,
     repository_id: str = "repo-a",
     *,
+    harness: str = "test",
     title: str | None = None,
     branch: str | None = None,
     activities: list[SessionActivity] | None = None,
@@ -125,7 +133,7 @@ def resolved(
 ) -> ResolvedSession:
     return ResolvedSession(
         session=AgentSession(
-            harness="test",
+            harness=harness,
             session_id=session_id,
             title=title or f"Session {session_id}",
             branch=branch,
@@ -225,6 +233,7 @@ def compact_entry(session: ResolvedSession) -> outcomes._CompactSession:
     )
     return outcomes._compact_session(
         redacted,
+        source_id=source_id(session.session.session_id, harness=session.session.harness),
         branch=session.session.branch or session.repository.branch,
     )
 
@@ -252,7 +261,7 @@ def sent_sessions(runner: StaticRunner) -> list[dict[str, str]]:
 
 
 def sent_session_ids(runner: StaticRunner) -> list[str]:
-    return [session["session_id"] for session in sent_sessions(runner)]
+    return [session["source_id"] for session in sent_sessions(runner)]
 
 
 def fail_only(session_id: str):
@@ -274,12 +283,72 @@ def test_preselects_five_and_retains_the_remainder_in_more() -> None:
     assert len(result.outcomes) == 6
 
 
+def test_same_raw_session_id_from_different_harnesses_stays_separate() -> None:
+    opencode_source_id = source_id("same-id", harness="opencode")
+    claude_source_id = source_id("same-id", harness="claude-code")
+    runner = StaticRunner(
+        json.dumps(
+            {
+                "outcomes": [
+                    {
+                        "title": "OpenCode work",
+                        "status": "in_progress",
+                        "impact": "",
+                        "source_ids": [opencode_source_id],
+                        "confidence": "high",
+                        "linkage_signals": [],
+                    },
+                    {
+                        "title": "Claude Code work",
+                        "status": "in_progress",
+                        "impact": "",
+                        "source_ids": [claude_source_id],
+                        "confidence": "high",
+                        "linkage_signals": [],
+                    },
+                ]
+            }
+        )
+    )
+    result = OutcomeSynthesisService(runner).synthesize(
+        scan_with(
+            [
+                resolved(
+                    "same-id",
+                    harness="opencode",
+                    activities=[activity("open-goal", ActivityType.USER_MESSAGE, "OpenCode work")],
+                ),
+                resolved(
+                    "same-id",
+                    harness="claude-code",
+                    activities=[
+                        activity("claude-goal", ActivityType.USER_MESSAGE, "Claude Code work")
+                    ],
+                ),
+            ]
+        )
+    )
+
+    assert len(result.outcomes) == 2
+    assert {ref.harness for outcome in result.outcomes for ref in outcome.evidence_refs} == {
+        "opencode",
+        "claude-code",
+    }
+    assert all(ref.activity_ids for outcome in result.outcomes for ref in outcome.evidence_refs)
+    assert {session["source_id"] for session in sent_sessions(runner)} == {
+        opencode_source_id,
+        claude_source_id,
+    }
+    assert "same-id" not in opencode_source_id
+    assert "same-id" not in claude_source_id
+
+
 def test_unsupported_model_claims_are_not_copied_from_activity_free_session() -> None:
     result = service_for_json(
         payload(
             title="Invented launch outcome",
             impact="Revenue increased",
-            source_session_ids=["ses-a"],
+            source_ids=[source_id("ses-a")],
         )
     ).synthesize(one_scan())
 
@@ -294,7 +363,7 @@ def test_evidence_refs_include_locally_extracted_file_references() -> None:
         payload(
             title="Updated checkout renderer",
             impact="",
-            source_session_ids=["ses-a"],
+            source_ids=[source_id("ses-a")],
         )
     ).synthesize(
         scan_with(
@@ -366,7 +435,7 @@ def test_exact_duplicate_model_proposals_share_one_traceable_candidate() -> None
                     "title": "Repeated title",
                     "status": "in_progress",
                     "impact": "",
-                    "source_session_ids": ["ses-a"],
+                    "source_ids": [source_id("ses-a")],
                     "confidence": "high",
                     "linkage_signals": [],
                 },
@@ -374,7 +443,7 @@ def test_exact_duplicate_model_proposals_share_one_traceable_candidate() -> None
                     "title": "Repeated title",
                     "status": "in_progress",
                     "impact": "",
-                    "source_session_ids": ["ses-a"],
+                    "source_ids": [source_id("ses-a")],
                     "confidence": "high",
                     "linkage_signals": [],
                 },
@@ -512,13 +581,11 @@ def test_blank_cross_repo_linkage_signals_cannot_authorize_merge(signals) -> Non
 
 
 def test_model_cannot_attach_evidence_from_an_unknown_session() -> None:
-    result = service_for_json(
-        payload_for_sessions(["ses-a", "invented-session"])
-    ).synthesize(one_scan())
+    result = service_for_json(payload_for_sessions(["ses-a", "invented-session"])).synthesize(
+        one_scan()
+    )
 
-    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
-        "ses-a"
-    ]
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == ["ses-a"]
 
 
 def test_model_cannot_supply_repository_references() -> None:
@@ -527,15 +594,16 @@ def test_model_cannot_supply_repository_references() -> None:
 
     result = service_for_json(model_output).synthesize(one_scan())
 
-    assert [
-        reference.repository_id for reference in result.outcomes[0].evidence_refs
-    ] == ["repo-a"]
+    assert [reference.repository_id for reference in result.outcomes[0].evidence_refs] == ["repo-a"]
 
 
 def test_unsupported_impact_is_left_empty() -> None:
-    result = service_for_json(payload(impact="", source_session_ids=["ses-a"])).synthesize(
-        one_scan()
-    )
+    result = service_for_json(
+        payload(
+            impact="",
+            source_ids=[source_id("ses-a")],
+        )
+    ).synthesize(one_scan())
     assert result.outcomes[0].impact == ""
 
 
@@ -564,7 +632,9 @@ def test_ungrouped_failed_session_titles_are_redacted(monkeypatch) -> None:
     assert "[REDACTED]" in ungrouped.title
 
 
-def test_ungrouped_failed_session_references_are_redacted(monkeypatch) -> None:
+def test_ungrouped_failed_session_references_keep_raw_durable_provenance(
+    monkeypatch,
+) -> None:
     secret_id = "token=secret-session"
     monkeypatch.setattr(outcomes, "extract_evidence", fail_only(secret_id))
 
@@ -573,8 +643,7 @@ def test_ungrouped_failed_session_references_are_redacted(monkeypatch) -> None:
     )
 
     ungrouped = next(item for item in result.outcomes if item.bucket is OutcomeBucket.UNGROUPED)
-    assert "secret-session" not in ungrouped.evidence_refs[0].session_id
-    assert "[REDACTED]" in ungrouped.evidence_refs[0].session_id
+    assert ungrouped.evidence_refs[0].session_id == secret_id
 
 
 def test_all_extraction_failures_raise_complete_synthesis_error(monkeypatch) -> None:
@@ -602,9 +671,7 @@ def test_outcome_json_is_read_through_surrounding_output(template) -> None:
 
     result = service_for_raw(output).synthesize(one_scan())
 
-    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
-        "ses-a"
-    ]
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == ["ses-a"]
 
 
 def test_output_without_any_json_object_is_a_complete_synthesis_error() -> None:
@@ -634,13 +701,11 @@ def test_unrecognized_linkage_kind_cannot_authorize_cross_repo_merge() -> None:
 
 
 def test_proposal_keeping_one_known_session_builds_from_that_session_only() -> None:
-    result = service_for_json(
-        payload_for_sessions(["ses-a", "invented-session"])
-    ).synthesize(two_session_scan())
+    result = service_for_json(payload_for_sessions(["ses-a", "invented-session"])).synthesize(
+        two_session_scan()
+    )
 
-    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
-        "ses-a"
-    ]
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == ["ses-a"]
     assert result.outcomes[1].bucket is OutcomeBucket.UNGROUPED
     assert result.outcomes[1].title == "Session ses-b"
 
@@ -653,7 +718,7 @@ def test_proposal_without_a_known_session_is_skipped_beside_valid_proposals() ->
                     "title": "Known outcome",
                     "status": "in_progress",
                     "impact": "",
-                    "source_session_ids": ["ses-a"],
+                    "source_ids": [source_id("ses-a")],
                     "confidence": "high",
                     "linkage_signals": [],
                 },
@@ -661,7 +726,7 @@ def test_proposal_without_a_known_session_is_skipped_beside_valid_proposals() ->
                     "title": "Invented outcome",
                     "status": "in_progress",
                     "impact": "",
-                    "source_session_ids": ["invented-session"],
+                    "source_ids": [source_id("invented-session")],
                     "confidence": "high",
                     "linkage_signals": [],
                 },
@@ -673,9 +738,7 @@ def test_proposal_without_a_known_session_is_skipped_beside_valid_proposals() ->
         OutcomeBucket.PRIMARY,
         OutcomeBucket.UNGROUPED,
     ]
-    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
-        "ses-a"
-    ]
+    assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == ["ses-a"]
     assert result.outcomes[1].title == "Session ses-b"
 
 
@@ -702,7 +765,7 @@ def test_evidence_inside_the_budget_reaches_the_model_and_warns_about_nothing() 
         scan_with(sessions)
     )
 
-    assert sent_session_ids(runner) == ["ses-a", "ses-b"]
+    assert sent_session_ids(runner) == [source_id("ses-a"), source_id("ses-b")]
     assert result.warnings == []
 
 
@@ -715,7 +778,7 @@ def test_sessions_past_the_budget_never_reach_the_model() -> None:
         max_evidence_bytes=payload_size(sessions[:2]),
     ).synthesize(scan_with(sessions))
 
-    assert sent_session_ids(runner) == ["ses-a", "ses-b"]
+    assert sent_session_ids(runner) == [source_id("ses-a"), source_id("ses-b")]
 
 
 def test_sessions_past_the_budget_remain_excluded_ungrouped_candidates() -> None:
@@ -727,9 +790,7 @@ def test_sessions_past_the_budget_remain_excluded_ungrouped_candidates() -> None
         max_evidence_bytes=compact_entry_size(sessions[0]),
     ).synthesize(scan_with(sessions))
 
-    held_back = next(
-        item for item in result.outcomes if item.bucket is OutcomeBucket.UNGROUPED
-    )
+    held_back = next(item for item in result.outcomes if item.bucket is OutcomeBucket.UNGROUPED)
     assert held_back.title == "Session ses-b"
     assert held_back.included is False
     assert [reference.session_id for reference in held_back.evidence_refs] == ["ses-b"]
@@ -757,7 +818,7 @@ def test_the_most_recent_sessions_are_the_ones_synthesized() -> None:
         max_evidence_bytes=payload_size([sessions[1], sessions[2]]),
     ).synthesize(scan_with(sessions))
 
-    assert sent_session_ids(runner) == ["ses-new", "ses-mid"]
+    assert sent_session_ids(runner) == [source_id("ses-new"), source_id("ses-mid")]
 
 
 def test_a_session_larger_than_the_whole_budget_is_still_sent() -> None:
@@ -766,7 +827,7 @@ def test_a_session_larger_than_the_whole_budget_is_still_sent() -> None:
 
     OutcomeSynthesisService(runner, max_evidence_bytes=1).synthesize(scan_with(sessions))
 
-    assert sent_session_ids(runner) == ["ses-a"]
+    assert sent_session_ids(runner) == [source_id("ses-a")]
 
 
 def test_the_budget_counts_the_index_around_the_entries_not_just_the_entries() -> None:
@@ -776,12 +837,10 @@ def test_the_budget_counts_the_index_around_the_entries_not_just_the_entries() -
     budget = compact_entry_size(sessions[0]) + compact_entry_size(sessions[1]) + 1
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
 
-    OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(
-        scan_with(sessions)
-    )
+    OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(scan_with(sessions))
 
     assert budget < payload_size(sessions)
-    assert sent_session_ids(runner) == ["ses-a"]
+    assert sent_session_ids(runner) == [source_id("ses-a")]
     assert len(runner.calls[0]["transcript"].encode()) <= budget
 
 
@@ -789,11 +848,13 @@ def test_undated_sessions_keep_their_scan_order_behind_dated_ones() -> None:
     sessions = [resolved("ses-first"), resolved("ses-second"), dated("ses-dated", day=1)]
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-first"])))
 
-    OutcomeSynthesisService(runner, max_evidence_bytes=100_000).synthesize(
-        scan_with(sessions)
-    )
+    OutcomeSynthesisService(runner, max_evidence_bytes=100_000).synthesize(scan_with(sessions))
 
-    assert sent_session_ids(runner) == ["ses-dated", "ses-first", "ses-second"]
+    assert sent_session_ids(runner) == [
+        source_id("ses-dated"),
+        source_id("ses-first"),
+        source_id("ses-second"),
+    ]
 
 
 def detailed(
@@ -862,7 +923,7 @@ def test_the_model_receives_only_the_fields_grouping_needs() -> None:
 
     assert sent_sessions(runner) == [
         {
-            "session_id": "ses-a",
+            "source_id": source_id("ses-a"),
             "repository_id": "repo-a",
             "title": "Session ses-a",
             "branch": "feature/checkout",
@@ -1053,7 +1114,11 @@ def test_sessions_without_branch_goal_or_outcome_send_no_blank_fields() -> None:
     OutcomeSynthesisService(runner).synthesize(scan_with([resolved("ses-a")]))
 
     assert sent_sessions(runner) == [
-        {"session_id": "ses-a", "repository_id": "repo-a", "title": "Session ses-a"}
+        {
+            "source_id": source_id("ses-a"),
+            "repository_id": "repo-a",
+            "title": "Session ses-a",
+        }
     ]
 
 
@@ -1084,7 +1149,11 @@ def test_the_budget_now_buys_far_more_sessions_than_full_evidence_would() -> Non
         scan_with(sessions)
     )
 
-    assert sent_session_ids(runner) == ["ses-0", "ses-1", "ses-2"]
+    assert sent_session_ids(runner) == [
+        source_id("ses-0"),
+        source_id("ses-1"),
+        source_id("ses-2"),
+    ]
     assert result.warnings == []
     # The same budget would not have covered even one session of full evidence.
     assert full_evidence_size(sessions[0]) > budget
@@ -1105,19 +1174,19 @@ def redaction_rewriting_session_ids():
 
 
 def test_synthesis_survives_redaction_rewriting_the_session_id(monkeypatch) -> None:
-    """Every dict is keyed on the id redaction produced, which is the id sent."""
+    """Opaque correlation and durable refs do not depend on redacted identifiers."""
 
     monkeypatch.setattr(outcomes, "redact_value", redaction_rewriting_session_ids())
     sessions = [dated("ses-old", day=3), dated("ses-new", day=9)]
-    runner = StaticRunner(json.dumps(payload_for_sessions(["anon-ses-new"])))
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-new"])))
 
     result = OutcomeSynthesisService(runner, max_evidence_bytes=100_000).synthesize(
         scan_with(sessions)
     )
 
-    assert sent_session_ids(runner) == ["anon-ses-new", "anon-ses-old"]
+    assert sent_session_ids(runner) == [source_id("ses-new"), source_id("ses-old")]
     assert [reference.session_id for reference in result.outcomes[0].evidence_refs] == [
-        "anon-ses-new"
+        "ses-new"
     ]
 
 
@@ -1127,7 +1196,15 @@ def test_grouping_still_builds_evidence_refs_the_model_never_saw() -> None:
         detailed("ses-b", file="src/checkout/totals.py", command="git show commit 5d6e7f8"),
     ]
     runner = StaticRunner(
-        json.dumps(payload(title="Checkout regression", source_session_ids=["ses-a", "ses-b"]))
+        json.dumps(
+            payload(
+                title="Checkout regression",
+                source_ids=[
+                    source_id("ses-a"),
+                    source_id("ses-b"),
+                ],
+            )
+        )
     )
 
     result = OutcomeSynthesisService(runner).synthesize(scan_with(sessions))
@@ -1156,13 +1233,12 @@ def test_the_synthesis_session_title_is_filtered_back_out() -> None:
     OutcomeSynthesisService(runner).synthesize(one_scan())
 
     title = runner.calls[0]["title"]
-    assert is_iiwi_authored(
-        AgentSession(harness="opencode", session_id="x", title=title)
-    ), title
+    assert is_iiwi_authored(AgentSession(harness="opencode", session_id="x", title=title)), title
 
 
 def _corpus_evidence(words: list[str]) -> SessionEvidence:
     return SessionEvidence(
+        harness="test",
         session_id="ses-corpus",
         repository_id="repo-a",
         title="Session corpus",
@@ -1224,6 +1300,7 @@ def _weighted(
     repository_id: str = "repo-a",
 ) -> SessionEvidence:
     return SessionEvidence(
+        harness="test",
         session_id=session_id,
         repository_id=repository_id,
         title=title,

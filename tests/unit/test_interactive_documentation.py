@@ -5,10 +5,10 @@ def test_readmes_show_key_driven_bare_command_menu() -> None:
     for path in (Path("README.md"), Path("README.zh-TW.md")):
         text = path.read_text(encoding="utf-8")
         assert "↑↓ jk │ Enter Select" in text
-        assert "▶ Generate Report" in text
+        assert "▶ Review Activity" in text
         assert "═" in text
         assert "████" in text
-        assert "Browse Sessions" in text
+        assert "History" in text
         assert "Review sessions" in text
 
 
@@ -54,6 +54,16 @@ def test_quick_review_guide_states_scope_and_version_one_exclusions() -> None:
     assert "Brief" in guide and "Full" in guide
     assert "No persistent drafts" in guide
     assert "No manual merge" in guide
+
+
+def test_quick_review_guide_names_daily_as_the_persistent_exception() -> None:
+    guide = Path("docs/evidence-first-quick-review.md").read_text(encoding="utf-8")
+    normalized = guide.casefold()
+
+    assert "in-memory only" in normalized
+    assert "daily standup" in normalized
+    assert "same-day" in normalized
+    assert "persistent exception" in normalized
 
 
 def test_readme_distinguishes_transcript_reading_from_quick_review_synthesis() -> None:

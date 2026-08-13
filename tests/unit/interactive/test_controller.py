@@ -6,9 +6,11 @@ from io import StringIO
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
 from rich.console import Console
 
 from iiwi.errors import HarnessSourceError
+from iiwi.history import HistoryEntry, append_history
 from iiwi.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
@@ -74,7 +76,7 @@ def _console() -> Console:
         file=StringIO(),
         color_system=None,
         force_terminal=False,
-        width=100,
+        width=110,
     )
 
 
@@ -185,7 +187,7 @@ def _actions(
 
 def test_numeric_generate_then_back_returns_to_main_without_restarting() -> None:
     counters: dict[str, int] = {}
-    input_source = ScriptedInput([char("2"), char("b"), char("q")])
+    input_source = ScriptedInput([char("3"), char("b"), char("q")])
 
     run_interactive(
         actions=_actions(counters=counters),
@@ -240,7 +242,7 @@ def test_setup_detail_edit_does_not_require_a_scan() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     input_source = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
@@ -269,7 +271,7 @@ def test_harness_source_error_is_recoverable_by_changing_harness() -> None:
         raise HarnessSourceError("session store missing")
 
     input_source = ScriptedInput(
-        [char("2"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
+        [char("3"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
     )
 
     run_interactive(
@@ -285,7 +287,7 @@ def test_harness_source_error_is_recoverable_by_changing_harness() -> None:
 def test_zero_sessions_is_recoverable_by_changing_period() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("2"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
+        [char("3"), char("r"), KeyPress(key=Key.ENTER), char("b"), char("q")]
     )
 
     run_interactive(
@@ -335,7 +337,7 @@ def test_setup_g_enters_quick_review_then_generate_writes() -> None:
             sessions_by_repository={"repo-a": sessions},
         )
 
-    input_source = ScriptedInput([char("2"), char("g"), char("g"), char("q"), char("q")])
+    input_source = ScriptedInput([char("3"), char("g"), char("g"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=populated_scan, counters=counters),
@@ -351,7 +353,7 @@ def test_setup_edits_the_field_under_the_cursor() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     input_source = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
@@ -402,7 +404,7 @@ def test_setup_g_on_an_empty_scan_does_not_reach_the_result_screen() -> None:
             sessions_by_repository={},
         )
 
-    input_source = ScriptedInput([char("2"), char("g"), char("b"), char("q"), char("q")])
+    input_source = ScriptedInput([char("3"), char("g"), char("b"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=empty_scan, counters=counters),
@@ -452,7 +454,7 @@ def _setup_populated_scan(draft: ReportDraft) -> ScanResult:
 def test_setup_enter_on_the_action_row_enters_quick_review_then_generate_writes() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("2"), KeyPress(key=Key.ENTER), char("g"), char("q"), char("q")]
+        [char("3"), KeyPress(key=Key.ENTER), char("g"), char("q"), char("q")]
     )
 
     run_interactive(
@@ -468,7 +470,7 @@ def test_setup_enter_on_the_action_row_enters_quick_review_then_generate_writes(
 def test_setup_horizontal_keys_on_the_action_row_do_not_generate() -> None:
     counters: dict[str, int] = {}
     input_source = ScriptedInput(
-        [char("2"), char("l"), KeyPress(key=Key.RIGHT), char("q"), char("q")]
+        [char("3"), char("l"), KeyPress(key=Key.RIGHT), char("q"), char("q")]
     )
 
     run_interactive(
@@ -478,3 +480,190 @@ def test_setup_horizontal_keys_on_the_action_row_do_not_generate() -> None:
     )
 
     assert counters.get("generate") is None
+
+
+def _history_entry(output_path: str) -> HistoryEntry:
+    return HistoryEntry(
+        generated_at=datetime(2026, 8, 12, 9, 30, tzinfo=TZ),
+        harness="opencode",
+        since=datetime(2026, 8, 3, tzinfo=TZ),
+        until=datetime(2026, 8, 10, tzinfo=TZ),
+        output_path=Path(output_path),
+        repository_count=2,
+        session_count=7,
+        narrative=True,
+        detail="full",
+    )
+
+
+def test_main_menu_history_opens_and_returns(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    append_history(_history_entry("reports/worklog.md"))
+    console = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput([char("4"), char("b"), char("q")]),
+        console=console,
+    )
+
+    text = console.file.getvalue()
+    assert "Past Reports" in text
+    assert "No reports generated yet." not in text
+
+
+def test_history_enter_shows_the_recorded_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    append_history(_history_entry("reports/worklog.md"))
+    console = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            [char("4"), KeyPress(key=Key.ENTER), char("b"), char("b"), char("q")]
+        ),
+        console=console,
+    )
+
+    text = console.file.getvalue()
+    assert "Report path" in text
+    assert "reports/worklog.md" in text
+
+
+def test_history_enter_shows_the_cursor_row_not_the_first_row(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    append_history(_history_entry("reports/first.md"))
+    append_history(_history_entry("reports/second.md"))
+    console = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            [char("4"), char("j"), KeyPress(key=Key.ENTER), char("q"), char("q")]
+        ),
+        console=console,
+    )
+
+    text = console.file.getvalue()
+    # The history list rows truncate long absolute paths, so the only place
+    # a stored path appears in full is the path screen's detail. Newest
+    # first: index 0 is second.md, cursor moves to index 1 = first.md. The
+    # path screen must show the cursor's row.
+    first_title = text.index("Report path")
+    assert text.rindex("reports/first.md") > first_title
+    assert "reports/second.md" not in text
+
+
+def test_history_g_and_G_jump_follow_the_viewport(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    for index in range(20):
+        append_history(_history_entry(f"reports/{index}.md"))
+    console = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            [char("4"), char("G"), KeyPress(key=Key.ENTER), char("b"),
+             char("g"), KeyPress(key=Key.ENTER), char("b"), char("b"), char("q")]
+        ),
+        console=console,
+    )
+
+    text = console.file.getvalue()
+    # 20 entries exceed the test console's ~17-row viewport, so G clamps the
+    # offset; Enter on the bottom row shows the oldest entry, then g jumps
+    # back to the top and Enter shows the newest.
+    assert text.rindex("reports/0.md") > text.index("Report path")
+    assert text.rindex("reports/19.md") > text.rindex("reports/0.md")
+
+
+def test_history_empty_state_ignores_enter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    console = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput([char("4"), KeyPress(key=Key.ENTER), char("b"), char("q")]),
+        console=console,
+    )
+
+    text = console.file.getvalue()
+    assert "No reports generated yet." in text
+    assert "Report path" not in text
+
+
+def test_ctrl_c_on_history_returns_to_the_main_menu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    append_history(_history_entry("reports/worklog.md"))
+
+    class ScriptedWithInterrupt(ScriptedInput):
+        """Interrupt the read after the first key, then resume the script."""
+
+        def __init__(self, keys: list[KeyPress]) -> None:
+            super().__init__(keys)
+            self.pending_interrupt = True
+
+        def read_key(self) -> KeyPress:
+            if self.pending_interrupt:
+                self.pending_interrupt = False
+                return super().read_key()
+            raise KeyboardInterrupt
+
+    input_source = ScriptedWithInterrupt([char("4"), char("b"), char("q")])
+    console = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=input_source,
+        console=console,
+    )
+
+    text = console.file.getvalue()
+    # The interrupt lands on the second read (cursor on HISTORY after `3`).
+    # The idle-interrupt handler must return to MAIN, so the final frame is
+    # the main menu: "Past Reports" appears exactly once (the HISTORY screen
+    # never re-renders) and the output ends with the main menu's footer
+    # (`q Quit`), not the history screen's (`b Back`).
+    assert text.count("Past Reports") == 1
+    assert text.rstrip().endswith("q Quit")
+
+
+def test_history_q_and_escape_return_to_the_main_menu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    append_history(_history_entry("reports/worklog.md"))
+
+    console = _console()
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput([char("4"), char("q"), char("q")]),
+        console=console,
+    )
+    text = console.file.getvalue()
+    assert text.count("Past Reports") == 1
+    assert text.rstrip().endswith("q Quit")
+
+    console = _console()
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            [char("4"), KeyPress(key=Key.ESCAPE), char("q")]
+        ),
+        console=console,
+    )
+    text = console.file.getvalue()
+    assert text.count("Past Reports") == 1
+    assert text.rstrip().endswith("q Quit")

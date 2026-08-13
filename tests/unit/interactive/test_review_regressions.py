@@ -210,7 +210,7 @@ def test_non_opencode_sanitize_enter_stays_in_report_setup() -> None:
     console, _ = _console()
     keys = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             *[KeyPress(key=Key.DOWN) for _ in range(6)],
             KeyPress(key=Key.ENTER),
             char("r"),
@@ -303,7 +303,7 @@ def test_report_empty_state_says_configuration_exclusion() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     counters: dict[str, int] = {}
     console, stream = _console()
-    keys = ScriptedInput([char("2"), char("r"), char("b"), char("q"), char("q")])
+    keys = ScriptedInput([char("3"), char("r"), char("b"), char("q"), char("q")])
 
     run_interactive(
         actions=_actions(
@@ -343,7 +343,7 @@ def test_preview_action_can_preview_generated_report_content() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             KeyPress(key=Key.ENTER),
             char("p"),
             char("b"),
@@ -394,7 +394,7 @@ def test_review_back_and_reenter_preserves_repository_expansion() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             char("r"),
             KeyPress(key=Key.ENTER),
             char("b"),
