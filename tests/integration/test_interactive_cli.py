@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from datetime import datetime
+from dataclasses import replace
+from datetime import date, datetime
 from io import StringIO
 from pathlib import Path
 from typing import cast
@@ -20,7 +21,8 @@ from iiwi.interactive.controller import (
     run_interactive,
 )
 from iiwi.interactive.input import Key, KeyPress
-from iiwi.interactive.models import ReportDraft
+from iiwi.interactive.models import ReportDraft, Screen
+from iiwi.models.daily import DailyStandupDraft
 from iiwi.models.outcome import (
     Outcome,
     OutcomeBucket,
@@ -248,6 +250,37 @@ def test_bare_real_tty_dispatches_key_driven_controller(
     assert called[0]["input_source"] is fake_input
     assert called[0]["actions"] is not None
     assert called[0]["console"] is not None
+
+
+def test_direct_daily_initial_screen_refreshes_before_the_first_frame(tmp_path: Path) -> None:
+    daily = DailyStandupDraft(
+        standup_date=date(2026, 8, 13),
+        scan_since=datetime(2026, 8, 12, tzinfo=TZ),
+        scan_until=datetime(2026, 8, 13, 10, tzinfo=TZ),
+    )
+    starts: list[DailyStandupDraft | None] = []
+    actions = _quick_review_actions(
+        draft=ReportDraft(harness="opencode", period=_period()),
+        scan=_scan(),
+        payload={"outcomes": []},
+        output_path=tmp_path / "unused.md",
+        review_calls=[],
+    )
+
+    def start(previous: DailyStandupDraft | None) -> DailyStandupDraft:
+        starts.append(previous)
+        return daily
+
+    stream = StringIO()
+    run_interactive(
+        actions=replace(actions, start_daily=start),
+        input_source=ScriptedInput([char("q"), char("q")]),
+        console=Console(file=stream, color_system=None, force_terminal=False),
+        initial_screen=Screen.DAILY_REVIEW,
+    )
+
+    assert starts == [None]
+    assert "Daily Standup" in stream.getvalue()
 
 
 def test_bare_command_runs_generate_select_result_main_quit_flow(

@@ -2009,10 +2009,13 @@ def run_interactive(
     actions: InteractiveActions,
     input_source: KeySource,
     console: Console,
+    initial_screen: Screen = Screen.MAIN,
 ) -> None:
     """Run the terminal interaction until the user explicitly leaves it."""
 
-    state = _State()
+    state = _State(screen=initial_screen)
+    if initial_screen is Screen.DAILY_REVIEW:
+        _begin_daily_review(state, actions)
     previous_frame: list[str] | None = None
     while state.screen is not Screen.EXIT:
         previous_frame = _render(state, console, previous_frame)

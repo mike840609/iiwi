@@ -37,6 +37,7 @@ from iiwi.history import (
 from iiwi.interactive.cli_actions import build_interactive_actions
 from iiwi.interactive.controller import run_interactive
 from iiwi.interactive.input import TerminalInput
+from iiwi.interactive.models import Screen
 from iiwi.json_output import doctor_result_to_json, scan_result_to_json
 from iiwi.logging import ConsoleReporter
 from iiwi.models.time_range import DateRange
@@ -1032,6 +1033,25 @@ def _ask_output_path(settings: AppSettings, period: DateRange) -> tuple[Path, bo
     path = Path(answer).expanduser() if answer else default
     force = _ask_yes(f"{path} exists — overwrite?", default=False) if path.exists() else False
     return path, force
+
+
+@app.command()
+def daily() -> None:
+    """Draft a standup with yesterday, today and blockers from all enabled coding agents."""
+
+    reporter = ConsoleReporter()
+    try:
+        _require_a_terminal(
+            "daily needs a terminal; run `iiwi daily` from an interactive terminal"
+        )
+        run_interactive(
+            actions=build_interactive_actions(),
+            input_source=TerminalInput(),
+            console=reporter.console,
+            initial_screen=Screen.DAILY_REVIEW,
+        )
+    except ConfigurationError as exc:
+        _handle_expected_error(exc, code=3)
 
 
 @app.command()

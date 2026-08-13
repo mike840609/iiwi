@@ -14,7 +14,12 @@ from uuid import uuid4
 import typer
 
 from iiwi import config_store
-from iiwi.errors import OutcomeSynthesisError
+from iiwi.daily_state import load_daily_draft, save_daily_draft
+from iiwi.errors import (
+    DailySourceUnavailableError,
+    IiwiError,
+    OutcomeSynthesisError,
+)
 from iiwi.history import HistoryEntry, HistoryKind, append_history
 from iiwi.interactive.controller import (
     InteractiveActions,
@@ -22,6 +27,7 @@ from iiwi.interactive.controller import (
 )
 from iiwi.interactive.models import ReportDraft
 from iiwi.logging import ConsoleReporter
+from iiwi.models.daily import DailySection, DailyStandupDraft
 from iiwi.models.outcome import (
     Outcome,
     OutcomeOrigin,
@@ -33,9 +39,21 @@ from iiwi.models.time_range import DateRange
 from iiwi.process import CommandRunner
 from iiwi.progress import ProgressStage
 from iiwi.security.redactor import redact_text
+from iiwi.services.daily_reconcile import reconcile_daily_draft
+from iiwi.services.daily_report import (
+    DailyReportResult,
+    DailyReportService,
+    daily_output_path,
+)
+from iiwi.services.daily_scan import DailyScanCoordinator, DailyWindow
+from iiwi.services.daily_workflow import DailyWorkflowService
 from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.scan import ScanResult
 from iiwi.summarizers.opencode_run import OpenCodeRunError, OpenCodeRunner
+
+_ALL_DAILY_SOURCES_UNAVAILABLE_WARNING = (
+    "All Daily Standup activity sources are unavailable."
+)
 
 
 def _new_draft() -> ReportDraft:
@@ -412,6 +430,169 @@ def _exclude_repository(repository_id: str, display_name: str) -> str:
     )
 
 
+class _DailyOpenCodeRunner(OpenCodeRunner):
+    """Translate the model runner's operational error into the workflow boundary."""
+
+    def __init__(self, delegate: OpenCodeRunner) -> None:
+        self._delegate = delegate
+
+    def run(
+        self,
+        *,
+        transcript: str,
+        prompt: str,
+        title: str,
+    ) -> str:
+        try:
+            return self._delegate.run(
+                transcript=transcript,
+                prompt=prompt,
+                title=title,
+            )
+        except (OpenCodeRunError, OSError) as exc:
+            raise OutcomeSynthesisError(str(exc)) from exc
+
+
+def _start_daily(previous: DailyStandupDraft | None) -> DailyStandupDraft:
+    """Refresh Daily through the date-bound workflow service."""
+
+    from iiwi import cli
+
+    settings = cli._load_settings()
+    cli_settings = settings.harnesses.opencode.cli
+    runner = _DailyOpenCodeRunner(
+        OpenCodeRunner(
+            runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
+            executable=cli_settings.executable,
+            model=cli_settings.model,
+        )
+    )
+    outcome_service = OutcomeSynthesisService(
+        runner,
+        max_evidence_bytes=settings.report.quick_review_max_evidence_bytes,
+    )
+    reporter = ConsoleReporter()
+    with reporter.progress() as progress:
+
+        def scan_coordinator(window: DailyWindow) -> DailyScanCoordinator:
+            period = window.period
+            scanners = {
+                harness.value: cli._build_scan_service(
+                    settings,
+                    period,
+                    False,
+                    harness=harness,
+                    sanitize=cli._effective_sanitize(settings, harness, None),
+                    progress=progress,
+                )
+                for harness in cli._enabled_harnesses(settings)
+            }
+            return DailyScanCoordinator(window=window, scanners=scanners)
+
+        workflow = DailyWorkflowService(
+            scan_coordinator_factory=scan_coordinator,
+            outcome_service=outcome_service,
+            now_factory=lambda: cli._now_in_timezone(settings.report.timezone),
+        )
+        return workflow.refresh(previous)
+
+
+def _continue_daily_empty(
+    error: DailySourceUnavailableError,
+    previous: DailyStandupDraft | None,
+) -> DailyStandupDraft:
+    """Continue review with no fresh activity while preserving the failed window."""
+
+    state_warning: str | None = None
+    if previous is None or previous.standup_date != error.standup_date:
+        loaded = load_daily_draft(error.standup_date)
+        previous = loaded.draft
+        state_warning = loaded.warning
+    empty_fresh = DailyStandupDraft(
+        standup_date=error.standup_date,
+        scan_since=error.since,
+        scan_until=error.until,
+        successful_harnesses=[],
+        unavailable_harnesses=list(error.unavailable_harnesses),
+        coverage_warnings=[_ALL_DAILY_SOURCES_UNAVAILABLE_WARNING],
+    )
+    if state_warning is not None:
+        empty_fresh.warnings.append(state_warning)
+    return reconcile_daily_draft(previous, empty_fresh)
+
+
+def _persist_daily(draft: DailyStandupDraft) -> str | None:
+    """Save review state, returning a visible TUI warning on bookkeeping failure."""
+
+    try:
+        save_daily_draft(draft)
+    except (OSError, IiwiError):
+        return "Could not save Daily Standup review state."
+    return None
+
+
+def _daily_report_result(result: DailyReportResult) -> InteractiveReportResult:
+    return InteractiveReportResult(
+        output_path=result.output_path,
+        content=result.content,
+        repository_count=result.repository_count,
+        session_count=result.session_count,
+    )
+
+
+def _preview_daily(draft: DailyStandupDraft) -> InteractiveReportResult:
+    """Render the existing Daily review without refreshing or writing it."""
+
+    return _daily_report_result(DailyReportService().preview(draft))
+
+
+def _generate_daily(draft: DailyStandupDraft) -> InteractiveReportResult:
+    """Write the reviewed Daily artifact, then its state and history bookkeeping."""
+
+    from iiwi import cli
+
+    settings = cli._load_settings()
+    output_path = daily_output_path(
+        settings.report.output_directory,
+        draft.standup_date,
+    )
+    result = DailyReportService().generate(draft, output_path=output_path)
+
+    with contextlib.suppress(OSError, IiwiError):
+        save_daily_draft(draft)
+
+    now = cli._now_in_timezone(settings.report.timezone)
+    with contextlib.suppress(OSError):
+        append_history(
+            HistoryEntry(
+                generated_at=now,
+                since=draft.scan_since,
+                until=draft.scan_until,
+                output_path=output_path,
+                repository_count=draft.repository_count,
+                session_count=draft.session_count,
+                kind=HistoryKind.DAILY_STANDUP,
+                harnesses=tuple(draft.successful_harnesses),
+                unavailable_harnesses=tuple(draft.unavailable_harnesses),
+            )
+        )
+    return _daily_report_result(result)
+
+
+def _edit_daily_statement(statement: str) -> str | None:
+    edited = typer.prompt("Statement", default=statement).strip()
+    return edited or None
+
+
+def _add_daily_statement(section: DailySection) -> str | None:
+    statement = typer.prompt(
+        f"Add to {section.value}",
+        default="",
+        show_default=False,
+    ).strip()
+    return statement or None
+
+
 def build_interactive_actions() -> InteractiveActions:
     """Build the controller callbacks from the CLI's existing service seams."""
 
@@ -431,4 +612,11 @@ def build_interactive_actions() -> InteractiveActions:
         restore_selection=_restore_selection,
         save_selection=_save_selection,
         exclude_repository=_exclude_repository,
+        start_daily=_start_daily,
+        continue_daily_empty=_continue_daily_empty,
+        persist_daily=_persist_daily,
+        preview_daily=_preview_daily,
+        generate_daily=_generate_daily,
+        edit_daily_statement=_edit_daily_statement,
+        add_daily_statement=_add_daily_statement,
     )
