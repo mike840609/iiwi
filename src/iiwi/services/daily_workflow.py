@@ -45,7 +45,11 @@ class DailyWorkflowService:
             state_warning = loaded.warning
 
         daily_scan = self._scan_coordinator_factory(window).scan()
-        if not daily_scan.scan.resolved_sessions:
+        has_activity = any(
+            resolved.session.activities
+            for resolved in daily_scan.scan.resolved_sessions
+        )
+        if not has_activity:
             fresh = project_daily_standup(daily_scan=daily_scan, outcomes=[])
         else:
             try:

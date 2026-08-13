@@ -28,22 +28,31 @@ TZ = ZoneInfo("Asia/Taipei")
 NOW = datetime(2026, 8, 13, 10, 0, tzinfo=TZ)
 
 
-def _daily_scan(window: DailyWindow, *, activity: bool) -> DailyScanResult:
+def _daily_scan(
+    window: DailyWindow,
+    *,
+    activity: bool,
+    metadata_only: bool = False,
+) -> DailyScanResult:
     resolved: list[ResolvedSession] = []
     repositories: dict[str, list[ResolvedSession]] = {}
-    if activity:
+    if activity or metadata_only:
         session = ResolvedSession(
             session=AgentSession(
                 harness="codex",
                 session_id="session-1",
-                activities=[
-                    SessionActivity(
-                        activity_id="activity-1",
-                        activity_type=ActivityType.FILE_CHANGE,
-                        timestamp=datetime(2026, 8, 13, 9, 0, tzinfo=TZ),
-                        content="src/iiwi/services/daily_workflow.py",
-                    )
-                ],
+                activities=(
+                    [
+                        SessionActivity(
+                            activity_id="activity-1",
+                            activity_type=ActivityType.FILE_CHANGE,
+                            timestamp=datetime(2026, 8, 13, 9, 0, tzinfo=TZ),
+                            content="src/iiwi/services/daily_workflow.py",
+                        )
+                    ]
+                    if activity
+                    else []
+                ),
             ),
             repository=RepositoryIdentity(
                 repository_id="repo-a",
@@ -96,16 +105,22 @@ class _Coordinator:
         window: DailyWindow,
         *,
         activity: bool,
+        metadata_only: bool = False,
         error: DailySourceUnavailableError | None = None,
     ) -> None:
         self.window = window
         self.activity = activity
+        self.metadata_only = metadata_only
         self.error = error
 
     def scan(self) -> DailyScanResult:
         if self.error is not None:
             raise self.error
-        return _daily_scan(self.window, activity=self.activity)
+        return _daily_scan(
+            self.window,
+            activity=self.activity,
+            metadata_only=self.metadata_only,
+        )
 
 
 class _Outcomes:
@@ -128,12 +143,14 @@ def _service(
     now_factory,
     outcomes: _Outcomes,
     activity: bool = True,
+    metadata_only: bool = False,
     source_error: DailySourceUnavailableError | None = None,
 ) -> DailyWorkflowService:
     return DailyWorkflowService(
         scan_coordinator_factory=lambda window: _Coordinator(
             window,
             activity=activity,
+            metadata_only=metadata_only,
             error=source_error,
         ),
         outcome_service=outcomes,  # type: ignore[arg-type]
@@ -191,6 +208,25 @@ def test_refresh_bypasses_synthesis_for_a_successful_zero_activity_scan() -> Non
     assert outcomes.calls == []
     assert draft.work_items == []
     assert draft.fallback is False
+
+
+def test_refresh_bypasses_synthesis_for_a_metadata_only_resolved_session() -> None:
+    outcomes = _Outcomes(error=OutcomeSynthesisError("must not synthesize"))
+
+    draft = _service(
+        now_factory=lambda: NOW,
+        outcomes=outcomes,
+        activity=False,
+        metadata_only=True,
+    ).refresh()
+
+    assert outcomes.calls == []
+    assert draft.fallback is False
+    assert draft.work_items == []
+    assert draft.repository_count == 1
+    assert draft.session_count == 1
+    assert draft.successful_harnesses == ["codex"]
+    assert draft.unavailable_harnesses == ["claude-code"]
 
 
 def test_refresh_uses_deterministic_fallback_on_outcome_synthesis_error() -> None:
