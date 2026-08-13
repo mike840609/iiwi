@@ -180,6 +180,25 @@ def test_outcome_review_header_includes_the_reporting_period() -> None:
     assert "Aug 10" in stream.getvalue()
 
 
+def test_outcome_review_redacts_raw_durable_provenance_before_display() -> None:
+    review = _review()
+    review.outcomes[0].evidence_refs[0].repository_id = "token=repository-secret"
+    review.outcomes[0].evidence_refs[0].session_id = "token=session-secret"
+    console, stream = _console(height=50)
+
+    render.render_outcome_review(
+        console,
+        review,
+        cursor=1,
+        expanded_evidence={"primary-a"},
+    )
+
+    text = stream.getvalue()
+    assert "repository-secret" not in text
+    assert "session-secret" not in text
+    assert text.count("[REDACTED]") >= 2
+
+
 def test_only_the_focused_outcome_expands_beyond_one_display_line() -> None:
     console, stream = _console()
 

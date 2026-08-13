@@ -151,7 +151,6 @@ def _actions(counters: dict[str, int]) -> InteractiveActions:
         edit_gap=lambda label, current: current,
         save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
-        edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
         save_selection=lambda harness, period, include_subagents, selected: None,
         exclude_repository=lambda repository_id, display_name: "excluded",
@@ -169,6 +168,7 @@ def test_setup_quick_review_can_generate_from_the_same_activity_tree() -> None:
     )
     input_source = ScriptedInput(
         [
+            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("g"),

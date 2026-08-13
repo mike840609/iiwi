@@ -209,7 +209,6 @@ def _actions(
         edit_gap=lambda label, current: current,
         save_report_type=lambda report_type: None,
         doctor=lambda harness: [],
-        edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
         save_selection=lambda harness, period, include_subagents, selected: None,
         exclude_repository=lambda repository_id, display_name: "excluded",
@@ -262,7 +261,7 @@ def _run(
 
 
 def _open_review_keys() -> list[KeyPress]:
-    return [char("2"), char("r"), char("g")]
+    return [char("3"), char("r"), char("g")]
 
 
 def test_synthesis_retry_reuses_filtered_scan_and_opens_quick_review() -> None:

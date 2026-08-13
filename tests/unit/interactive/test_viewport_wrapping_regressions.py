@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from io import StringIO
 from zoneinfo import ZoneInfo
 
@@ -13,6 +13,12 @@ from iiwi.interactive.render import (
     render_session_review,
 )
 from iiwi.interactive.selection import SelectionState
+from iiwi.models.daily import (
+    DailySectionItem,
+    DailyStandupDraft,
+    DailyStandupWorkItem,
+    DailyStatementSource,
+)
 from iiwi.models.outcome import (
     EvidenceRef,
     Outcome,
@@ -91,6 +97,98 @@ def _scan(count: int, *, long_titles: bool = False) -> ScanResult:
 
 def _display_lines(stream: StringIO) -> list[str]:
     return stream.getvalue().splitlines()
+
+
+def _long_daily_review() -> DailyStandupDraft:
+    return DailyStandupDraft(
+        standup_date=date(2026, 8, 13),
+        scan_since=_period().since,
+        scan_until=_period().until,
+        fallback=True,
+        work_items=[
+            DailyStandupWorkItem(
+                id=f"daily-{index}",
+                repository_ids=["very-long-repository-name-" * 5],
+                today=DailySectionItem(
+                    statement=f"Daily {index}\n\n" + "very-long-statement-" * 12,
+                    source=DailyStatementSource.ACTIVITY_TODAY,
+                    rank=index,
+                    new_activity=True,
+                    evidence_refs=[
+                        EvidenceRef(
+                            harness="codex",
+                            session_id="very-long-session-id-" * 8,
+                            repository_id="very-long-repository-name-" * 5,
+                            commit="deadbeef" * 8,
+                            file="deeply-nested-directory/" * 8 + "daily.py",
+                        )
+                    ],
+                ),
+            )
+            for index in range(12)
+        ],
+    )
+
+
+def test_daily_review_narrow_short_viewport_keeps_focus_and_hints_visible() -> None:
+    review = _long_daily_review()
+    rows = render.visible_daily_review_rows(review, set())
+
+    for width in (40, 60):
+        for height in (14, 16, 20):
+            for cursor in (0, len(rows) // 2, len(rows) - 1):
+                console, stream = _console(width=width, height=height)
+                render.render_daily_review(
+                    console,
+                    review,
+                    cursor=cursor,
+                    expanded={"daily-5"},
+                )
+                lines = _display_lines(stream)
+                assert len(lines) <= height - 1, (width, height, cursor)
+                assert any("▶" in line for line in lines), (width, height, cursor)
+                assert any(
+                    "p Preview" in line or "g Generate" in line for line in lines
+                ), (width, height, cursor)
+                assert all(len(line) <= width for line in lines), (width, height, cursor)
+
+
+def test_daily_review_many_warnings_stay_within_the_viewport_budget() -> None:
+    """A scan across three harnesses emits one warning per unusable session.
+
+    Twenty-five is an ordinary day, and every one of them used to print, so the
+    frame overflowed the terminal no matter what the body capacity clamped to.
+    """
+
+    review = _long_daily_review()
+    review.coverage_warnings = ["Codex activity could not be loaded."]
+    review.warnings = [f"Session {index} has no timestamps." for index in range(25)]
+
+    for height in (14, 20, 24):
+        console, stream = _console(width=80, height=height)
+        render.render_daily_review(console, review, cursor=0, expanded=set())
+        lines = _display_lines(stream)
+        assert len(lines) <= height - 1, height
+        # The harness outage is the one warning that must never be collapsed.
+        assert any("Codex activity could not be loaded." in line for line in lines)
+        assert any("more warning(s) not shown" in line for line in lines)
+
+
+def test_daily_summary_collapses_newlines_and_uses_ellipsis_instead_of_wrapping() -> None:
+    console, stream = _console(width=40, height=20)
+
+    render.render_daily_review(
+        console,
+        _long_daily_review(),
+        cursor=2,
+        expanded=set(),
+    )
+
+    statement_lines = [
+        line for line in _display_lines(stream) if "Daily 0" in line
+    ]
+    assert len(statement_lines) == 1
+    assert "…" in statement_lines[0]
 
 
 def test_session_review_long_titles_do_not_exceed_terminal_display_budget() -> None:

@@ -5,8 +5,10 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from iiwi.models.outcome import EvidenceRef
 from iiwi.models.report import WorklogReport
 from iiwi.models.report_options import DetailLevel, ReportType
+from iiwi.security.redactor import redact_text
 
 # The renderer is the report's only truncation point. Both summarizers now emit
 # complete lists, so the omitted-item count is always the real remainder.
@@ -42,6 +44,25 @@ def _is_setext_underline(value: str) -> bool:
     """Return whether a stripped line is a Setext heading underline."""
 
     return bool(re.fullmatch(r"(?:={3,}|-{3,})", value.strip()))
+
+
+def _redacted_reference(reference: EvidenceRef) -> EvidenceRef:
+    """Redact the four evidence fields the outcomes template writes verbatim.
+
+    EvidenceRef carries raw provenance on purpose: reconciliation matches on it
+    and it never leaves the machine. `outcomes.md.j2` is where it becomes a
+    written artifact, so the redaction the rest of the pipeline applies has to
+    be applied here too — this is the last point before the file is written.
+    """
+
+    return reference.model_copy(
+        update={
+            "session_id": redact_text(reference.session_id),
+            "repository_id": redact_text(reference.repository_id),
+            "commit": redact_text(reference.commit) if reference.commit else None,
+            "file": redact_text(reference.file) if reference.file else None,
+        }
+    )
 
 
 class MarkdownRenderer:
@@ -98,7 +119,10 @@ class MarkdownRenderer:
             if not outcome.included:
                 continue
             for reference in outcome.evidence_refs:
-                evidence_by_repository.setdefault(reference.repository_id, []).append(reference)
+                displayed = _redacted_reference(reference)
+                evidence_by_repository.setdefault(displayed.repository_id, []).append(
+                    displayed
+                )
         output = self._outcomes_template.render(
             report=report,
             report_type=report.report_type or ReportType.ENGINEERING,

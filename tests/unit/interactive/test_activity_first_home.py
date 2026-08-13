@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import date, datetime
 from io import StringIO
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -16,6 +16,7 @@ from iiwi.interactive.controller import (
 from iiwi.interactive.input import KeyPress
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.render import render_main_menu
+from iiwi.models.daily import DailyStandupDraft
 from iiwi.models.outcome import OutcomeReviewDraft
 from iiwi.models.repository import (
     RepositoryIdentity,
@@ -121,6 +122,14 @@ def _actions(counters: dict[str, int]) -> InteractiveActions:
             session_count=scan_value.loaded_session_count,
         )
 
+    def start_daily(previous: DailyStandupDraft | None) -> DailyStandupDraft:
+        count("daily")
+        return previous or DailyStandupDraft(
+            standup_date=date(2026, 8, 13),
+            scan_since=_period().since,
+            scan_until=_period().until,
+        )
+
     return InteractiveActions(
         new_draft=new_draft,
         choose_harness=lambda current: current,
@@ -138,10 +147,10 @@ def _actions(counters: dict[str, int]) -> InteractiveActions:
         edit_gap=lambda label, current: current,
         save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
-        edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
         save_selection=lambda harness, period, include_subagents, selected: None,
         exclude_repository=lambda repository_id, display_name: "excluded",
+        start_daily=start_daily,
     )
 
 
@@ -153,7 +162,9 @@ def test_main_menu_leads_with_review_activity() -> None:
     text = stream.getvalue()
     assert "See what your agent did" in text
     assert "▶ Review Activity" in text
-    assert text.index("Review Activity") < text.index("Generate Report")
+    assert "Draft yesterday, today and blockers" in text
+    assert text.index("Review Activity") < text.index("Daily Standup")
+    assert text.index("Daily Standup") < text.index("Generate Report")
 
 
 def test_shortcut_one_opens_activity_instead_of_report_setup() -> None:
@@ -169,13 +180,28 @@ def test_shortcut_one_opens_activity_instead_of_report_setup() -> None:
     assert counters.get("scan", 0) == 1
 
 
-def test_shortcut_two_opens_report_setup_without_scanning() -> None:
+def test_shortcut_two_opens_daily_standup_without_ordinary_scanning() -> None:
     counters: dict[str, int] = {}
     console, _ = _console()
 
     run_interactive(
         actions=_actions(counters),
         input_source=ScriptedInput([char("2"), char("b"), char("q")]),
+        console=console,
+    )
+
+    assert counters.get("daily", 0) == 1
+    assert counters.get("draft", 0) == 0
+    assert counters.get("scan", 0) == 0
+
+
+def test_shortcut_three_opens_report_setup_without_scanning() -> None:
+    counters: dict[str, int] = {}
+    console, _ = _console()
+
+    run_interactive(
+        actions=_actions(counters),
+        input_source=ScriptedInput([char("3"), char("b"), char("q")]),
         console=console,
     )
 

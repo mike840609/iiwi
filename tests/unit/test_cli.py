@@ -14,6 +14,45 @@ def test_help_lists_core_commands() -> None:
     assert "doctor" in result.stdout
     assert "scan" in result.stdout
     assert "report" in result.stdout
+    assert "daily" in result.stdout
+
+
+def test_daily_help_describes_standup_without_report_selection_options() -> None:
+    result = runner.invoke(app, ["daily", "--help"])
+
+    assert result.exit_code == 0
+    assert "standup" in result.stdout.casefold()
+    for prohibited in ("--harness", "--period", "--days", "--no-review"):
+        assert prohibited not in result.stdout
+
+
+def test_daily_refuses_non_terminal_input(monkeypatch) -> None:
+    import iiwi.cli as cli
+
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: False)
+
+    result = CliRunner().invoke(cli.app, ["daily"])
+
+    assert result.exit_code == 3
+    assert "daily needs a terminal" in result.stdout.casefold()
+
+
+def test_daily_dispatches_directly_to_the_daily_review_screen(monkeypatch) -> None:
+    import iiwi.cli as cli
+    from iiwi.interactive.models import Screen
+
+    captured: dict[str, object] = {}
+    fake_input = object()
+    monkeypatch.setattr(cli, "_stdin_is_a_terminal", lambda: True)
+    monkeypatch.setattr(cli, "TerminalInput", lambda: fake_input)
+    monkeypatch.setattr(cli, "build_interactive_actions", lambda: object())
+    monkeypatch.setattr(cli, "run_interactive", lambda **kwargs: captured.update(kwargs))
+
+    result = CliRunner().invoke(cli.app, ["daily"])
+
+    assert result.exit_code == 0
+    assert captured["input_source"] is fake_input
+    assert captured["initial_screen"] is Screen.DAILY_REVIEW
 
 
 def test_scan_rejects_an_unknown_harness() -> None:
@@ -548,7 +587,7 @@ def test_history_json_flag_emits_entries(monkeypatch, tmp_path) -> None:
     assert payload[0]["repository_count"] == 2
     assert payload[0]["session_count"] == 10
     assert payload[0]["narrative"] is True
-    assert payload[0]["output_path"] == "reports/worklog.md"
+    assert payload[0]["output_path"] == str(Path("reports/worklog.md").resolve())
 
 
 def test_history_emits_json_automatically_when_piped(monkeypatch, tmp_path) -> None:

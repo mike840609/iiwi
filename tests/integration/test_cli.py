@@ -1,4 +1,5 @@
 import inspect
+import json
 import os
 import sys
 from datetime import datetime, timedelta
@@ -13,9 +14,10 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 import iiwi.cli as cli
+import iiwi.history as history_module
 from iiwi import config_store
 from iiwi.errors import ConfigurationError, ReportOutputError
-from iiwi.history import read_history
+from iiwi.history import HistoryEntry, append_history, read_history
 from iiwi.models.report import RepositorySummary, WorklogReport
 from iiwi.models.time_range import DateRange
 from iiwi.progress import NullProgressReporter, ProgressStage
@@ -62,6 +64,66 @@ def fixed_now(monkeypatch: pytest.MonkeyPatch) -> None:
         "_now_in_timezone",
         lambda timezone: datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
     )
+
+
+def test_history_json_normalizes_legacy_reports_and_daily_standups(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "history.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-08-12T09:00:00+08:00",
+                "harness": "opencode",
+                "since": "2026-08-11T00:00:00+08:00",
+                "until": "2026-08-12T00:00:00+08:00",
+                "output_path": "reports/legacy.md",
+                "repository_count": 2,
+                "session_count": 5,
+                "narrative": True,
+                "detail": "full",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    append_history(
+        HistoryEntry(
+            generated_at=datetime(2026, 8, 13, 9, 0, tzinfo=TZ),
+            since=datetime(2026, 8, 12, tzinfo=TZ),
+            until=datetime(2026, 8, 13, tzinfo=TZ),
+            output_path=Path("reports/daily.md"),
+            repository_count=3,
+            session_count=8,
+            kind=history_module.HistoryKind.DAILY_STANDUP,
+            harnesses=("opencode", "codex"),
+            unavailable_harnesses=("claude-code",),
+        ),
+        path=path,
+    )
+
+    result = runner.invoke(cli.app, ["history", "--json"])
+
+    assert result.exit_code == 0, result.stdout
+    daily, legacy = json.loads(result.stdout)
+    assert {
+        "kind": daily["kind"],
+        "harnesses": daily["harnesses"],
+        "unavailable_harnesses": daily["unavailable_harnesses"],
+    } == {
+        "kind": "daily_standup",
+        "harnesses": ["opencode", "codex"],
+        "unavailable_harnesses": ["claude-code"],
+    }
+    assert {
+        "kind": legacy["kind"],
+        "harnesses": legacy["harnesses"],
+        "unavailable_harnesses": legacy["unavailable_harnesses"],
+    } == {
+        "kind": "report",
+        "harnesses": ["opencode"],
+        "unavailable_harnesses": [],
+    }
 
 
 def test_report_refuses_overwrite_without_force(

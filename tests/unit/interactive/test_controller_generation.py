@@ -170,7 +170,6 @@ def _actions(
         edit_gap=lambda label, current: current,
         save_report_type=lambda report_type: None,
         doctor=lambda harness: [],
-        edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
         save_selection=lambda harness, period, include_subagents, selected: None,
         exclude_repository=lambda repository_id, display_name: "excluded",
@@ -184,7 +183,7 @@ def test_repository_and_individual_toggles_filter_generation_without_rescan() ->
     console, _ = _console()
     keys = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             char("r"),
             KeyPress(key=Key.SPACE),
             KeyPress(key=Key.ENTER),
@@ -224,7 +223,7 @@ def test_zero_selection_blocks_generate_until_sessions_are_selected() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             char("r"),
             char("n"),
             char("g"),
@@ -268,7 +267,7 @@ def test_existing_output_requires_explicit_overwrite_once() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             char("r"),
             char("g"),
             char("g"),
@@ -300,7 +299,7 @@ def test_generate_another_preserves_options_but_clears_scan_and_selection() -> N
     console, _ = _console()
     keys = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             char("r"),
             char("g"),
             char("g"),
@@ -333,7 +332,7 @@ def test_result_print_path_action_keeps_result_screen_active() -> None:
     console, stream = _console()
     keys = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             char("r"),
             char("g"),
             char("g"),

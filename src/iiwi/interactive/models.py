@@ -20,10 +20,14 @@ class Screen(StrEnum):
     SESSION_REVIEW = "session_review"
     SESSION_PREVIEW = "session_preview"
     OUTCOME_REVIEW = "outcome_review"
+    DAILY_REVIEW = "daily_review"
+    DAILY_RESULT = "daily_result"
     REPORT_RESULT = "report_result"
     REPORT_PREVIEW = "report_preview"
     RECOVERABLE_ERROR = "recoverable_error"
     HELP = "help"
+    HISTORY = "history"
+    SETTINGS = "settings"
     EXIT = "exit"
 
 

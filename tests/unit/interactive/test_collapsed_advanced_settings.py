@@ -158,7 +158,6 @@ def _actions(
         edit_gap=lambda label, current: current,
         save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
-        edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: {"ses-1"},
         save_selection=lambda harness, period, include_subagents, selected: None,
         exclude_repository=lambda repository_id, display_name: "excluded",
@@ -222,7 +221,7 @@ def test_enter_on_advanced_settings_expands_instead_of_editing_detail() -> None:
     console, _ = _console()
     input_source = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
             KeyPress(key=Key.DOWN),
@@ -248,7 +247,7 @@ def test_preview_report_runs_as_dry_run_from_quick_review() -> None:
     console, stream = _console()
     input_source = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             KeyPress(key=Key.ENTER),
             char("p"),
             char("b"),
@@ -276,7 +275,7 @@ def test_generate_report_forces_real_output_mode() -> None:
     console, _ = _console()
     input_source = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             KeyPress(key=Key.ENTER),
             char("g"),
             char("q"),

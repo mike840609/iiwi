@@ -29,6 +29,8 @@ class OutcomeBucket(StrEnum):
 class EvidenceRef(BaseModel):
     session_id: str
     repository_id: str
+    harness: str | None = None
+    activity_ids: list[str] = Field(default_factory=list)
     commit: str | None = None
     file: str | None = None
 
@@ -79,10 +81,7 @@ class OutcomeReviewDraft(BaseModel):
     def apply_type_default(self) -> OutcomeReviewDraft:
         if self.detail is None:
             self.detail = self.default_detail(self.report_type)
-        elif (
-            "detail" in self.model_fields_set
-            and "detail_overridden" not in self.model_fields_set
-        ):
+        elif "detail" in self.model_fields_set and "detail_overridden" not in self.model_fields_set:
             self.detail_overridden = True
         self._normalize_ranks()
         return self
@@ -119,11 +118,7 @@ class OutcomeReviewDraft(BaseModel):
 
         outcome = self._outcome(identifier)
         siblings = [item for item in self.ordered() if item.bucket is outcome.bucket]
-        index = next(
-            position
-            for position, item in enumerate(siblings)
-            if item.id == identifier
-        )
+        index = next(position for position, item in enumerate(siblings) if item.id == identifier)
         target = index + delta
         if not 0 <= target < len(siblings):
             return

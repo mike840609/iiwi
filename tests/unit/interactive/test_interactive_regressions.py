@@ -162,7 +162,6 @@ def _actions(
         edit_gap=lambda label, current: current,
         save_report_type=lambda report_type: None,
         doctor=lambda harness: [f"{harness}: ok"],
-        edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
         save_selection=lambda harness, period, include_subagents, selected: None,
         exclude_repository=lambda repository_id, display_name: "excluded",
@@ -203,7 +202,7 @@ def test_recoverable_error_keeps_actions_inside_viewport_with_long_detail() -> N
 def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
     console, main_stream = _console(width=30, height=30)
     interactive_render.render_main_menu(console, selected=0)
-    assert len(main_stream.getvalue().splitlines()) == 15
+    assert len(main_stream.getvalue().splitlines()) == 17
 
     console, setup_stream = _console(width=30, height=30)
     interactive_render.render_report_setup(
@@ -270,7 +269,7 @@ def test_ctrl_c_during_scan_returns_to_previous_screen_instead_of_exiting() -> N
         return _scan()
 
     console, _ = _console()
-    keys = ScriptedInput([char("2"), char("r"), char("b"), char("q")])
+    keys = ScriptedInput([char("3"), char("r"), char("b"), char("q")])
 
     run_interactive(
         actions=_actions(scan_callback=interrupt_once),
@@ -364,7 +363,7 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     keys = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             KeyPress(key=Key.ENTER),
             char("p"),
             KeyPress(key=page_down),

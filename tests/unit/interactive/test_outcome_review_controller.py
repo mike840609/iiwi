@@ -189,7 +189,6 @@ def _actions(draft: ReportDraft, log: ActionLog) -> InteractiveActions:
         edit_gap=edit_gap,
         save_report_type=log.saved_report_types.append,
         doctor=lambda harness: [],
-        edit_settings=lambda: None,
         restore_selection=lambda harness, period, include_subagents: None,
         save_selection=lambda harness, period, include_subagents, selected: None,
         exclude_repository=lambda repository_id, display_name: "excluded",
@@ -217,7 +216,7 @@ def _run(
 
 
 def _open_review_keys() -> list[KeyPress]:
-    return [char("2"), char("r"), char("g")]
+    return [char("3"), char("r"), char("g")]
 
 
 def test_g_synthesizes_selected_scan_once_and_opens_outcome_review(
@@ -256,7 +255,7 @@ def test_setup_generate_enters_quick_review_before_rendering_output(
         monkeypatch,
         draft,
         log,
-        [char("2"), *setup_keys, char("b"), char("q"), char("q"), char("q")],
+        [char("3"), *setup_keys, char("b"), char("q"), char("q"), char("q")],
     )
 
     assert Screen.OUTCOME_REVIEW in screens
@@ -341,7 +340,6 @@ def test_report_type_default_change_preserves_review_when_reentering(
         edit_gap=actions.edit_gap,
         save_report_type=actions.save_report_type,
         doctor=actions.doctor,
-        edit_settings=actions.edit_settings,
         restore_selection=actions.restore_selection,
         save_selection=actions.save_selection,
         exclude_repository=actions.exclude_repository,
@@ -404,7 +402,6 @@ def test_changing_detail_in_setup_regenerates_quick_review_draft(
         edit_gap=actions.edit_gap,
         save_report_type=actions.save_report_type,
         doctor=actions.doctor,
-        edit_settings=actions.edit_settings,
         restore_selection=actions.restore_selection,
         save_selection=actions.save_selection,
         exclude_repository=actions.exclude_repository,
