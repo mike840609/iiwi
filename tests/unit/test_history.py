@@ -60,7 +60,9 @@ def test_append_then_read_round_trips_in_order(tmp_path) -> None:
     assert entries[1].harness == "claude-code"
     assert entries[1].narrative is False
     assert entries[1].detail == "brief"
-    assert str(entries[1].output_path) == "reports/other.md"
+    assert str(entries[1].output_path) == str(
+        Path("reports/other.md").resolve()
+    )
 
 
 def test_append_creates_the_parent_directory(tmp_path) -> None:
@@ -121,4 +123,75 @@ def test_history_entry_serialises_to_isoformat_datetimes(tmp_path) -> None:
 
     assert raw["generated_at"] == "2026-08-03T09:00:00+08:00"
     assert raw["since"] == "2026-07-27T00:00:00+08:00"
-    assert raw["output_path"] == "reports/worklog-2026-07-27_2026-08-03.md"
+    assert raw["output_path"] == str(
+        Path("reports/worklog-2026-07-27_2026-08-03.md").resolve()
+    )
+
+
+def test_append_resolves_relative_output_paths(tmp_path) -> None:
+    path = tmp_path / "history.jsonl"
+
+    append_history(_entry(), path=path)
+
+    entries = read_history(path=path)
+    assert entries[0].output_path == Path(
+        "reports/worklog-2026-07-27_2026-08-03.md"
+    ).resolve()
+    assert entries[0].output_path.is_absolute()
+
+
+def test_append_leaves_absolute_output_paths_unchanged(tmp_path) -> None:
+    path = tmp_path / "history.jsonl"
+    target = (tmp_path / "reports" / "worklog.md").resolve()
+    entry = HistoryEntry(
+        generated_at=datetime(2026, 8, 3, 9, 0, tzinfo=TZ),
+        harness="opencode",
+        since=datetime(2026, 7, 27, 0, 0, tzinfo=TZ),
+        until=datetime(2026, 8, 3, 0, 0, tzinfo=TZ),
+        output_path=target,
+        repository_count=1,
+        session_count=2,
+        narrative=True,
+        detail="full",
+    )
+
+    append_history(entry, path=path)
+
+    assert read_history(path=path)[0].output_path == target
+
+
+def test_append_expands_tilde_output_paths_against_the_writing_home(
+    tmp_path, monkeypatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("USERPROFILE", raising=False)
+    path = tmp_path / "history.jsonl"
+    entry = HistoryEntry(
+        generated_at=datetime(2026, 8, 3, 9, 0, tzinfo=TZ),
+        harness="opencode",
+        since=datetime(2026, 7, 27, 0, 0, tzinfo=TZ),
+        until=datetime(2026, 8, 3, 0, 0, tzinfo=TZ),
+        output_path=Path("~/worklog.md"),
+        repository_count=1,
+        session_count=2,
+        narrative=True,
+        detail="full",
+    )
+
+    append_history(entry, path=path)
+
+    assert read_history(path=path)[0].output_path == (home / "worklog.md").resolve()
+
+
+def test_old_relative_entries_read_back_verbatim(tmp_path) -> None:
+    path = tmp_path / "history.jsonl"
+    path.write_text(
+        json.dumps(_entry().__dict__, default=str) + "\n",
+        encoding="utf-8",
+    )
+
+    entries = read_history(path=path)
+
+    assert str(entries[0].output_path) == "reports/worklog-2026-07-27_2026-08-03.md"
