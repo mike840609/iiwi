@@ -273,6 +273,45 @@ def test_unresolved_failed_command_is_an_excluded_blocker_candidate() -> None:
     assert draft.work_items[0].today is None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git log --oneline -5",
+        "rg -n 'exclude' tests/",
+        "ls docs docs/superpowers",
+        "sed -n '58,78p' README.md",
+        "sleep 25; gh pr view 679 --json mergeable",
+        'echo "=== HEAD ===" && git rev-parse HEAD',
+    ],
+)
+def test_failed_exploration_commands_are_never_blocker_candidates(command: str) -> None:
+    """An agent's shell is mostly exploration, and exploration fails constantly.
+
+    Every string here is a real failure taken from one Daily window on a real
+    machine: 50 of that window's 62 observed failures looked like this, and all
+    50 became Blockers the reviewer had to dismiss.
+    """
+
+    session = resolved_session(
+        "s1",
+        [
+            activity("goal", YESTERDAY),
+            activity(
+                "failure",
+                TODAY,
+                activity_type=ActivityType.COMMAND,
+                content=command,
+                exit_code=1,
+            ),
+        ],
+    )
+    grouped = outcome("o1", [evidence_ref("s1", ["goal", "failure"])])
+
+    draft = project_daily_standup(daily_scan=daily_scan([session]), outcomes=[grouped])
+
+    assert all(work.blocker is None for work in draft.work_items)
+
+
 def test_later_completion_in_the_same_source_resolves_blocker_candidate() -> None:
     session = resolved_session(
         "s1",
@@ -384,7 +423,7 @@ def test_failed_command_is_a_blocker_only_for_its_referenced_outcome_lineage() -
                 "task-b-failure",
                 TODAY,
                 activity_type=ActivityType.COMMAND,
-                content="deploy task-b",
+                content="uv run pytest tests/task_b.py",
                 exit_code=1,
             ),
         ],
@@ -408,7 +447,7 @@ def test_failed_command_is_a_blocker_only_for_its_referenced_outcome_lineage() -
     assert projected["task-a"].blocker is None
     task_b_blocker = projected["task-b"].blocker
     assert task_b_blocker is not None
-    assert task_b_blocker.statement == "deploy task-b"
+    assert task_b_blocker.statement == "uv run pytest tests/task_b.py"
     assert task_b_blocker.evidence_refs[0].activity_ids == ["task-b-failure"]
 
 

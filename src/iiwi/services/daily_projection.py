@@ -7,7 +7,11 @@ from datetime import datetime
 from uuid import uuid4
 
 from iiwi.extraction.pipeline import extract_evidence, observed_command_failure
-from iiwi.extraction.rules import COMMAND_TOOL_NAMES, FILE_TOOL_NAMES
+from iiwi.extraction.rules import (
+    COMMAND_TOOL_NAMES,
+    FILE_TOOL_NAMES,
+    is_verification_command,
+)
 from iiwi.models.daily import (
     DailySectionItem,
     DailyStandupDraft,
@@ -439,7 +443,8 @@ def _blocker_item(
         referenced_commands = {
             _normalize(activity.content)
             for activity in activities
-            if activity.activity_id in referenced_activity_ids and _is_command(activity)
+            if activity.activity_id in referenced_activity_ids
+            and _is_reportable_command(activity)
         }
         if not referenced_commands:
             continue
@@ -595,6 +600,25 @@ def _is_command(activity: SessionActivity) -> bool:
         activity.activity_type is ActivityType.TOOL_CALL
         and (activity.tool_name or "").casefold() in COMMAND_TOOL_NAMES
     )
+
+
+def _is_reportable_command(activity: SessionActivity) -> bool:
+    """Report whether a failure of this command is worth putting in front of a reviewer.
+
+    An agent's shell is mostly exploration, and exploration fails constantly
+    without anything being blocked. Measured over 62 observed failures across
+    115 real sessions in one Daily window: the 12 that pass
+    `is_verification_command` are all `uv run pytest` / `ruff` / `pyright`
+    chains, and all 50 it rejects are `git log`, `rg`, `ls`, `sed -n`,
+    `sleep; gh pr view`, `echo ===`. Ungated, Blockers was seven lines of shell
+    noise for the reviewer to dismiss every morning.
+
+    ponytail: reuses the verification patterns rather than growing a second
+    command taxonomy. A failed deploy or migration is a real blocker this misses
+    — widen TEST_COMMAND_PATTERNS' neighbourhood when one is actually reported.
+    """
+
+    return _is_command(activity) and is_verification_command(_normalize(activity.content))
 
 
 def _normalize(value: str) -> str:
