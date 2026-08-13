@@ -370,14 +370,24 @@ def _blocker_item(
     scan_until: datetime,
 ) -> DailySectionItem | None:
     candidates: list[tuple[datetime, int, str, EvidenceRef]] = []
-    refs_by_source: dict[Source, EvidenceRef] = {}
+    refs_by_source: dict[Source, tuple[EvidenceRef, set[str]]] = {}
     for ref in refs:
         if (source := _source(ref)) is not None:
-            refs_by_source.setdefault(source, ref)
-    for source, ref in refs_by_source.items():
+            if source in refs_by_source:
+                refs_by_source[source][1].update(ref.activity_ids)
+            else:
+                refs_by_source[source] = (ref, set(ref.activity_ids))
+    for source, (ref, referenced_activity_ids) in refs_by_source.items():
         evidence = evidence_by_source.get(source) if source is not None else None
         activities = activities_by_source.get(source)
         if evidence is None or activities is None:
+            continue
+        referenced_commands = {
+            _normalize(activity.content)
+            for activity in activities
+            if activity.activity_id in referenced_activity_ids and _is_command(activity)
+        }
+        if not referenced_commands:
             continue
         positions = {
             activity.activity_id: (activity.timestamp, index)
@@ -399,6 +409,7 @@ def _blocker_item(
                 timestamp is None
                 or not scan_since <= timestamp < scan_until
                 or not _is_command(activity)
+                or _normalize(activity.content) not in referenced_commands
                 or (failed := observed_command_failure(activity)) is None
             ):
                 continue

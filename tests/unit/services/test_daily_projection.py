@@ -362,6 +362,49 @@ def test_failure_after_a_successful_retry_remains_a_blocker_candidate() -> None:
     assert blocker.evidence_refs[0].activity_ids == ["failure-2"]
 
 
+def test_failed_command_is_a_blocker_only_for_its_referenced_outcome_lineage() -> None:
+    session = resolved_session(
+        "s1",
+        [
+            activity("task-a-goal", YESTERDAY, content="Implement task A"),
+            activity(
+                "task-a-file",
+                YESTERDAY.replace(hour=11),
+                activity_type=ActivityType.FILE_CHANGE,
+                content="src/task_a.py",
+            ),
+            activity(
+                "task-b-failure",
+                TODAY,
+                activity_type=ActivityType.COMMAND,
+                content="deploy task-b",
+                exit_code=1,
+            ),
+        ],
+    )
+    task_a = outcome(
+        "task-a",
+        [evidence_ref("s1", ["task-a-goal", "task-a-file"])],
+    )
+    task_b = outcome(
+        "task-b",
+        [evidence_ref("s1", ["task-b-failure"])],
+        rank=1,
+    )
+
+    draft = project_daily_standup(
+        daily_scan=daily_scan([session]),
+        outcomes=[task_a, task_b],
+    )
+
+    projected = {work.source_outcome_ids[0]: work for work in draft.work_items}
+    assert projected["task-a"].blocker is None
+    task_b_blocker = projected["task-b"].blocker
+    assert task_b_blocker is not None
+    assert task_b_blocker.statement == "deploy task-b"
+    assert task_b_blocker.evidence_refs[0].activity_ids == ["task-b-failure"]
+
+
 def test_completed_grouped_outcome_does_not_create_blocker_candidate() -> None:
     session = resolved_session(
         "s1",
