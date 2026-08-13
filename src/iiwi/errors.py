@@ -1,5 +1,7 @@
 """Application-specific errors."""
 
+from datetime import date, datetime
+
 
 class IiwiError(Exception):
     """Base class for expected application failures."""
@@ -11,6 +13,29 @@ class ConfigurationError(IiwiError):
 
 class HarnessSourceError(IiwiError):
     """Raised when a harness source cannot be queried."""
+
+
+class DailySourceUnavailableError(IiwiError):
+    """Raised when no configured source can scan a Daily Standup window."""
+
+    unavailable_harnesses: tuple[str, ...]
+    standup_date: date
+    since: datetime
+    until: datetime
+
+    def __init__(
+        self,
+        *,
+        unavailable_harnesses: tuple[str, ...],
+        standup_date: date,
+        since: datetime,
+        until: datetime,
+    ) -> None:
+        super().__init__("all Daily Standup harness sources are unavailable")
+        self.unavailable_harnesses = unavailable_harnesses
+        self.standup_date = standup_date
+        self.since = since
+        self.until = until
 
 
 class SessionParseError(HarnessSourceError):
