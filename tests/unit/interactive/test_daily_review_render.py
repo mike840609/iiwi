@@ -126,6 +126,23 @@ def test_daily_review_renders_provenance_and_only_approved_controls() -> None:
     assert "Next week" not in text
 
 
+def test_daily_review_renders_source_coverage_warnings() -> None:
+    """This fails if partial-source loss is visible only in the final artifact."""
+
+    console, stream = _console(height=60)
+    draft = _draft()
+    draft.coverage_warnings = ["Claude Code activity could not be loaded."]
+
+    render.render_daily_review(
+        console,
+        draft,
+        cursor=0,
+        expanded=set(),
+    )
+
+    assert "Claude Code activity could not be loaded." in stream.getvalue()
+
+
 def test_daily_review_expanded_evidence_shows_source_references() -> None:
     console, stream = _console(height=60)
 

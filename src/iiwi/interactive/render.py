@@ -1036,7 +1036,12 @@ def render_daily_review(
     cursor = min(max(0, cursor), max(0, len(rows) - 1))
     hints = _hint_lines(_DAILY_REVIEW_HINTS, console.size.width)
     terminal_budget = max(0, console.size.height - 1)
-    fixed_lines = 4 + len(hints) + int(message is not None)
+    fixed_lines = (
+        4
+        + len(hints)
+        + len(draft.coverage_warnings)
+        + int(message is not None)
+    )
     body_capacity = max(1, terminal_budget - fixed_lines)
     focused_capacity = max(
         1,
@@ -1065,6 +1070,12 @@ def render_daily_review(
     )
     _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
     console.print()
+    for warning in draft.coverage_warnings:
+        _print_viewport_line(
+            console,
+            _single_line(f"Warning: {warning}"),
+            style="yellow",
+        )
     if message is not None:
         _print_viewport_line(console, _single_line(message), style="yellow")
     for line in _daily_review_body(
