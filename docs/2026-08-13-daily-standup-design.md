@@ -51,7 +51,7 @@ Check Setup
 Settings
 ```
 
-`Daily Standup` is a direct shortcut. It does not enter normal Report Setup or Session Review.
+`Daily Standup` is a direct shortcut. It skips normal Report Setup and Session Review.
 
 CLI:
 
@@ -65,7 +65,7 @@ Version one deliberately has no `--no-review`. Today suggestions and blocker can
 
 ## Architecture
 
-Daily Standup should extend the existing evidence-first Quick Review architecture rather than create a parallel reporting engine.
+Daily Standup extends the existing evidence-first Quick Review architecture rather than creating a parallel reporting engine.
 
 ```text
 All enabled harnesses
@@ -76,7 +76,7 @@ one union window: yesterday 00:00 → now
         ↓
 existing evidence extraction
         ↓
-existing Outcome grouping
+existing Outcome grouping logic
         ↓
 activity-timestamp section projection
         ↓
@@ -94,7 +94,7 @@ Preview / Generate
 
 ### Reuse the existing Outcome grouping boundary
 
-The current `OutcomeSynthesisService` already groups sessions into evidence-backed outcomes and reconstructs claims from local evidence. Daily Standup must reuse that grouping primitive instead of asking another model to regroup the same work.
+The current `OutcomeSynthesisService` already groups sessions into evidence-backed outcomes and reconstructs claims from local evidence. Daily Standup should reuse that grouping logic instead of asking another model to regroup the same work.
 
 Daily-specific synthesis is a projection layer over grouped outcomes and evidence:
 
@@ -102,14 +102,14 @@ Daily-specific synthesis is a projection layer over grouped outcomes and evidenc
 2. Produce section-specific standup statements for the same underlying work item.
 3. Derive blocker candidates only from unresolved evidence.
 
-The same underlying work may therefore appear in both Yesterday and Today with different wording:
+The same underlying work may appear in both Yesterday and Today with different wording:
 
 - Yesterday describes progress that already occurred.
 - Today describes current activity or a reviewer-confirmable suggested next step.
 
 ### DailyScanCoordinator
 
-Do not make the existing single-harness `ScanService` multi-harness.
+Do not make the existing single-harness `ScanService` itself multi-harness.
 
 Add a Daily-specific coordinator that runs the existing `ScanService` independently for every enabled harness, then merges successful results for downstream grouping.
 
@@ -124,13 +124,27 @@ Responsibilities:
 
 Harness identity remains evidence provenance, not work-item identity.
 
-### Cross-repository and cross-harness grouping
+## Cross-harness source identity
 
-One standup work item may combine evidence from multiple repositories and multiple harnesses when the existing grouping evidence supports one shared work objective.
+The current outcome pipeline keys several internal maps only by `session_id`. That is safe in the existing single-harness flow, but Daily merges multiple harnesses and must not assume their raw session ids are globally unique.
 
-Repository equality alone is not sufficient reason to merge work.
+Daily grouping therefore requires a collision-safe source identity:
 
-Harness equality or difference must not affect grouping identity.
+```text
+SourceSessionKey = (harness, session_id)
+```
+
+Any internal identifier sent through the grouping model may use an opaque composite representation of that pair, but the model must not be allowed to erase or redefine the pair.
+
+The raw `session_id` alone must never be the key for merged cross-harness evidence.
+
+This should be implemented as a backward-compatible extension/refactor of the existing grouping boundary, not as a second Daily-only grouping model.
+
+## Cross-repository and cross-harness grouping
+
+One standup work item may combine evidence from multiple repositories and multiple harnesses when evidence supports one shared work objective.
+
+Repository equality alone is not sufficient reason to merge work. Harness equality or difference must not affect grouping identity.
 
 Final standup bullets list all repositories involved, for example:
 
@@ -144,7 +158,7 @@ The final artifact does not expose harness names.
 
 Current evidence items carry `source_activity_ids`; activity timestamps live on `SessionActivity`.
 
-Daily section assignment must be deterministic:
+Daily section assignment is deterministic:
 
 ```text
 EvidenceItem.source_activity_ids
@@ -160,17 +174,26 @@ Timestamp-less activities remain governed by existing scan behavior and warnings
 
 ### EvidenceRef extension
 
-Persistent Daily reconciliation needs finer provenance than a session id alone because one session may span midnight and may receive new activity later in the same day.
+Persistent Daily reconciliation needs finer provenance than a session id alone because one session may span midnight, may receive new activity later in the same day, and may collide with a raw session id from another harness.
 
-Extend `EvidenceRef` backward-compatibly with activity identity, conceptually:
+Extend `EvidenceRef` backward-compatibly with:
 
 ```python
-activity_ids: list[str] = []
+harness: str | None = None
+activity_ids: list[str] = Field(default_factory=list)
 ```
 
-Existing report consumers may ignore this field.
+Existing general-report data without these fields remains valid.
 
-Daily state can then distinguish evidence already reviewed from newly observed activity in an existing session.
+For Daily-generated evidence refs, `harness` is required by the Daily service contract even if the shared model remains optional for backward compatibility.
+
+The durable evidence identity for reconciliation is therefore based on:
+
+```text
+(harness, session_id, activity_id)
+```
+
+with `(harness, session_id)` available as a coarser session-level anchor.
 
 ## Daily domain model
 
@@ -191,8 +214,8 @@ DailyStandupDraft
 └─ reconciliation metadata
 
 DailyStandupWorkItem
-├─ id
-├─ source_outcome_ids[]
+├─ id                         # persisted Daily identity
+├─ source_outcome_ids[]       # diagnostic, not the durable identity
 ├─ repository_ids[]
 ├─ yesterday?
 │  ├─ statement
@@ -220,6 +243,23 @@ DailyStandupWorkItem
 A section projection is independently selectable. A reviewer can keep Yesterday and remove Today for the same underlying work item.
 
 Manual edits change the standup statement, not evidence identity.
+
+### Durable work-item identity
+
+Do not rely on `Outcome.id` as the persisted Daily work-item identity. Existing synthesized outcome ids include model-derived title/session/discriminator inputs and may change when a later scan adds sessions or reorders proposals.
+
+The first time a Daily work item is created, assign it a Daily-local stable id and persist it.
+
+On same-day reconciliation, match newly grouped outcomes back to existing Daily work items by evidence overlap:
+
+1. Prefer overlap in exact `(harness, session_id, activity_id)` evidence refs.
+2. Fall back to unambiguous overlap in `(harness, session_id)` when activity-level refs are unavailable.
+3. If more than one prior work item could match, do not silently merge them; surface the new result as a candidate requiring review.
+4. If no prior evidence overlaps, create a new Daily work item and mark it `New activity`.
+
+When a new grouped outcome matches an existing Daily work item, it inherits the persisted Daily work-item id. The id is never recomputed from model prose.
+
+This lets new evidence extend an existing work item without losing reviewer-owned wording, include/exclude decisions, or ordering.
 
 ## Section semantics
 
@@ -407,10 +447,10 @@ Use platform-aware Iiwi data paths rather than hard-coding one operating system'
 
 State stores structured review state, not full transcripts:
 
-- work-item identity;
+- Daily work-item identity;
 - section statements;
-- source outcome ids;
-- evidence references;
+- source outcome ids for diagnostics;
+- collision-safe evidence references;
 - include/exclude state;
 - section order;
 - reviewer-edited flags;
@@ -423,7 +463,7 @@ Create state directories owner-only and state files owner-only where the platfor
 
 ### Retention
 
-Keep Daily structured state for 30 days.
+Keep Daily structured state for 30 calendar days.
 
 Perform opportunistic cleanup during Daily execution; no daemon or scheduled background process is required.
 
@@ -453,6 +493,7 @@ Rules:
 - Surface genuinely new work as `New activity` candidates.
 - A retry or new synthesis may improve untouched machine-owned candidates, but must never overwrite reviewed text silently.
 - If new evidence demonstrates completion, internal state may change, but reviewer-owned wording remains authoritative until the reviewer edits or accepts a replacement.
+- Ambiguous reconciliation never silently merges two reviewer-owned work items.
 
 ## Cross-day behavior
 
@@ -493,7 +534,7 @@ Example:
 
 ### All harnesses fail
 
-If every enabled harness fails, do not present the condition as "no activity".
+If every enabled harness fails, do not present the condition as `no activity`.
 
 Show a recoverable error with:
 
@@ -526,7 +567,8 @@ Evolve History in a backward-compatible way, conceptually:
 HistoryEntry
 ├─ kind: report | daily_standup
 ├─ generated_at
-├─ harnesses[]
+├─ harnesses[]                 # successful source coverage
+├─ unavailable_harnesses[]     # attempted but failed
 ├─ since
 ├─ until
 ├─ output_path
@@ -540,9 +582,14 @@ Old JSONL entries containing a single `harness` continue to load as:
 ```text
 kind = report
 harnesses = [harness]
+unavailable_harnesses = []
 ```
 
-New Daily entries record the harnesses whose data contributed or were attempted according to the final implementation's coverage model; History UI identifies the artifact as `Daily Standup` rather than displaying a fabricated `multiple` harness.
+New Daily entries record successful contributors separately from unavailable harnesses. If the reviewer explicitly continues after all sources fail, `harnesses` is empty and `unavailable_harnesses` contains all attempted enabled harnesses.
+
+History UI identifies the artifact as `Daily Standup` rather than displaying a fabricated `multiple` harness.
+
+Existing report-only fields such as narrative/detail remain compatible for normal report entries and must not force Daily to pretend it has those settings.
 
 The existing absolute output-path behavior remains in force.
 
@@ -571,7 +618,7 @@ Rendering rules:
 - Hide harness topology and review provenance labels.
 - Hide evidence references from the shareable standup.
 - Do not append unconfirmed suggestions outside selected reviewed statements.
-- Preserve reviewer wording exactly apart from normal Markdown escaping/formatting required for a valid artifact.
+- Preserve reviewer wording exactly apart from Markdown escaping/formatting required for a valid artifact.
 
 ## Non-goals for version one
 
@@ -595,30 +642,33 @@ The first version is complete when all of the following are true:
 3. Date boundaries are calculated in `report.timezone` using local calendar boundaries.
 4. One union window from yesterday `00:00` through now supplies the Daily workflow.
 5. Every enabled harness is scanned automatically.
-6. Partial harness failures continue with explicit warnings; total source failure enters recoverable error.
-7. Genuine no-activity periods enter an empty but usable Quick Review.
-8. Existing Iiwi-authored synthesis sessions remain excluded through the current scan filtering boundary.
-9. Existing evidence extraction and Outcome grouping are reused; Daily does not introduce a second grouping pass.
-10. Evidence is projected into Yesterday/Today deterministically by source activity timestamp.
-11. One work item can span repositories, harnesses, Yesterday, and Today when evidence supports that identity.
-12. Yesterday includes substantive progress, including tangible in-progress work.
-13. Today prefers actual Today activity, then supported unfinished-work/next-step suggestions, and otherwise invents nothing.
-14. Suggested Today items are visibly distinguished during review.
-15. Blockers require unresolved blocker evidence.
-16. Yesterday and Today each preselect at most five candidates, with extra candidates available under More candidates.
-17. All three sections support manual Add.
-18. Daily Quick Review supports include/exclude, statement edit, within-section reorder, Evidence, Add, Preview, Generate, Help, and Back.
-19. Preview renders the exact artifact Generate will write without another synthesis call.
-20. Generate writes `reports/daily-standup-YYYY-MM-DD.md` and updates that same file on later same-day generations.
-21. Same-day reruns restore structured Daily state and reconcile new evidence while preserving reviewer edits, additions, exclusions, and ordering.
-22. The next local calendar day does not automatically carry forward the previous day's Today plan.
-23. Daily state is owner-private where supported and stores references/state rather than copied transcripts.
-24. Daily state older than 30 days is cleaned opportunistically without blocking Daily execution on cleanup failure.
-25. Total synthesis failure still provides a deterministic fallback draft for review.
-26. The generated Markdown always contains Yesterday, Today, and Blockers, using `- None` for empty sections.
-27. Partial or empty-source continuation warnings remain visible in the final Markdown.
-28. History records Daily Standup as its own artifact kind while continuing to read legacy single-harness history entries.
-29. General Generate Report and its existing Quick Review behavior remain unchanged except for backward-compatible shared model/history extensions required by Daily.
+6. Merged source identity is collision-safe across harnesses; raw `session_id` alone is never treated as globally unique.
+7. Partial harness failures continue with explicit warnings; total source failure enters recoverable error.
+8. Genuine no-activity periods enter an empty but usable Quick Review.
+9. Existing Iiwi-authored synthesis sessions remain excluded through the current scan filtering boundary.
+10. Existing evidence extraction and Outcome grouping logic are reused; Daily does not introduce a second grouping model pass.
+11. Evidence is projected into Yesterday/Today deterministically by source activity timestamp.
+12. One work item can span repositories, harnesses, Yesterday, and Today when evidence supports that identity.
+13. Persisted Daily work-item identity survives same-day model title/proposal changes by reconciling on evidence identity rather than `Outcome.id`.
+14. Yesterday includes substantive progress, including tangible in-progress work.
+15. Today prefers actual Today activity, then supported unfinished-work/next-step suggestions, and otherwise invents nothing.
+16. Suggested Today items are visibly distinguished during review.
+17. Blockers require unresolved blocker evidence.
+18. Yesterday and Today each preselect at most five candidates, with extra candidates available under More candidates.
+19. All three sections support manual Add.
+20. Daily Quick Review supports include/exclude, statement edit, within-section reorder, Evidence, Add, Preview, Generate, Help, and Back.
+21. Preview renders the exact artifact Generate will write without another synthesis call.
+22. Generate writes `reports/daily-standup-YYYY-MM-DD.md` and updates that same file on later same-day generations.
+23. Same-day reruns restore structured Daily state and reconcile new evidence while preserving reviewer edits, additions, exclusions, and ordering.
+24. Ambiguous reconciliation never silently combines reviewer-owned items.
+25. The next local calendar day does not automatically carry forward the previous day's Today plan.
+26. Daily state is owner-private where supported and stores references/state rather than copied transcripts.
+27. Daily state older than 30 days is cleaned opportunistically without blocking Daily execution on cleanup failure.
+28. Total synthesis failure still provides a deterministic fallback draft for review.
+29. The generated Markdown always contains Yesterday, Today, and Blockers, using `- None` for empty sections.
+30. Partial or empty-source continuation warnings remain visible in the final Markdown.
+31. History records Daily Standup as its own artifact kind, distinguishes successful and unavailable harness coverage, and continues to read legacy single-harness entries.
+32. General Generate Report and its existing Quick Review behavior remain unchanged except for backward-compatible shared model/history extensions required by Daily.
 
 ## Testing strategy
 
@@ -627,6 +677,8 @@ Tests should protect both the new Daily behavior and the existing general report
 ### Domain/unit tests
 
 - Calendar-boundary calculation, including a DST-observing timezone.
+- Cross-harness session-id collision handling.
+- Legacy `EvidenceRef` payloads without harness/activity ids remain valid.
 - Evidence activity-id to Yesterday/Today projection.
 - One outcome projecting into both Yesterday and Today.
 - Today actual-activity priority over Yesterday suggestion.
@@ -636,11 +688,12 @@ Tests should protect both the new Daily behavior and the existing general report
 - Cross-repository label preservation.
 - User-added item behavior.
 - Reviewer edit/exclusion/order preservation during reconciliation.
+- Reconciliation when the new grouped outcome contains old evidence plus new evidence.
+- Ambiguous evidence overlap does not silently merge items.
 - New-activity detection on a later same-day scan.
 - No cross-day Today carry-over.
 - Persistent-state serialization round trip.
 - Thirty-day cleanup and non-fatal cleanup errors.
-- Legacy `EvidenceRef` payloads without activity ids remain valid.
 - Legacy history JSONL remains readable after the History model extension.
 
 ### Coordinator/service tests
@@ -650,7 +703,8 @@ Tests should protect both the new Daily behavior and the existing general report
 - All harnesses fail and trigger recoverable error semantics.
 - All harnesses succeed with zero activity and produce an empty draft.
 - Existing self-authored Iiwi session filtering remains effective.
-- Outcome grouping is called once over the merged Daily evidence set rather than once per section.
+- Outcome grouping runs over the merged Daily evidence set rather than once per section.
+- Cross-harness source keys round-trip through grouping without losing original harness/session provenance.
 - Synthesis failure enters deterministic fallback.
 
 ### Interactive/rendering tests
@@ -669,7 +723,7 @@ Tests should protect both the new Daily behavior and the existing general report
 
 ### Regression tests
 
-- General Quick Review retains its current OutcomeReviewDraft interactions.
+- General Quick Review retains its current `OutcomeReviewDraft` interactions.
 - General reports retain single-harness Report Setup semantics.
 - Existing History entries and History UI remain readable.
 - Existing report file conflict behavior remains unchanged outside Daily Standup.
