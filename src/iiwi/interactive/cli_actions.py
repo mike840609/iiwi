@@ -14,6 +14,7 @@ from uuid import uuid4
 import typer
 
 from iiwi import config_store
+from iiwi.config import AppSettings
 from iiwi.daily_state import load_daily_draft, save_daily_draft
 from iiwi.errors import (
     DailySourceUnavailableError,
@@ -516,6 +517,12 @@ def _continue_daily_empty(
         successful_harnesses=[],
         unavailable_harnesses=list(error.unavailable_harnesses),
         coverage_warnings=[_ALL_DAILY_SOURCES_UNAVAILABLE_WARNING],
+        # reconcile keeps every scalar from the fresh draft, so leaving these at
+        # zero would report "0 sess 0 repos" for a standup that still carries
+        # the reviewed items this path exists to preserve. No source answered,
+        # so the reviewed counts are the only coverage there is to state.
+        repository_count=previous.repository_count if previous is not None else 0,
+        session_count=previous.session_count if previous is not None else 0,
     )
     if state_warning is not None:
         empty_fresh.warnings.append(state_warning)
@@ -541,14 +548,14 @@ def _daily_report_result(result: DailyReportResult) -> InteractiveReportResult:
     )
 
 
-def _preview_daily(draft: DailyStandupDraft) -> InteractiveReportResult:
-    """Render the existing Daily review without refreshing or writing it."""
+def _current_standup_clock(draft: DailyStandupDraft) -> tuple[AppSettings, datetime]:
+    """Return settings and the local clock, refusing a review the date has passed.
 
-    return _daily_report_result(DailyReportService().preview(draft))
-
-
-def _generate_daily(draft: DailyStandupDraft) -> InteractiveReportResult:
-    """Write the reviewed Daily artifact, then its state and history bookkeeping."""
+    Preview and Generate share this read so they cannot disagree:
+    docs/daily-standup.md promises Preview renders exactly what Generate writes,
+    and a review left open across local midnight would otherwise preview a
+    complete artifact dated yesterday that Generate then refuses to write.
+    """
 
     from iiwi import cli
 
@@ -558,8 +565,22 @@ def _generate_daily(draft: DailyStandupDraft) -> InteractiveReportResult:
         raise ReportOutputError(
             f"Daily Standup review is for {draft.standup_date:%Y-%m-%d}, but the "
             f"current local date is {now.date():%Y-%m-%d}. Refresh Daily Standup "
-            "before generating."
+            "to continue."
         )
+    return settings, now
+
+
+def _preview_daily(draft: DailyStandupDraft) -> InteractiveReportResult:
+    """Render the existing Daily review without refreshing or writing it."""
+
+    _current_standup_clock(draft)
+    return _daily_report_result(DailyReportService().preview(draft))
+
+
+def _generate_daily(draft: DailyStandupDraft) -> InteractiveReportResult:
+    """Write the reviewed Daily artifact, then its state and history bookkeeping."""
+
+    settings, now = _current_standup_clock(draft)
     output_path = daily_output_path(
         settings.report.output_directory,
         draft.standup_date,

@@ -47,7 +47,6 @@ from iiwi.models.outcome import (
 from iiwi.models.repository import ResolvedSession
 from iiwi.models.session import ActivityType, AgentSession
 from iiwi.models.time_range import DateRange
-from iiwi.renderers.daily_markdown import safe_daily_text
 from iiwi.security.redactor import redact_text
 from iiwi.services.scan import ScanResult
 
@@ -411,6 +410,19 @@ def _single_line(value: str) -> str:
     """Collapse hard line breaks in fields whose viewport contract is one row."""
 
     return " ".join(value.splitlines())
+
+
+def _daily_display_text(value: str) -> str:
+    """Redact and flatten one Daily field for the screen.
+
+    safe_daily_text() layers Markdown escaping on top of this, which belongs in
+    the written artifact and nowhere near a terminal: the reviewer would read
+    their own edit back as `the \\_private\\_ helper`. _daily_evidence_lines
+    already renders repository ids this way, so this is also what stops the two
+    panes disagreeing about the same string.
+    """
+
+    return _single_line(redact_text(value))
 
 
 def _truncated_text(text: Text, width: int) -> Text:
@@ -885,7 +897,7 @@ def _daily_item_block(
     if work_item.repository_ids:
         repository_text = _truncated_text(
             Text(
-                f"[{', '.join(safe_daily_text(value) for value in work_item.repository_ids)}]"
+                f"[{', '.join(_daily_display_text(value) for value in work_item.repository_ids)}]"
             ),
             max(8, min(18, console.size.width // 3)),
         )
@@ -896,7 +908,7 @@ def _daily_item_block(
         ("●" if item.included else "○", "green" if item.included else "dim"),
         " ",
         (repositories, "dim"),
-        (safe_daily_text(item.statement), style),
+        (_daily_display_text(item.statement), style),
     )
     source_label = _DAILY_SOURCE_LABELS[item.source]
     labels = [source_label] if source_label is not None else []

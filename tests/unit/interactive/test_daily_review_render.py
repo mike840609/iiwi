@@ -192,10 +192,22 @@ def test_daily_result_offers_main_and_report_path_only() -> None:
     assert "Generate another report" not in text
 
 
-def test_daily_statement_is_the_same_safe_single_line_in_review_and_artifact() -> None:
+def test_daily_statement_is_one_line_in_review_and_escaped_only_in_the_artifact() -> None:
+    """Both surfaces flatten the statement; only the artifact escapes Markdown.
+
+    Escaping is transport encoding, not content: `\\_private\\_` is neither what
+    the reviewer typed nor what a reader of the rendered Markdown sees, so
+    showing it on the review screen names a string that exists nowhere else —
+    and `e Edit` already prompts with the unescaped statement.
+    """
+
     draft = _draft()
     statement = "Shipped [the link](https://example.com)\n- hidden bullet\n*hidden emphasis* <tag>"
-    expected = (
+    one_line = (
+        "Shipped [the link](https://example.com) - hidden bullet "
+        "*hidden emphasis* <tag>"
+    )
+    escaped = (
         r"Shipped \[the link\](https://example.com) - hidden bullet "
         r"\*hidden emphasis\* \<tag\>"
     )
@@ -205,8 +217,9 @@ def test_daily_statement_is_the_same_safe_single_line_in_review_and_artifact() -
     render.render_daily_review(console, draft, cursor=1, expanded=set())
     artifact = render_daily_standup(draft)
 
-    assert expected in stream.getvalue()
-    assert f"- [iiwi] {expected}\n" in artifact
+    assert one_line in stream.getvalue()
+    assert "\\[the link\\]" not in stream.getvalue()
+    assert f"- [iiwi] {escaped}\n" in artifact
     assert "\n- hidden bullet" not in artifact
     assert "\n*hidden emphasis*" not in artifact
 

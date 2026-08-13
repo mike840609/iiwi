@@ -722,6 +722,10 @@ def test_continue_daily_empty_reuses_original_error_window_and_same_day_review()
     assert "unavailable" in draft.coverage_warnings[0].casefold()
     assert draft.work_items[0].today is not None
     assert draft.work_items[0].today.statement == "Keep the reviewed plan"
+    # reconcile takes every scalar from the fresh draft, so zeros here would
+    # report "0 sess 0 repos" for a standup that still carries reviewed items.
+    assert draft.repository_count == previous.repository_count
+    assert draft.session_count == previous.session_count
 
 
 @pytest.mark.parametrize(
@@ -905,6 +909,45 @@ def test_generate_daily_rejects_a_stale_review_before_any_side_effect(
         cli_actions._generate_daily(_daily_draft())
 
     assert events == []
+
+
+def test_preview_daily_refuses_the_same_stale_standup_date_generate_does(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """docs/daily-standup.md promises Preview renders what Generate writes.
+
+    Without this the reviewer who left Daily open across local midnight gets a
+    complete preview dated yesterday and an error screen from `g`.
+    """
+
+    settings = SimpleNamespace(
+        report=SimpleNamespace(output_directory=tmp_path, timezone="Asia/Taipei")
+    )
+    rendered: list[str] = []
+
+    class FakeDailyReportService:
+        def preview(self, *args: object, **kwargs: object) -> SimpleNamespace:
+            rendered.append("preview")
+            return SimpleNamespace(
+                output_path=None,
+                content="# Daily\n",
+                repository_count=2,
+                session_count=3,
+            )
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 8, 14, 0, 1, tzinfo=TZ),
+    )
+    monkeypatch.setattr(cli_actions, "DailyReportService", FakeDailyReportService)
+
+    with pytest.raises(ReportOutputError, match="Refresh Daily Standup"):
+        cli_actions._preview_daily(_daily_draft())
+
+    assert rendered == []
 
 
 def test_generate_daily_contains_state_and_history_bookkeeping_failures(

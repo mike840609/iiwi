@@ -358,7 +358,6 @@ def daily_fixture(
         "IIWI_REPORT__OUTPUT_DIRECTORY",
         str(tmp_path / "reports"),
     )
-    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: NOW)
     command_runner = CommandRunner(timeout_seconds=5)
     repositories = {
         repository_id: _create_git_repository(
@@ -368,12 +367,18 @@ def daily_fixture(
         )
         for repository_id in (IIWI_REPOSITORY, WEB_REPOSITORY, API_REPOSITORY)
     }
-    return DailyFixture(
+    fixture = DailyFixture(
         sources=_full_sources(repositories),
         runner=GroupingRunner(),
         resolver=RepositoryResolver(runner=command_runner),
         repositories=repositories,
     )
+    # One clock for the whole fixture. Pinning this to a constant let a test
+    # advance `fixture.now` to the next day while preview and generate still
+    # read the first one, which is the disagreement the standup-date guard
+    # exists to catch.
+    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: fixture.now)
+    return fixture
 
 
 def _item_with_statement(draft, statement: str):
