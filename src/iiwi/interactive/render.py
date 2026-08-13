@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.text import Text
 
 from iiwi import __version__
-from iiwi.history import HistoryEntry
+from iiwi.history import HistoryEntry, HistoryKind
 from iiwi.interactive.density import (
     is_subagent,
     last_activity_at,
@@ -1598,11 +1598,13 @@ def render_report_result(
 
 def _history_entry_line(entry: HistoryEntry, *, selected: bool) -> str:
     period = f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}"
-    narrative = "narrative" if entry.narrative else "structure"
+    is_daily = entry.kind is HistoryKind.DAILY_STANDUP
+    label = "Daily Standup" if is_daily else (entry.harness or "")
+    narrative = "—" if is_daily else ("narrative" if entry.narrative else "structure")
     return (
         f"{_CURSOR if selected else ' '} "
         f"{entry.generated_at:%Y-%m-%d %H:%M}  {period}  "
-        f"{entry.harness:>10}  {entry.session_count:>3} sess "
+        f"{label:>10}  {entry.session_count:>3} sess "
         f"{entry.repository_count:>2} repos  {narrative}  {entry.output_path}"
     )
 

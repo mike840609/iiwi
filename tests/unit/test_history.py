@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import iiwi.history as history_module
 from iiwi.history import (
     HistoryEntry,
     append_history,
@@ -195,3 +196,58 @@ def test_old_relative_entries_read_back_verbatim(tmp_path) -> None:
     entries = read_history(path=path)
 
     assert str(entries[0].output_path) == "reports/worklog-2026-07-27_2026-08-03.md"
+
+
+def test_old_json_line_defaults_to_a_single_harness_report(tmp_path) -> None:
+    path = tmp_path / "history.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-08-03T09:00:00+08:00",
+                "harness": "opencode",
+                "since": "2026-07-27T00:00:00+08:00",
+                "until": "2026-08-03T00:00:00+08:00",
+                "output_path": "reports/legacy.md",
+                "repository_count": 3,
+                "session_count": 41,
+                "narrative": True,
+                "detail": "full",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    entry = read_history(path=path)[0]
+
+    assert entry.kind is history_module.HistoryKind.REPORT
+    assert entry.effective_harnesses == ("opencode",)
+    assert entry.unavailable_harnesses == ()
+
+
+def test_daily_standup_round_trips_first_class_metadata(tmp_path) -> None:
+    path = tmp_path / "history.jsonl"
+    entry = HistoryEntry(
+        generated_at=datetime(2026, 8, 13, 9, 0, tzinfo=TZ),
+        since=datetime(2026, 8, 12, 0, 0, tzinfo=TZ),
+        until=datetime(2026, 8, 13, 0, 0, tzinfo=TZ),
+        output_path=Path("reports/daily-standup-2026-08-13.md"),
+        repository_count=4,
+        session_count=12,
+        kind=history_module.HistoryKind.DAILY_STANDUP,
+        harnesses=("opencode", "codex"),
+        unavailable_harnesses=("claude-code",),
+    )
+
+    append_history(entry, path=path)
+    restored = read_history(path=path)[0]
+
+    assert restored.kind is history_module.HistoryKind.DAILY_STANDUP
+    assert restored.harness is None
+    assert restored.narrative is None
+    assert restored.detail is None
+    assert restored.harnesses == ("opencode", "codex")
+    assert restored.effective_harnesses == ("opencode", "codex")
+    assert restored.unavailable_harnesses == ("claude-code",)
+    assert restored.output_path == Path("reports/daily-standup-2026-08-13.md").resolve()
+    assert restored.output_path.is_absolute()

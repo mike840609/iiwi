@@ -10,6 +10,7 @@ import json
 import os
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 
 from platformdirs import user_data_dir
@@ -19,19 +20,35 @@ from iiwi.paths import LEGACY_APP_NAME, adopt_legacy
 HISTORY_FILE_VARIABLE = "IIWI_HISTORY_FILE"
 
 
+class HistoryKind(StrEnum):
+    REPORT = "report"
+    DAILY_STANDUP = "daily_standup"
+
+
 @dataclass(frozen=True)
 class HistoryEntry:
-    """One successfully written report."""
+    """One successfully written report or Daily Standup."""
 
     generated_at: datetime
-    harness: str
     since: datetime
     until: datetime
     output_path: Path
     repository_count: int
     session_count: int
-    narrative: bool
-    detail: str
+    harness: str | None = None
+    narrative: bool | None = None
+    detail: str | None = None
+    kind: HistoryKind = HistoryKind.REPORT
+    harnesses: tuple[str, ...] = ()
+    unavailable_harnesses: tuple[str, ...] = ()
+
+    @property
+    def effective_harnesses(self) -> tuple[str, ...]:
+        if self.harnesses:
+            return self.harnesses
+        if self.harness is not None:
+            return (self.harness,)
+        return ()
 
 
 def history_file_path() -> Path:
@@ -105,14 +122,19 @@ def read_history(*, path: Path | None = None) -> list[HistoryEntry]:
             entries.append(
                 HistoryEntry(
                     generated_at=datetime.fromisoformat(raw["generated_at"]),
-                    harness=raw["harness"],
                     since=datetime.fromisoformat(raw["since"]),
                     until=datetime.fromisoformat(raw["until"]),
                     output_path=Path(raw["output_path"]),
                     repository_count=int(raw["repository_count"]),
                     session_count=int(raw["session_count"]),
-                    narrative=bool(raw["narrative"]),
-                    detail=raw["detail"],
+                    harness=raw.get("harness"),
+                    narrative=raw.get("narrative"),
+                    detail=raw.get("detail"),
+                    kind=HistoryKind(raw.get("kind", HistoryKind.REPORT)),
+                    harnesses=tuple(raw.get("harnesses", ())),
+                    unavailable_harnesses=tuple(
+                        raw.get("unavailable_harnesses", ())
+                    ),
                 )
             )
         except (KeyError, TypeError, ValueError):

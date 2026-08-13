@@ -15,7 +15,7 @@ import typer
 
 from iiwi import config_store
 from iiwi.errors import OutcomeSynthesisError
-from iiwi.history import HistoryEntry, append_history
+from iiwi.history import HistoryEntry, HistoryKind, append_history
 from iiwi.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
@@ -163,6 +163,7 @@ def _generate(
                     session_count=scan.loaded_session_count,
                     narrative=bool(result.report.narrative_text),
                     detail=draft.detail.value,
+                    kind=HistoryKind.REPORT,
                 )
             )
     return InteractiveReportResult(
@@ -258,6 +259,7 @@ def _generate_reviewed(
                     session_count=scan.loaded_session_count,
                     narrative=False,
                     detail=review.detail.value,
+                    kind=HistoryKind.REPORT,
                 )
             )
     return InteractiveReportResult(

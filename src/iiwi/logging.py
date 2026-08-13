@@ -19,7 +19,7 @@ from rich.table import Column, Table
 from rich.text import Text
 
 from iiwi.config_store import SettingRow
-from iiwi.history import HistoryEntry
+from iiwi.history import HistoryEntry, HistoryKind
 from iiwi.progress import (
     NullProgressReporter,
     ProgressReporter,
@@ -222,19 +222,20 @@ class ConsoleReporter:
         table = Table(title="Generated Reports")
         table.add_column("Generated")
         table.add_column("Period")
-        table.add_column("Harness")
+        table.add_column("Harness", no_wrap=True)
         table.add_column("Sessions", justify="right")
         table.add_column("Repos", justify="right")
         table.add_column("Narrative")
         table.add_column("Path", overflow="fold")
         for entry in reversed(entries):
+            is_daily = entry.kind is HistoryKind.DAILY_STANDUP
             table.add_row(
                 f"{entry.generated_at:%Y-%m-%d %H:%M}",
                 f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}",
-                entry.harness,
+                "Daily Standup" if is_daily else entry.harness,
                 str(entry.session_count),
                 str(entry.repository_count),
-                "yes" if entry.narrative else "no",
+                "—" if is_daily else ("yes" if entry.narrative else "no"),
                 str(entry.output_path),
             )
         self.console.print(table)

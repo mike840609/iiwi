@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from rich.cells import cell_len
 from rich.console import Console
 
+import iiwi.history as history_module
 from iiwi.history import HistoryEntry
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.render import (
@@ -1120,6 +1121,28 @@ def test_history_renders_entries_with_the_cursor_on_the_selected_row() -> None:
     assert "reports/a.md" in text
     assert "reports/b.md" in text
     assert "▶" in text
+
+
+def test_history_renders_daily_standup_without_a_fake_harness() -> None:
+    console, stream = _console(width=160)
+    report = _history_entry(0, "reports/report.md")
+    daily = HistoryEntry(
+        generated_at=report.generated_at,
+        since=report.since,
+        until=report.until,
+        output_path=Path("reports/daily.md"),
+        repository_count=report.repository_count,
+        session_count=report.session_count,
+        kind=history_module.HistoryKind.DAILY_STANDUP,
+        harnesses=("opencode", "codex"),
+    )
+
+    render_history(console, entries=[report, daily], selected=1, offset=0)
+
+    text = stream.getvalue()
+    assert "opencode" in text
+    assert "Daily Standup" in text
+    assert "multiple" not in text
 
 
 def test_history_renders_empty_state_when_there_are_no_entries() -> None:

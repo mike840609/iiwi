@@ -27,7 +27,13 @@ from iiwi.harnesses.claude_code.source import ClaudeCodeFileSource
 from iiwi.harnesses.codex.source import CodexSource
 from iiwi.harnesses.opencode.source import OpenCodeCliSource
 from iiwi.harnesses.opencode.stats import collect_usage_stats, usage_days
-from iiwi.history import HistoryEntry, append_history, history_to_json, read_history
+from iiwi.history import (
+    HistoryEntry,
+    HistoryKind,
+    append_history,
+    history_to_json,
+    read_history,
+)
 from iiwi.interactive.cli_actions import build_interactive_actions
 from iiwi.interactive.controller import run_interactive
 from iiwi.interactive.input import TerminalInput
@@ -409,6 +415,7 @@ def _record_history(
                 session_count=session_count,
                 narrative=narrative,
                 detail=detail.value,
+                kind=HistoryKind.REPORT,
             )
         )
     except OSError as exc:
