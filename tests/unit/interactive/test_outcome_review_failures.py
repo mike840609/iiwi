@@ -261,7 +261,7 @@ def _run(
 
 
 def _open_review_keys() -> list[KeyPress]:
-    return [char("2"), char("r"), char("g")]
+    return [char("3"), char("r"), char("g")]
 
 
 def test_synthesis_retry_reuses_filtered_scan_and_opens_quick_review() -> None:

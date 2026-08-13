@@ -301,7 +301,7 @@ def test_bare_command_runs_generate_select_result_main_quit_flow(
     )
     scripted = ScriptedInput(
         [
-            char("2"),
+            char("3"),
             char("r"),
             KeyPress(key=Key.SPACE),
             KeyPress(key=Key.SPACE),
@@ -435,7 +435,7 @@ def test_quick_review_writes_the_exact_reviewed_draft(tmp_path: Path) -> None:
         },
     )
     keys = [
-        char("2"),
+        char("3"),
         char("r"),
         char("g"),
         char("j"),
@@ -560,7 +560,7 @@ def test_quick_review_splits_a_real_cross_repository_merge(tmp_path: Path) -> No
         actions=actions,
         input_source=ScriptedInput(
             [
-                char("2"),
+                char("3"),
                 char("r"),
                 char("g"),
                 char("j"),
@@ -605,7 +605,7 @@ def test_twenty_line_quick_review_expands_more_evidence_and_recovers_preview(
         preview_failures=1,
     )
     keys = [
-        char("2"),
+        char("3"),
         char("r"),
         char("g"),
         char("j"),

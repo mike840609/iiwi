@@ -14,12 +14,19 @@ from rich.console import Console
 from iiwi import config_store
 from iiwi.errors import (
     ConfigurationError,
+    DailySourceUnavailableError,
     IiwiError,
     OutcomeSynthesisError,
     ReportAlreadyExistsError,
     ReportOutputError,
 )
 from iiwi.history import HistoryEntry, read_history
+from iiwi.interactive.daily_review import (
+    TODAY_MORE_SECTION,
+    YESTERDAY_MORE_SECTION,
+    DailyReviewRow,
+    visible_daily_review_rows,
+)
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.interactive.render import (
@@ -29,11 +36,14 @@ from iiwi.interactive.render import (
     build_filtered_rows,
     build_session_preview_lines,
     build_visible_rows,
+    daily_result_options,
     help_capacity,
     help_lines,
     history_capacity,
     main_menu_options,
     recoverable_error_detail_capacity,
+    render_daily_result,
+    render_daily_review,
     render_help,
     render_history,
     render_main_menu,
@@ -59,6 +69,7 @@ from iiwi.interactive.settings import (
     next_choice,
     write_setting,
 )
+from iiwi.models.daily import DailySection, DailyStandupDraft
 from iiwi.models.outcome import Outcome, OutcomeReviewDraft
 from iiwi.models.report_options import ReportType
 from iiwi.models.session import AgentSession
@@ -88,6 +99,37 @@ class InteractiveReportResult:
     session_count: int
 
 
+def _daily_start_not_configured(
+    previous: DailyStandupDraft | None,
+) -> DailyStandupDraft:
+    raise NotImplementedError("Daily Standup actions are not configured")
+
+
+def _daily_continue_not_configured(
+    error: DailySourceUnavailableError,
+    previous: DailyStandupDraft | None,
+) -> DailyStandupDraft:
+    raise NotImplementedError("Daily Standup actions are not configured")
+
+
+def _daily_persist_not_configured(draft: DailyStandupDraft) -> str | None:
+    return "Daily Standup state persistence is not configured."
+
+
+def _daily_report_not_configured(
+    draft: DailyStandupDraft,
+) -> InteractiveReportResult:
+    raise NotImplementedError("Daily Standup actions are not configured")
+
+
+def _daily_edit_not_configured(statement: str) -> str | None:
+    return None
+
+
+def _daily_add_not_configured(section: DailySection) -> str | None:
+    return None
+
+
 @dataclass(frozen=True)
 class InteractiveActions:
     """Business-logic seams supplied by `cli.py`, keeping this module cycle-free."""
@@ -110,6 +152,23 @@ class InteractiveActions:
     restore_selection: Callable[[str, DateRange, bool], set[str] | None]
     save_selection: Callable[[str, DateRange, bool, set[str]], None]
     exclude_repository: Callable[[str, str], str]
+    start_daily: Callable[
+        [DailyStandupDraft | None], DailyStandupDraft
+    ] = _daily_start_not_configured
+    continue_daily_empty: Callable[
+        [DailySourceUnavailableError, DailyStandupDraft | None], DailyStandupDraft
+    ] = _daily_continue_not_configured
+    persist_daily: Callable[
+        [DailyStandupDraft], str | None
+    ] = _daily_persist_not_configured
+    preview_daily: Callable[
+        [DailyStandupDraft], InteractiveReportResult
+    ] = _daily_report_not_configured
+    generate_daily: Callable[
+        [DailyStandupDraft], InteractiveReportResult
+    ] = _daily_report_not_configured
+    edit_daily_statement: Callable[[str], str | None] = _daily_edit_not_configured
+    add_daily_statement: Callable[[DailySection], str | None] = _daily_add_not_configured
 
 
 @dataclass
@@ -120,6 +179,7 @@ class _ErrorState:
     retry: str | None = None
     selected: int = 0
     detail_offset: int = 0
+    daily_source_error: DailySourceUnavailableError | None = None
 
 
 @dataclass
@@ -150,6 +210,12 @@ class _State:
     outcome_cursor: int = 0
     outcome_message: str | None = None
     expanded_evidence: set[str] | None = None
+    daily_review: DailyStandupDraft | None = None
+    daily_cursor: int = 0
+    daily_message: str | None = None
+    daily_expanded: set[str] | None = None
+    daily_result: InteractiveReportResult | None = None
+    daily_result_cursor: int = 0
     search_query: str = ""
     searching: bool = False
     help_return_screen: Screen | None = None
@@ -170,6 +236,11 @@ class _State:
         if self.expanded_evidence is None:
             self.expanded_evidence = set()
         return self.expanded_evidence
+
+    def daily_expansions(self) -> set[str]:
+        if self.daily_expanded is None:
+            self.daily_expanded = set()
+        return self.daily_expanded
 
 
 def _read_key(input_source: KeySource) -> KeyPress:
@@ -399,7 +470,7 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
     if key.key is Key.ESCAPE or _char(key, "q"):
         state.screen = Screen.EXIT
         return
-    if key.char in {"1", "2", "3", "4", "5"}:
+    if key.char in {"1", "2", "3", "4", "5", "6"}:
         state.main_cursor = int(key.char) - 1
         activate = True
     else:
@@ -410,12 +481,14 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
     if state.main_cursor == 0:
         _begin_browse(state, actions)
     elif state.main_cursor == 1:
-        _new_report(state, actions)
+        _begin_daily_review(state, actions)
     elif state.main_cursor == 2:
+        _new_report(state, actions)
+    elif state.main_cursor == 3:
         state.history_cursor = 0
         state.history_offset = 0
         state.screen = Screen.HISTORY
-    elif state.main_cursor == 3:
+    elif state.main_cursor == 4:
         draft = actions.new_draft()
         try:
             lines = actions.doctor(draft.harness)
@@ -903,6 +976,203 @@ def _outcome_review_rows(state: _State) -> list[OutcomeReviewRow]:
     return visible_outcome_review_rows(state.outcome_review, state.evidence_expansions())
 
 
+def _daily_review_rows(state: _State) -> list[DailyReviewRow]:
+    """Return the Daily rows addressed by both cursor and renderer."""
+
+    assert state.daily_review is not None
+    return visible_daily_review_rows(state.daily_review, state.daily_expansions())
+
+
+def _open_daily_review(state: _State, draft: DailyStandupDraft) -> None:
+    state.daily_review = draft
+    state.daily_cursor = min(
+        state.daily_cursor,
+        max(0, len(visible_daily_review_rows(draft, state.daily_expansions())) - 1),
+    )
+    state.daily_message = draft.warnings[0] if draft.warnings else None
+    state.daily_result = None
+    state.daily_result_cursor = 0
+    state.error = None
+    state.screen = Screen.DAILY_REVIEW
+
+
+def _begin_daily_review(state: _State, actions: InteractiveActions) -> None:
+    """Start or refresh Daily while preserving its independent review draft."""
+
+    try:
+        draft = actions.start_daily(state.daily_review)
+    except DailySourceUnavailableError as exc:
+        state.error = _ErrorState(
+            kind="daily-source",
+            title="Could not read Daily Standup sources",
+            detail=str(exc),
+            retry="daily-source",
+            daily_source_error=exc,
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    _open_daily_review(state, draft)
+
+
+def _persist_daily_review(state: _State, actions: InteractiveActions) -> None:
+    assert state.daily_review is not None
+    state.daily_message = actions.persist_daily(state.daily_review)
+
+
+def _move_daily_item(
+    state: _State,
+    target: DailyReviewRow,
+    delta: int,
+) -> None:
+    assert state.daily_review is not None
+    assert target.work_item_id is not None
+    state.daily_review.move(target.section, target.work_item_id, delta)
+    rows = _daily_review_rows(state)
+    state.daily_cursor = next(
+        index
+        for index, row in enumerate(rows)
+        if row.kind == "item"
+        and row.section is target.section
+        and row.work_item_id == target.work_item_id
+    )
+
+
+def _generate_daily_review(
+    state: _State,
+    actions: InteractiveActions,
+    *,
+    preview: bool,
+) -> None:
+    assert state.daily_review is not None
+    try:
+        result = (
+            actions.preview_daily(state.daily_review)
+            if preview
+            else actions.generate_daily(state.daily_review)
+        )
+    except IiwiError as exc:
+        state.error = _ErrorState(
+            kind="daily-preview" if preview else "daily-write",
+            title="Could not preview Daily Standup"
+            if preview
+            else "Could not write Daily Standup",
+            detail=str(exc),
+            retry="daily-preview" if preview else None,
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    state.daily_message = None
+    state.error = None
+    if preview:
+        state.result = result
+        state.preview_offset = 0
+        state.preview_return_screen = Screen.DAILY_REVIEW
+        state.screen = Screen.REPORT_PREVIEW
+    else:
+        state.daily_result = result
+        state.daily_result_cursor = 0
+        state.preview_return_screen = None
+        state.screen = Screen.DAILY_RESULT
+
+
+def _daily_review_key(
+    state: _State,
+    key: KeyPress,
+    actions: InteractiveActions,
+) -> None:
+    assert state.daily_review is not None
+    rows = _daily_review_rows(state)
+    state.daily_cursor = min(state.daily_cursor, len(rows) - 1)
+    target = rows[state.daily_cursor]
+
+    if _exact_char(key, "J") and target.kind == "item":
+        _move_daily_item(state, target, 1)
+        _persist_daily_review(state, actions)
+        return
+    if _exact_char(key, "K") and target.kind == "item":
+        _move_daily_item(state, target, -1)
+        _persist_daily_review(state, actions)
+        return
+
+    state.daily_cursor = _move(state.daily_cursor, key, len(rows))
+    target = rows[state.daily_cursor]
+    if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
+        state.screen = Screen.MAIN
+        return
+    if _exact_char(key, "p"):
+        _generate_daily_review(state, actions, preview=True)
+        return
+    if _exact_char(key, "g"):
+        _generate_daily_review(state, actions, preview=False)
+        return
+    if _exact_char(key, "a"):
+        statement = actions.add_daily_statement(target.section)
+        if statement is not None:
+            created = state.daily_review.add_user_item(target.section, statement)
+            _persist_daily_review(state, actions)
+            rows = _daily_review_rows(state)
+            state.daily_cursor = next(
+                index
+                for index, row in enumerate(rows)
+                if row.kind == "item"
+                and row.section is target.section
+                and row.work_item_id == created.id
+            )
+        return
+    if target.kind == "more":
+        if key.key is Key.ENTER:
+            disclosure = (
+                YESTERDAY_MORE_SECTION
+                if target.section is DailySection.YESTERDAY
+                else TODAY_MORE_SECTION
+            )
+            state.daily_expansions().symmetric_difference_update({disclosure})
+        return
+    if target.kind != "item":
+        return
+
+    assert target.work_item_id is not None
+    if key.key is Key.SPACE:
+        state.daily_review.toggle_included(target.section, target.work_item_id)
+        _persist_daily_review(state, actions)
+    elif _exact_char(key, "v"):
+        state.daily_expansions().symmetric_difference_update({target.work_item_id})
+    elif _exact_char(key, "e"):
+        current = next(
+            item
+            for work_item, item in state.daily_review.ordered_items(target.section)
+            if work_item.id == target.work_item_id
+        )
+        statement = actions.edit_daily_statement(current.statement)
+        if statement is not None:
+            state.daily_review.edit(
+                target.section,
+                target.work_item_id,
+                statement,
+            )
+            _persist_daily_review(state, actions)
+
+
+def _daily_result_key(state: _State, key: KeyPress) -> None:
+    assert state.daily_result is not None
+    options = daily_result_options()
+    state.daily_result_cursor = _move(state.daily_result_cursor, key, len(options))
+    if key.key is Key.ESCAPE or _char(key, "q") or _char(key, "b"):
+        state.screen = Screen.MAIN
+        return
+    if key.key is not Key.ENTER:
+        return
+    if options[state.daily_result_cursor] == "Back to main menu":
+        state.screen = Screen.MAIN
+        return
+    state.error = _ErrorState(
+        kind="daily-path",
+        title="Daily Standup path",
+        detail=str(state.daily_result.output_path),
+    )
+    state.screen = Screen.RECOVERABLE_ERROR
+
+
 def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
     assert state.draft is not None
     assert state.selection is not None
@@ -1179,6 +1449,14 @@ def _error_options(error: _ErrorState) -> list[str]:
         return ["Back"]
     if error.kind == "history-path":
         return ["Back"]
+    if error.kind == "daily-path":
+        return ["Back"]
+    if error.kind == "daily-source":
+        return ["Retry", "Continue with empty draft", "Back"]
+    if error.kind == "daily-preview":
+        return ["Retry", "Back to Daily Review", "Main menu"]
+    if error.kind == "daily-write":
+        return ["Back to Daily Review", "Main menu"]
     if error.kind in {"report-empty", "browse-empty"}:
         return ["Change period", "Change harness", "Back", "Main menu"]
     if error.kind == "outcome-synthesis":
@@ -1201,6 +1479,12 @@ def _error_back_screen(error: _ErrorState) -> Screen:
         return Screen.REPORT_RESULT
     if error.kind == "history-path":
         return Screen.HISTORY
+    if error.kind == "daily-path":
+        return Screen.DAILY_RESULT
+    if error.kind == "daily-source":
+        return Screen.MAIN
+    if error.kind in {"daily-preview", "daily-write"}:
+        return Screen.DAILY_REVIEW
     if error.kind == "doctor-result":
         return Screen.MAIN
     if error.kind == "outcome-synthesis":
@@ -1265,11 +1549,26 @@ def _error_key(
     if choice == "Back to Quick Review":
         state.screen = Screen.OUTCOME_REVIEW
         return
+    if choice == "Back to Daily Review":
+        state.screen = Screen.DAILY_REVIEW
+        return
     if choice == "Retry":
-        if error.retry == "outcome-synthesis":
+        if error.retry == "daily-source":
+            _begin_daily_review(state, actions)
+        elif error.retry == "daily-preview":
+            _generate_daily_review(state, actions, preview=True)
+        elif error.retry == "outcome-synthesis":
             _begin_outcome_review(state, actions)
         elif error.retry == "outcome-preview":
             _generate_outcome_review(state, actions, preview=True)
+        return
+    if choice == "Continue with empty draft":
+        assert error.daily_source_error is not None
+        draft = actions.continue_daily_empty(
+            error.daily_source_error,
+            state.daily_review,
+        )
+        _open_daily_review(state, draft)
         return
     if choice == "Use session-based report":
         assert state.draft is not None
@@ -1523,6 +1822,15 @@ def _render_screen(state: _State, console: Console) -> None:
             period=state.draft.period if state.draft is not None else None,
             message=state.outcome_message,
         )
+    elif state.screen is Screen.DAILY_REVIEW:
+        assert state.daily_review is not None
+        render_daily_review(
+            console,
+            state.daily_review,
+            cursor=state.daily_cursor,
+            expanded=state.daily_expansions(),
+            message=state.daily_message,
+        )
     elif state.screen is Screen.SESSION_PREVIEW:
         assert state.preview_session is not None
         render_session_preview(
@@ -1541,6 +1849,13 @@ def _render_screen(state: _State, console: Console) -> None:
             output_path=state.result.output_path,
             selected=state.result_cursor,
             dry_run=state.draft.dry_run,
+        )
+    elif state.screen is Screen.DAILY_RESULT:
+        assert state.daily_result is not None
+        render_daily_result(
+            console,
+            output_path=state.daily_result.output_path,
+            selected=state.daily_result_cursor,
         )
     elif state.screen is Screen.HISTORY:
         render_history(
@@ -1586,7 +1901,11 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
         state.screen = Screen.MAIN if state.review_from_main else Screen.REPORT_SETUP
     elif state.screen is Screen.OUTCOME_REVIEW:
         state.screen = Screen.SESSION_REVIEW
-    elif state.screen in {Screen.REPORT_RESULT, Screen.HISTORY}:
+    elif state.screen is Screen.DAILY_REVIEW or state.screen in {
+        Screen.REPORT_RESULT,
+        Screen.DAILY_RESULT,
+        Screen.HISTORY,
+    }:
         state.screen = Screen.MAIN
     elif state.screen is Screen.REPORT_PREVIEW:
         state.screen = state.preview_return_screen or Screen.REPORT_RESULT
@@ -1621,8 +1940,12 @@ def _dispatch(
         _review_key(state, key, actions)
     elif state.screen is Screen.OUTCOME_REVIEW:
         _outcome_review_key(state, key, actions)
+    elif state.screen is Screen.DAILY_REVIEW:
+        _daily_review_key(state, key, actions)
     elif state.screen is Screen.REPORT_RESULT:
         _result_key(state, key)
+    elif state.screen is Screen.DAILY_RESULT:
+        _daily_result_key(state, key)
     elif state.screen is Screen.HISTORY:
         _history_key(state, key, console)
     elif state.screen is Screen.REPORT_PREVIEW:

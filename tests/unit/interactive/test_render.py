@@ -168,7 +168,7 @@ def test_main_menu_orders_history_before_the_non_functional_rows() -> None:
     render_main_menu(console, selected=0)
 
     text = stream.getvalue()
-    assert "1-5" in text
+    assert "1-6" in text
     assert text.index("History") < text.index("Check Setup")
     assert text.index("Check Setup") < text.index("Settings")
 

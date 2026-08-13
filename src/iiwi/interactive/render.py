@@ -13,6 +13,12 @@ from rich.text import Text
 
 from iiwi import __version__
 from iiwi.history import HistoryEntry, HistoryKind
+from iiwi.interactive.daily_review import (
+    TODAY_MORE_SECTION,
+    YESTERDAY_MORE_SECTION,
+    DailyReviewRow,
+    visible_daily_review_rows,
+)
 from iiwi.interactive.density import (
     is_subagent,
     last_activity_at,
@@ -25,6 +31,13 @@ from iiwi.interactive.density import (
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.selection import SelectionMark, SelectionState, noise_reason
 from iiwi.interactive.settings import SettingsRow
+from iiwi.models.daily import (
+    DailySection,
+    DailySectionItem,
+    DailyStandupDraft,
+    DailyStandupWorkItem,
+    DailyStatementSource,
+)
 from iiwi.models.outcome import (
     Outcome,
     OutcomeBucket,
@@ -51,11 +64,19 @@ class OutcomeReviewRow:
     outcome_id: str | None = None
 
 
-_MAIN_OPTIONS = ["Review Activity", "Generate Report", "History", "Check Setup", "Settings"]
+_MAIN_OPTIONS = [
+    "Review Activity",
+    "Daily Standup",
+    "Generate Report",
+    "History",
+    "Check Setup",
+    "Settings",
+]
 # The main menu explains what each option does, the way mole's menu does: one
 # dim clause per row, aligned under the widest label.
 _MAIN_DESCRIPTIONS = {
     "Review Activity": "Explore sessions by repository",
+    "Daily Standup": "Draft yesterday, today and blockers",
     "Generate Report": "Configure and produce a report",
     "History": "List past reports and their paths",
     "Check Setup": "Diagnose the harness setup",
@@ -210,6 +231,26 @@ _OUTCOME_REVIEW_HINTS = [
     "? Help",
     "b Back",
 ]
+_DAILY_REVIEW_HINTS = [
+    "↑↓ jk",
+    "Space Include",
+    "e Edit",
+    "J/K Reorder",
+    "v Evidence",
+    "a Add",
+    "p Preview",
+    "g Generate",
+    "? Help",
+    "b Back",
+]
+_DAILY_RESULT_OPTIONS = ["Back to main menu", "Print report path"]
+_DAILY_SOURCE_LABELS: dict[DailyStatementSource, str | None] = {
+    DailyStatementSource.ACTIVITY_YESTERDAY: None,
+    DailyStatementSource.ACTIVITY_TODAY: "Activity today",
+    DailyStatementSource.SUGGESTED_FROM_YESTERDAY: "Suggested from yesterday",
+    DailyStatementSource.DETECTED_BLOCKER: "Detected blocker",
+    DailyStatementSource.USER_ADDED: "User added",
+}
 
 
 def main_menu_options() -> list[str]:
@@ -734,6 +775,335 @@ def render_outcome_review(
 
 
 @dataclass(frozen=True)
+class _DailyReviewBlock:
+    row: DailyReviewRow
+    lines: list[Text]
+
+
+def _daily_section_item(
+    draft: DailyStandupDraft,
+    row: DailyReviewRow,
+) -> tuple[DailyStandupWorkItem, DailySectionItem]:
+    assert row.work_item_id is not None
+    return next(
+        pair
+        for pair in draft.ordered_items(row.section)
+        if pair[0].id == row.work_item_id
+    )
+
+
+def _daily_section_line(
+    draft: DailyStandupDraft,
+    row: DailyReviewRow,
+    *,
+    focused: bool,
+    width: int,
+) -> Text:
+    selected = sum(item.included for _, item in draft.ordered_items(row.section))
+    label = {
+        DailySection.YESTERDAY: "Yesterday",
+        DailySection.TODAY: "Today",
+        DailySection.BLOCKERS: "Blockers",
+    }[row.section]
+    style = _CURSOR_STYLE if focused else "bold"
+    return _truncated_text(
+        Text(f"{_CURSOR if focused else ' '} {label}  {selected} selected", style=style),
+        width,
+    )
+
+
+def _daily_more_line(
+    row: DailyReviewRow,
+    *,
+    focused: bool,
+    expanded: set[str],
+    width: int,
+) -> Text:
+    disclosure = {
+        DailySection.YESTERDAY: YESTERDAY_MORE_SECTION,
+        DailySection.TODAY: TODAY_MORE_SECTION,
+    }[row.section]
+    style = _CURSOR_STYLE if focused else ""
+    return _truncated_text(
+        Text(
+            f"{_CURSOR if focused else ' '} {'▾' if disclosure in expanded else '▸'} "
+            "More candidates",
+            style=style,
+        ),
+        width,
+    )
+
+
+def _daily_evidence_lines(
+    console: Console,
+    work_item: DailyStandupWorkItem,
+    item: DailySectionItem,
+) -> list[Text]:
+    lines: list[Text] = []
+    if work_item.repository_ids:
+        lines.extend(
+            _labelled_wrapped_lines(
+                console,
+                indent="      ",
+                label="Repository",
+                value=", ".join(work_item.repository_ids),
+                limit=1,
+            )
+        )
+    for reference in item.evidence_refs:
+        values = (
+            ("Harness", reference.harness),
+            ("Session", reference.session_id),
+            ("Commit", reference.commit),
+            ("File", reference.file),
+        )
+        for label, value in values:
+            if value:
+                lines.extend(
+                    _labelled_wrapped_lines(
+                        console,
+                        indent="      ",
+                        label=label,
+                        value=value,
+                        limit=1,
+                    )
+                )
+    return lines
+
+
+def _daily_item_block(
+    console: Console,
+    work_item: DailyStandupWorkItem,
+    item: DailySectionItem,
+    *,
+    focused: bool,
+    evidence_expanded: bool,
+) -> list[Text]:
+    style = _CURSOR_STYLE if focused else ""
+    repositories = ""
+    if work_item.repository_ids:
+        repository_text = _truncated_text(
+            Text(f"[{', '.join(work_item.repository_ids)}]"),
+            max(8, min(18, console.size.width // 3)),
+        )
+        repositories = f"{repository_text.plain} "
+    summary = Text.assemble(
+        (_CURSOR if focused else " ", style),
+        " ",
+        ("●" if item.included else "○", "green" if item.included else "dim"),
+        " ",
+        (repositories, "dim"),
+        (_single_line(item.statement), style),
+    )
+    source_label = _DAILY_SOURCE_LABELS[item.source]
+    labels = [source_label] if source_label is not None else []
+    if item.new_activity:
+        labels.append("New activity")
+    lines = [_truncated_text(summary, console.size.width)]
+    if labels:
+        lines.append(
+            _truncated_text(
+                Text(f"      {' │ '.join(labels)}", style="dim"),
+                console.size.width,
+            )
+        )
+    if focused and evidence_expanded:
+        lines.extend(_daily_evidence_lines(console, work_item, item))
+    return lines
+
+
+def _build_daily_review_blocks(
+    console: Console,
+    draft: DailyStandupDraft,
+    rows: list[DailyReviewRow],
+    *,
+    cursor: int,
+    expanded: set[str],
+    focused_capacity: int,
+) -> list[_DailyReviewBlock]:
+    blocks: list[_DailyReviewBlock] = []
+    for index, row in enumerate(rows):
+        focused = index == cursor
+        if row.kind == "section":
+            lines = [
+                _daily_section_line(
+                    draft,
+                    row,
+                    focused=focused,
+                    width=console.size.width,
+                )
+            ]
+        elif row.kind == "more":
+            lines = [
+                _daily_more_line(
+                    row,
+                    focused=focused,
+                    expanded=expanded,
+                    width=console.size.width,
+                )
+            ]
+        else:
+            work_item, item = _daily_section_item(draft, row)
+            lines = _daily_item_block(
+                console,
+                work_item,
+                item,
+                focused=focused,
+                evidence_expanded=work_item.id in expanded,
+            )
+            if focused and len(lines) > focused_capacity:
+                lines = lines[: max(1, focused_capacity)]
+        blocks.append(_DailyReviewBlock(row=row, lines=lines))
+    return blocks
+
+
+def _daily_block_window(
+    blocks: list[_DailyReviewBlock],
+    *,
+    cursor: int,
+    capacity: int,
+) -> tuple[int, int]:
+    """Choose the largest contiguous Daily block window containing focus."""
+
+    best: tuple[int, int] | None = None
+    best_score: tuple[int, int, int] | None = None
+    for start in range(cursor, -1, -1):
+        used = 0
+        for end in range(start, len(blocks)):
+            used += len(blocks[end].lines)
+            if not start <= cursor <= end:
+                continue
+            indicators = int(start > 0) + int(end < len(blocks) - 1)
+            if used + indicators > capacity:
+                continue
+            score = (end - start + 1, used, -abs((start + end) - 2 * cursor))
+            if best_score is None or score > best_score:
+                best = (start, end + 1)
+                best_score = score
+    return best if best is not None else (cursor, cursor + 1)
+
+
+def _daily_review_body(
+    blocks: list[_DailyReviewBlock],
+    *,
+    start: int,
+    end: int,
+    cursor: int,
+    capacity: int,
+) -> list[Text]:
+    above = Text(f"↑ {start} more", style="dim") if start > 0 else None
+    below = (
+        Text(f"↓ {len(blocks) - end} more", style="dim")
+        if end < len(blocks)
+        else None
+    )
+    window = [list(block.lines) for block in blocks[start:end]]
+
+    def used() -> int:
+        return sum(len(lines) for lines in window) + int(above is not None) + int(
+            below is not None
+        )
+
+    if used() > capacity:
+        above = None
+    if used() > capacity:
+        below = None
+    focused = cursor - start
+    if used() > capacity and 0 <= focused < len(window):
+        window[focused] = window[focused][: max(1, len(window[focused]) - used() + capacity)]
+
+    body: list[Text] = []
+    if above is not None:
+        body.append(above)
+    for lines in window:
+        body.extend(lines)
+    if below is not None:
+        body.append(below)
+    return body[:capacity]
+
+
+def render_daily_review(
+    console: Console,
+    draft: DailyStandupDraft,
+    *,
+    cursor: int,
+    expanded: set[str],
+    message: str | None = None,
+) -> None:
+    """Render Daily Quick Review within the current terminal viewport."""
+
+    rows = visible_daily_review_rows(draft, expanded)
+    cursor = min(max(0, cursor), max(0, len(rows) - 1))
+    hints = _hint_lines(_DAILY_REVIEW_HINTS, console.size.width)
+    terminal_budget = max(0, console.size.height - 1)
+    fixed_lines = 4 + len(hints) + int(message is not None)
+    body_capacity = max(1, terminal_budget - fixed_lines)
+    focused_capacity = max(
+        1,
+        body_capacity - int(cursor > 0) - int(cursor < len(rows) - 1),
+    )
+    blocks = _build_daily_review_blocks(
+        console,
+        draft,
+        rows,
+        cursor=cursor,
+        expanded=expanded,
+        focused_capacity=focused_capacity,
+    )
+    start, end = _daily_block_window(blocks, cursor=cursor, capacity=body_capacity)
+
+    suffix = "  Fallback draft" if draft.fallback else ""
+    _print_viewport_text(
+        console,
+        _truncated_text(
+            Text.assemble(
+                (f"Daily Standup — {draft.standup_date:%b %d}", "bold"),
+                (suffix, "yellow"),
+            ),
+            console.size.width,
+        ),
+    )
+    _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
+    console.print()
+    if message is not None:
+        _print_viewport_line(console, _single_line(message), style="yellow")
+    for line in _daily_review_body(
+        blocks,
+        start=start,
+        end=end,
+        cursor=cursor,
+        capacity=body_capacity,
+    ):
+        _print_viewport_text(console, _truncated_text(line, console.size.width))
+    console.print()
+    _print_hints(console, _DAILY_REVIEW_HINTS)
+
+
+def daily_result_options() -> list[str]:
+    """Return the Daily result actions in keyboard order."""
+
+    return list(_DAILY_RESULT_OPTIONS)
+
+
+def render_daily_result(
+    console: Console,
+    *,
+    output_path: Path | None,
+    selected: int,
+) -> None:
+    """Render the first-class Daily generation result."""
+
+    _print_header(console, "✓ Daily Standup generated")
+    console.print()
+    _print_viewport_line(console, f"Output         {output_path}")
+    console.print()
+    for index, label in enumerate(daily_result_options()):
+        _print_option_line(console, label, index, selected)
+    console.print()
+    _print_hints(console, ["↑↓ jk", "Enter Select", "? Help", "q Menu"])
+
+
+@dataclass(frozen=True)
 class _BarScale:
     """One scale shared by every row on screen. ``cells == 0`` disables the column."""
 
@@ -977,7 +1347,7 @@ def render_main_menu(console: Console, *, selected: int) -> None:
     console.print()
     _print_hints(
         console,
-        ["↑↓ jk", "Enter Select", "1-5", "? Help", "q Quit"],
+        ["↑↓ jk", "Enter Select", "1-6", "? Help", "q Quit"],
     )
 
 

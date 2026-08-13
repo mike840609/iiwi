@@ -169,6 +169,7 @@ def test_main_browse_entry_can_generate_from_the_same_activity_tree() -> None:
     input_source = ScriptedInput(
         [
             KeyPress(key=Key.DOWN),
+            KeyPress(key=Key.DOWN),
             KeyPress(key=Key.ENTER),
             char("g"),
             char("g"),
