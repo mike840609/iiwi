@@ -242,3 +242,38 @@ def test_both_flag_states_render() -> None:
 
     assert "- Subagent sessions included: yes" in yes
     assert "- Sanitized exports: yes" in yes
+
+
+def test_usage_text_is_appended_as_a_final_section() -> None:
+    sessions = {
+        "repo": [_resolved("s1", "Alpha", [], display_name="Alpha Repo")]
+    }
+
+    out = build_grouped_transcript(
+        sessions_by_repository=sessions,
+        period=_period(),
+        generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        include_subagents=False,
+        sanitized=False,
+        usage_text="REAL-USAGE 123",
+    )
+
+    assert "## Usage" in out
+    assert "REAL-USAGE 123" in out
+    assert out.index("## Usage") > out.index("## Project: Alpha Repo")
+
+
+def test_usage_section_is_omitted_when_no_usage_text() -> None:
+    sessions = {
+        "repo": [_resolved("s1", "Alpha", [], display_name="Alpha Repo")]
+    }
+
+    out = build_grouped_transcript(
+        sessions_by_repository=sessions,
+        period=_period(),
+        generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        include_subagents=False,
+        sanitized=False,
+    )
+
+    assert "## Usage" not in out

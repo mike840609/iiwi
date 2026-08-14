@@ -188,12 +188,21 @@ class ReportService:
                 "no local opencode run driver configured for narrative mode"
             )
         self._progress.start(ProgressStage.SUMMARIZING_REPOSITORIES, total=1)
+        # FULL asks the model for a Usage Overview, so the real statistics must
+        # reach the transcript (`--file`) before the model call; BRIEF never
+        # asks for usage, so it is not collected here either.
+        usage_text = (
+            self._collect_usage(scan, warnings)
+            if self._detail is DetailLevel.FULL
+            else None
+        )
         transcript = build_grouped_transcript(
             sessions_by_repository=scan.sessions_by_repository,
             period=self._period,
             generated_at=self._now_factory(),
             include_subagents=self._include_subagents,
             sanitized=self._sanitized,
+            usage_text=usage_text,
         )
         days = self._usage_days or max(1, (self._period.until - self._period.since).days)
         narrative = self._opencode_runner.run(
@@ -206,18 +215,14 @@ class ReportService:
             ),
         )
         self._progress.advance(1)
-        usage_text = (
-            self._collect_usage(scan, warnings)
-            if self._detail is DetailLevel.FULL
-            else None
-        )
+        # No `usage_text`: the narrative owns the usage section (fed by the
+        # transcript); carrying it would make the renderer append a second,
+        # competing `## Usage` block.
         return WorklogReport(
             generated_at=self._now_factory(),
             period=self._period,
             repositories=[],
             narrative_text=narrative,
-            usage_text=usage_text,
-            usage_days=self._usage_days if usage_text else None,
             warnings=[redact_text(warning) for warning in warnings],
         )
 

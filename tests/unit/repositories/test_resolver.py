@@ -58,6 +58,42 @@ def test_no_remote_falls_back_to_hashed_git_common_dir(fake_git_runner) -> None:
     assert "/private/repo" not in identity.repository_id
 
 
+def test_relative_local_origin_falls_back_to_git_common_dir(fake_git_runner) -> None:
+    fake_git_runner.set_output("remote get-url origin", "../upstream.git")
+    fake_git_runner.set_output("rev-parse --git-common-dir", "/parent-a/repo/.git")
+    fake_git_runner.set_output("branch --show-current", "main")
+    resolver = RepositoryResolver(runner=fake_git_runner)
+
+    identity = resolver.resolve(
+        AgentSession(harness="opencode", session_id="s1", working_directory="/parent-a/repo")
+    )
+
+    assert identity.identity_type == RepositoryIdentityType.GIT_COMMON_DIR
+    assert identity.repository_id.startswith("git-common:")
+
+
+def test_same_relative_origin_under_different_parents_remains_distinct(fake_git_runner) -> None:
+    first_runner = fake_git_runner
+    first_runner.set_output("remote get-url origin", "../upstream.git")
+    first_runner.set_output("rev-parse --git-common-dir", "/parent-a/repo/.git")
+    first_runner.set_output("branch --show-current", "main")
+    second_runner = type(fake_git_runner)()
+    second_runner.set_output("remote get-url origin", "../upstream.git")
+    second_runner.set_output("rev-parse --git-common-dir", "/parent-b/repo/.git")
+    second_runner.set_output("branch --show-current", "main")
+
+    first = RepositoryResolver(runner=first_runner).resolve(
+        AgentSession(harness="opencode", session_id="s1", working_directory="/parent-a/repo")
+    )
+    second = RepositoryResolver(runner=second_runner).resolve(
+        AgentSession(harness="opencode", session_id="s2", working_directory="/parent-b/repo")
+    )
+
+    assert first.identity_type == RepositoryIdentityType.GIT_COMMON_DIR
+    assert second.identity_type == RepositoryIdentityType.GIT_COMMON_DIR
+    assert first.repository_id != second.repository_id
+
+
 def test_deleted_path_falls_back_to_harness_project_id(fake_git_runner) -> None:
     fake_git_runner.returncode = 1
     resolver = RepositoryResolver(runner=fake_git_runner)
@@ -190,8 +226,10 @@ def test_reattaches_a_fallback_entry_with_exactly_one_branch_match(tmp_path: Pat
         harness="claude-code", session_id="live-1", working_directory=str(repo_dir)
     )
     live_identity = _live_identity("git:github.com/mike/repo-a", str(repo_dir))
+    # The deleted worktree's recorded path is a sibling of the live repository
+    # under tmp_path — the corroborating path evidence required for reattachment.
     session, fallback_identity = _fallback_pair(
-        "detached-1", branch="fix/foo", cwd="/deleted/worktree"
+        "detached-1", branch="fix/foo", cwd=str(tmp_path / "repo-a-wt")
     )
     runner = BranchListRunner(
         refs_by_cwd={str(repo_dir): ["refs/heads/fix/foo", "refs/heads/main"]}
@@ -207,7 +245,7 @@ def test_reattaches_a_fallback_entry_with_exactly_one_branch_match(tmp_path: Pat
     assert result.identity_type == RepositoryIdentityType.GIT_REMOTE
     # The matched live repository's identity is kept, but the candidate's own
     # working directory and branch — where the work actually happened — survive.
-    assert result.working_directory == "/deleted/worktree"
+    assert result.working_directory == str(tmp_path / "repo-a-wt")
     assert result.branch == "fix/foo"
 
 
@@ -224,7 +262,11 @@ def test_a_branch_in_two_live_repositories_is_left_untouched(tmp_path: Path) -> 
     )
     identity_a = _live_identity("git:github.com/mike/a", str(repo_a))
     identity_b = _live_identity("git:github.com/mike/b", str(repo_b))
-    session, fallback_identity = _fallback_pair("detached-1", branch="shared-branch")
+    # The deleted worktree is a sibling of both repositories, so both satisfy
+    # the path evidence; ambiguity on the branch alone keeps the entry untouched.
+    session, fallback_identity = _fallback_pair(
+        "detached-1", branch="shared-branch", cwd=str(tmp_path / "shared-wt")
+    )
     runner = BranchListRunner(
         refs_by_cwd={
             str(repo_a): ["refs/heads/shared-branch"],
@@ -248,7 +290,11 @@ def test_a_branch_in_no_live_repository_is_left_untouched(tmp_path: Path) -> Non
         harness="claude-code", session_id="live-1", working_directory=str(repo_dir)
     )
     live_identity = _live_identity("git:github.com/mike/a", str(repo_dir))
-    session, fallback_identity = _fallback_pair("detached-1", branch="ghost-branch")
+    # Path evidence is present (sibling), so it is the missing branch that must
+    # keep the entry untouched, not the path check.
+    session, fallback_identity = _fallback_pair(
+        "detached-1", branch="ghost-branch", cwd=str(tmp_path / "ghost-wt")
+    )
     runner = BranchListRunner(refs_by_cwd={str(repo_dir): ["refs/heads/main"]})
 
     reattached, count = reattach_by_branch(
@@ -303,7 +349,11 @@ def test_a_remote_tracking_branch_matches_after_stripping_the_remote_name(
         harness="claude-code", session_id="live-1", working_directory=str(repo_dir)
     )
     live_identity = _live_identity("git:github.com/mike/a", str(repo_dir))
-    session, fallback_identity = _fallback_pair("detached-1", branch="fix/foo")
+    # A remote-tracking ref matches after stripping the remote name, with the
+    # deleted worktree's sibling path providing the required evidence.
+    session, fallback_identity = _fallback_pair(
+        "detached-1", branch="fix/foo", cwd=str(tmp_path / "repo-a-wt")
+    )
     runner = BranchListRunner(refs_by_cwd={str(repo_dir): ["refs/remotes/origin/fix/foo"]})
 
     reattached, count = reattach_by_branch(
@@ -321,7 +371,11 @@ def test_a_raising_git_call_is_treated_as_no_branches_not_an_error(tmp_path: Pat
         harness="claude-code", session_id="live-1", working_directory=str(repo_dir)
     )
     live_identity = _live_identity("git:github.com/mike/a", str(repo_dir))
-    session, fallback_identity = _fallback_pair("detached-1", branch="fix/foo")
+    # Path evidence is present; the raising git call is what must be treated as
+    # "no branches", so the entry stays untouched.
+    session, fallback_identity = _fallback_pair(
+        "detached-1", branch="fix/foo", cwd=str(tmp_path / "repo-a-wt")
+    )
     runner = RaisingRunner()
 
     reattached, count = reattach_by_branch(
@@ -330,3 +384,88 @@ def test_a_raising_git_call_is_treated_as_no_branches_not_an_error(tmp_path: Pat
 
     assert count == 0
     assert _by_session_id(reattached)["detached-1"] is fallback_identity
+
+
+def test_a_branch_match_without_path_evidence_is_left_untouched(tmp_path: Path) -> None:
+    # The recorded branch (main) exists in exactly one live repository, but the
+    # deleted worktree's recorded path shares no parent or ancestor with that
+    # repository — a branch-name agreement alone must never cross boundaries.
+    repo_dir = tmp_path / "repo-a"
+    repo_dir.mkdir()
+    live_session = AgentSession(
+        harness="claude-code", session_id="live-1", working_directory=str(repo_dir)
+    )
+    live_identity = _live_identity("git:github.com/mike/a", str(repo_dir))
+    session, fallback_identity = _fallback_pair("detached-1", branch="main")
+    runner = BranchListRunner(refs_by_cwd={str(repo_dir): ["refs/heads/main"]})
+
+    reattached, count = reattach_by_branch(
+        [(live_session, live_identity), (session, fallback_identity)], runner=runner
+    )
+
+    assert count == 0
+    assert _by_session_id(reattached)["detached-1"] is fallback_identity
+
+
+def test_a_worktree_nested_inside_the_live_repository_reattaches(tmp_path: Path) -> None:
+    # Worktrees checked out under the main repository (a .worktrees/ layout)
+    # record a path that nests inside the live repository's directory.
+    repo_dir = tmp_path / "repo-a"
+    repo_dir.mkdir()
+    live_session = AgentSession(
+        harness="claude-code", session_id="live-1", working_directory=str(repo_dir)
+    )
+    live_identity = _live_identity("git:github.com/mike/a", str(repo_dir))
+    session, fallback_identity = _fallback_pair(
+        "detached-1", branch="fix/foo", cwd=str(repo_dir / ".worktrees" / "wt-fix")
+    )
+    runner = BranchListRunner(refs_by_cwd={str(repo_dir): ["refs/heads/fix/foo"]})
+
+    reattached, count = reattach_by_branch(
+        [(live_session, live_identity), (session, fallback_identity)], runner=runner
+    )
+
+    assert count == 1
+    result = _by_session_id(reattached)["detached-1"]
+    assert result.repository_id == "git:github.com/mike/a"
+    assert result.working_directory == str(repo_dir / ".worktrees" / "wt-fix")
+    assert result.branch == "fix/foo"
+
+
+def test_path_evidence_selects_between_two_repositories_sharing_the_branch(
+    tmp_path: Path,
+) -> None:
+    # Both live repositories have `main`, but only one is path-related to the
+    # deleted worktree; the related one wins and the unrelated one is ignored.
+    repo_a = tmp_path / "repo-a"
+    repo_a.mkdir()
+    repo_b = tmp_path / "other-project"
+    repo_b.mkdir()
+    live_a = AgentSession(
+        harness="claude-code", session_id="live-a", working_directory=str(repo_a)
+    )
+    live_b = AgentSession(
+        harness="claude-code", session_id="live-b", working_directory=str(repo_b)
+    )
+    identity_a = _live_identity("git:github.com/mike/a", str(repo_a))
+    identity_b = _live_identity("git:github.com/mike/b", str(repo_b))
+    session, fallback_identity = _fallback_pair(
+        "detached-1", branch="main", cwd=str(repo_a / ".worktrees" / "wt-main")
+    )
+    runner = BranchListRunner(
+        refs_by_cwd={
+            str(repo_a): ["refs/heads/main"],
+            str(repo_b): ["refs/heads/main"],
+        }
+    )
+
+    reattached, count = reattach_by_branch(
+        [(live_a, identity_a), (live_b, identity_b), (session, fallback_identity)],
+        runner=runner,
+    )
+
+    assert count == 1
+    result = _by_session_id(reattached)["detached-1"]
+    assert result.repository_id == "git:github.com/mike/a"
+    assert result.working_directory == str(repo_a / ".worktrees" / "wt-main")
+    assert result.branch == "main"

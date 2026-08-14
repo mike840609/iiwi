@@ -26,6 +26,9 @@ from iiwi.interactive.render import (
     report_generate_row,
     report_result_options,
     report_setup_rows,
+    settings_capacity,
+    settings_display_count,
+    settings_display_index,
 )
 from iiwi.interactive.selection import SelectionState
 from iiwi.interactive.settings import TIMEZONE_CHOICES, SettingsRow
@@ -1354,3 +1357,130 @@ def test_settings_renders_a_cycle_error_on_the_detail_line() -> None:
     )
 
     assert "could not write config file: read-only file system" in stream.getvalue()
+
+
+def test_settings_capacity_reserves_chrome_and_the_footer() -> None:
+    # Chrome: title+rule (2), three blanks, the detail line, the hint bar, and
+    # the terminal's final display row (8); the subtitle at >= _MIN_SUBTITLE_HEIGHT
+    # and the inline editor's value line each add one more.
+    assert settings_capacity(40) == 31
+    assert settings_capacity(24) == 15
+    assert settings_capacity(20) == 11
+    assert settings_capacity(16) == 7
+    assert settings_capacity(14) == 6
+    assert settings_capacity(40, editing=True) == 30
+    assert settings_capacity(16, editing=True) == 6
+    assert settings_capacity(14, editing=True) == 5
+
+
+def test_settings_display_count_counts_section_headers_and_blanks() -> None:
+    rows = [
+        _settings_row(section="OpenCode"),
+        _settings_row(key="harnesses.opencode.cli.model", section="OpenCode"),
+        _settings_row(key="report.timezone", section="General"),
+        _settings_row(key="report.output_directory", section="General"),
+    ]
+    assert settings_display_count(rows) == 7  # 4 rows + 2 headers + 1 separator
+    assert settings_display_count([_settings_row(section="OpenCode")]) == 2
+    assert settings_display_count([]) == 0
+
+
+def test_settings_display_index_lands_on_the_row_not_the_header() -> None:
+    rows = [
+        _settings_row(section="OpenCode"),
+        _settings_row(key="harnesses.opencode.cli.model", section="OpenCode"),
+        _settings_row(key="report.timezone", section="General"),
+        _settings_row(key="report.output_directory", section="General"),
+    ]
+    # Display: [OpenCode, row0, row1, blank, General, row2, row3]
+    assert settings_display_index(rows, 0) == 1
+    assert settings_display_index(rows, 1) == 2
+    assert settings_display_index(rows, 2) == 5
+    assert settings_display_index(rows, 3) == 6
+
+
+def _settings_viewport_rows() -> list[SettingsRow]:
+    """Sixteen rows across the four real sections, as the editor builds them.
+
+    Every row is environment-locked so the detail line names the selected row
+    deterministically.
+    """
+    keys = [
+        "harnesses.opencode.enabled",
+        "harnesses.opencode.source",
+        "harnesses.opencode.cli.executable",
+        "harnesses.opencode.cli.timeout_seconds",
+        "harnesses.opencode.cli.run_timeout_seconds",
+        "harnesses.opencode.cli.model",
+        "harnesses.opencode.cli.sanitize",
+        "harnesses.claude_code.enabled",
+        "harnesses.claude_code.projects_directory",
+        "harnesses.codex.enabled",
+        "harnesses.codex.home_directory",
+        "report.timezone",
+        "report.output_directory",
+        "report.exclude_repositories",
+        "report.quick_review_report_type",
+        "report.quick_review_max_evidence_bytes",
+    ]
+    sections = [
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "Claude Code",
+        "Claude Code",
+        "Codex",
+        "Codex",
+        "General",
+        "General",
+        "General",
+        "General",
+        "General",
+    ]
+    return [
+        _settings_row(
+            key=key,
+            label=key.removeprefix("harnesses."),
+            locked=True,
+            variable=f"IIWI_TEST_{index}",
+            section=section,
+        )
+        for index, (key, section) in enumerate(zip(keys, sections, strict=True))
+    ]
+
+
+def test_settings_keeps_selection_and_footer_visible_at_every_terminal_height() -> None:
+    rows = _settings_viewport_rows()
+
+    for height in (14, 16, 20, 24, 40):
+        for selected in (0, len(rows) // 2, len(rows) - 1):
+            console, stream = _console(width=80, height=height)
+            render_settings(
+                console,
+                rows=rows,
+                selected=selected,
+                file_path="/tmp/config.env",
+            )
+            lines = stream.getvalue().splitlines()
+            assert len(lines) <= height - 1, (height, selected)
+            cursor_line = next(line for line in lines if "▶" in line)
+            assert rows[selected].label in cursor_line, (height, selected)
+            assert (
+                f"Set by the {rows[selected].variable} environment variable."
+                in stream.getvalue()
+            ), (height, selected)
+            assert "Enter Edit" in stream.getvalue(), (height, selected)
+            above = any(line.startswith("↑ ") for line in lines)
+            below = any(line.startswith("↓ ") for line in lines)
+            if height == 40:
+                assert not above and not below, (height, selected)
+            else:
+                assert above or below, (height, selected)
+                if selected == 0:
+                    assert not above and below, (height, selected)
+                if selected == len(rows) - 1:
+                    assert above and not below, (height, selected)
