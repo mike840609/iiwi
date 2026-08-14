@@ -3,7 +3,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from iiwi.models.session import ActivityType, AgentSession, SessionActivity
+from iiwi.harnesses.opencode.mapper import OpenCodeExportMapper
+from iiwi.models.session import (
+    ActivityType,
+    AgentSession,
+    SessionActivity,
+    SessionDescriptor,
+)
 from iiwi.models.time_range import DateRange
 from iiwi.sessions.filtering import (
     IIWI_SESSION_TITLE_PREFIX,
@@ -121,6 +127,39 @@ def test_activity_without_timestamp_is_excluded() -> None:
                 content="unknown time",
             )
         ],
+    )
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ),
+        until=datetime(2026, 7, 27, tzinfo=TZ),
+    )
+
+    assert filter_session_to_period(session, period) is None
+
+
+def test_timestamp_less_opencode_content_is_not_attributed_to_period() -> None:
+    """Issue #104: a schema-drifted export whose messages carry no per-message
+    time must not be pulled into the requested week via the session
+    descriptor's updated_at. The mapper keeps such activities timestamp-less
+    and the filter excludes them, even when the descriptor's own timestamps
+    fall inside the period."""
+
+    descriptor = SessionDescriptor(
+        harness="opencode",
+        session_id="s1",
+        created_at=datetime(2020, 1, 1, tzinfo=TZ),
+        updated_at=datetime(2026, 7, 22, tzinfo=TZ),
+    )
+    session = OpenCodeExportMapper().map(
+        {
+            "info": {},
+            "messages": [
+                {
+                    "info": {"id": "m1", "role": "user"},
+                    "parts": [{"type": "text", "text": "unknown time"}],
+                }
+            ],
+        },
+        descriptor,
     )
     period = DateRange(
         since=datetime(2026, 7, 20, tzinfo=TZ),
