@@ -770,6 +770,47 @@ def test_config_set_rejects_a_value_the_settings_model_would_reject(
     assert not path.exists()
 
 
+def test_config_set_rejects_a_nan_timeout_without_writing_the_file(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "harnesses.opencode.cli.timeout_seconds", "nan"]
+    )
+
+    assert result.exit_code == 3
+    assert "invalid value for harnesses.opencode.cli.timeout_seconds" in result.stdout
+    assert not path.exists()
+
+
+def test_config_set_rejects_an_unknown_timezone_without_writing_the_file(
+    monkeypatch, tmp_path
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "report.timezone", "Mars/Olympus"]
+    )
+
+    assert result.exit_code == 3
+    assert "unknown timezone" in result.stdout
+    assert not path.exists()
+
+
+def test_config_set_accepts_a_known_timezone(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_REPORT__TIMEZONE", raising=False)
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "report.timezone", "UTC"])
+
+    assert result.exit_code == 0
+    assert cli._load_settings().report.timezone == "UTC"
+
+
 def test_config_set_with_an_empty_value_restores_the_default(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
     monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))

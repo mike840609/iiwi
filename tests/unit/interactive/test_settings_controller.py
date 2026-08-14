@@ -248,6 +248,66 @@ def test_an_invalid_value_keeps_the_old_value_and_shows_the_error(
     assert "invalid value" in stream.getvalue()
 
 
+def test_an_invalid_timezone_keeps_the_old_value_and_shows_the_error(
+    config_file: Path,
+) -> None:
+    config_store.set_value("report.timezone", "Asia/Taipei")
+    downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)
+    console, stream = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            _open_settings(
+                [
+                    *downs,
+                    KeyPress(key=Key.ENTER),
+                    *[char(c) for c in "Mars/Olympus"],
+                    KeyPress(key=Key.ENTER),  # validation fails; editor stays open
+                    KeyPress(key=Key.ESCAPE),  # cancel the still-open editor
+                    char("q"),
+                    char("q"),
+                ]
+            )
+        ),
+        console=console,
+    )
+
+    assert config_store.stored_values(config_file) == {
+        "IIWI_REPORT__TIMEZONE": "Asia/Taipei"
+    }
+    assert "unknown timezone" in stream.getvalue()
+
+
+def test_editing_the_timezone_row_to_a_known_zone_writes_it(config_file: Path) -> None:
+    downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)
+    console, _ = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            _open_settings(
+                [
+                    *downs,
+                    KeyPress(key=Key.ENTER),
+                    # The editor prefills the current "Asia/Taipei"; clear it
+                    # before typing, like the empty-value test does.
+                    *([KeyPress(key=Key.BACKSPACE)] * 11),
+                    *[char(c) for c in "America/New_York"],
+                    KeyPress(key=Key.ENTER),
+                    char("q"),
+                    char("q"),
+                ]
+            )
+        ),
+        console=console,
+    )
+
+    assert config_store.stored_values(config_file) == {
+        "IIWI_REPORT__TIMEZONE": "America/New_York"
+    }
+
+
 def test_environment_rows_are_locked(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("IIWI_REPORT__TIMEZONE", "UTC")
     downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)
