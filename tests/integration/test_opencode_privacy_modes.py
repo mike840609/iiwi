@@ -71,7 +71,22 @@ class PrivacyModeRunner:
                     },
                     "messages": [
                         {
-                            "info": {"id": "m1", "role": "user"},
+                            "info": {
+                                "id": "m1",
+                                "role": "user",
+                                # A real per-message time, matching the database
+                                # row's created time. Without it the message would
+                                # be timestamp-less (issue #104) and the scan would
+                                # exclude its activity from the requested week.
+                                "time": {
+                                    "created": int(
+                                        datetime(
+                                            2026, 7, 22, 1, 0, tzinfo=TZ
+                                        ).timestamp()
+                                        * 1000
+                                    )
+                                },
+                            },
                             "parts": [
                                 {"type": "text", "text": "Fix privacy defaults"}
                             ],
