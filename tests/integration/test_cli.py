@@ -213,6 +213,101 @@ def test_until_requires_since() -> None:
     assert result.exit_code == 2
 
 
+def test_scan_rejects_a_reversed_custom_range() -> None:
+    result = runner.invoke(
+        cli.app,
+        [
+            "scan",
+            "--since",
+            "2026-07-10T00:00:00+08:00",
+            "--until",
+            "2026-07-01T00:00:00+08:00",
+            "--harness",
+            "codex",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "earlier than" in result.stderr
+    assert "Traceback" not in result.stdout + result.stderr
+
+
+def test_scan_rejects_an_equal_custom_range() -> None:
+    result = runner.invoke(
+        cli.app,
+        [
+            "scan",
+            "--since",
+            "2026-07-10T00:00:00+08:00",
+            "--until",
+            "2026-07-10T00:00:00+08:00",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "earlier than" in result.stderr
+    assert "Traceback" not in result.stdout + result.stderr
+
+
+def test_report_rejects_a_reversed_custom_range() -> None:
+    result = runner.invoke(
+        cli.app,
+        [
+            "report",
+            "--since",
+            "2026-07-10T00:00:00+08:00",
+            "--until",
+            "2026-07-01T00:00:00+08:00",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "earlier than" in result.stderr
+    assert "Traceback" not in result.stdout + result.stderr
+
+
+def test_scan_accepts_a_valid_aware_custom_range(tmp_path: Path) -> None:
+    result = runner.invoke(
+        cli.app,
+        [
+            "scan",
+            "--since",
+            "2026-07-01T00:00:00+08:00",
+            "--until",
+            "2026-07-08T00:00:00+08:00",
+            "--harness",
+            "claude-code",
+        ],
+        env={
+            "IIWI_HARNESSES__CLAUDE_CODE__ENABLED": "true",
+            "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(tmp_path),
+        },
+    )
+
+    assert result.exit_code == 4  # reaches scanning; an empty directory has no sessions
+
+
+def test_scan_accepts_a_valid_naive_custom_range(tmp_path: Path) -> None:
+    result = runner.invoke(
+        cli.app,
+        [
+            "scan",
+            "--since",
+            "2026-07-01T00:00:00",
+            "--until",
+            "2026-07-08T00:00:00",
+            "--harness",
+            "claude-code",
+        ],
+        env={
+            "IIWI_HARNESSES__CLAUDE_CODE__ENABLED": "true",
+            "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(tmp_path),
+        },
+    )
+
+    assert result.exit_code == 4  # reaches scanning; an empty directory has no sessions
+
+
 def test_no_llm_builds_a_deterministic_report_service(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
