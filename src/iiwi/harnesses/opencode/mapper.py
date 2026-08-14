@@ -83,11 +83,15 @@ def _message_id(message: Mapping[str, Any], *, session_id: str, index: int) -> s
     return f"{session_id}:message:{index}"
 
 
-def _message_timestamp(
-    message: Mapping[str, Any],
-    *,
-    descriptor: SessionDescriptor,
-) -> datetime | None:
+def _message_timestamp(message: Mapping[str, Any]) -> datetime | None:
+    """Resolve the message's own timestamp, never the session descriptor's.
+
+    A message that carries no per-message time stays timestamp-less so the
+    filtering layer can warn about it and exclude it, instead of attributing
+    historical or unknown-time content to whatever week the descriptor's
+    updated_at/created_at happens to fall in.
+    """
+
     info = _as_mapping(message.get("info"))
     info_time = _as_mapping(info.get("time"))
     message_time = _as_mapping(message.get("time"))
@@ -97,8 +101,6 @@ def _message_timestamp(
         info.get("time_created"),
         message_time.get("created"),
         message.get("time_created"),
-        descriptor.updated_at,
-        descriptor.created_at,
     )
 
 
@@ -143,7 +145,7 @@ class OpenCodeExportMapper:
                 session_id=descriptor.session_id,
                 index=message_index,
             )
-            timestamp = _message_timestamp(message, descriptor=descriptor)
+            timestamp = _message_timestamp(message)
             raw_parts = message.get("parts", [])
             if not isinstance(raw_parts, list):
                 continue

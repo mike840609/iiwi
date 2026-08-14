@@ -58,6 +58,42 @@ def test_no_remote_falls_back_to_hashed_git_common_dir(fake_git_runner) -> None:
     assert "/private/repo" not in identity.repository_id
 
 
+def test_relative_local_origin_falls_back_to_git_common_dir(fake_git_runner) -> None:
+    fake_git_runner.set_output("remote get-url origin", "../upstream.git")
+    fake_git_runner.set_output("rev-parse --git-common-dir", "/parent-a/repo/.git")
+    fake_git_runner.set_output("branch --show-current", "main")
+    resolver = RepositoryResolver(runner=fake_git_runner)
+
+    identity = resolver.resolve(
+        AgentSession(harness="opencode", session_id="s1", working_directory="/parent-a/repo")
+    )
+
+    assert identity.identity_type == RepositoryIdentityType.GIT_COMMON_DIR
+    assert identity.repository_id.startswith("git-common:")
+
+
+def test_same_relative_origin_under_different_parents_remains_distinct(fake_git_runner) -> None:
+    first_runner = fake_git_runner
+    first_runner.set_output("remote get-url origin", "../upstream.git")
+    first_runner.set_output("rev-parse --git-common-dir", "/parent-a/repo/.git")
+    first_runner.set_output("branch --show-current", "main")
+    second_runner = type(fake_git_runner)()
+    second_runner.set_output("remote get-url origin", "../upstream.git")
+    second_runner.set_output("rev-parse --git-common-dir", "/parent-b/repo/.git")
+    second_runner.set_output("branch --show-current", "main")
+
+    first = RepositoryResolver(runner=first_runner).resolve(
+        AgentSession(harness="opencode", session_id="s1", working_directory="/parent-a/repo")
+    )
+    second = RepositoryResolver(runner=second_runner).resolve(
+        AgentSession(harness="opencode", session_id="s2", working_directory="/parent-b/repo")
+    )
+
+    assert first.identity_type == RepositoryIdentityType.GIT_COMMON_DIR
+    assert second.identity_type == RepositoryIdentityType.GIT_COMMON_DIR
+    assert first.repository_id != second.repository_id
+
+
 def test_deleted_path_falls_back_to_harness_project_id(fake_git_runner) -> None:
     fake_git_runner.returncode = 1
     resolver = RepositoryResolver(runner=fake_git_runner)
