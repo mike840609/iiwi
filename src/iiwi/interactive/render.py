@@ -1885,17 +1885,11 @@ def render_session_review(
     message: str | None = None,
     query: str = "",
     searching: bool = False,
-    draft: ReportDraft | None = None,
 ) -> None:
-    # The period leads the subtitle because it scopes everything below it, and
-    # nothing else on this screen names it: a reader who cannot see the window
-    # cannot tell an empty week from a failed scan. Leading also means a narrow
-    # terminal ellipsises the generic instruction rather than the window.
-    subtitle = f"{_period_value(draft)} · {_REVIEW_SUBTITLE}" if draft else _REVIEW_SUBTITLE
     _print_header(
         console,
         _review_header(selection),
-        subtitle=subtitle,
+        subtitle=_REVIEW_SUBTITLE,
     )
     warning_label = _scan_warning_label(selection.scan)
     if warning_label:
@@ -1918,7 +1912,7 @@ def render_session_review(
         rows,
         cursor=cursor,
         terminal_height=console.size.height,
-        reserved_lines=(3 if message else 2) + _header_lines(console, subtitle)
+        reserved_lines=(3 if message else 2) + _header_lines(console, _REVIEW_SUBTITLE)
         + len(_hint_lines(hints, console.size.width))
         + (1 if warning_label else 0)
         + (1 if searching or query else 0),
