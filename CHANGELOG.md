@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.12.0 - 2026-08-14
 
 - Daily Standup. `iiwi daily`, or **Daily Standup** from the main menu, turns
   yesterday's and today's coding-agent activity into a short update you review
@@ -35,6 +35,31 @@ All notable changes to this project are documented in this file.
   can become candidates, a candidate resolved by a later completion or a later
   successful rerun drops out, and whatever survives starts excluded so an error
   is never published without review.
+- History from inside the TUI. The interactive menu gains a **History** row, a
+  read-only list of past reports and their output paths, reading the same
+  append-only log as `iiwi history` so finding an earlier report no longer means
+  leaving the app. Newly recorded entries store an absolute path: the log kept
+  `output_path` exactly as it was passed, so a report written to the default
+  relative `reports/…` was recorded as a string that only meant something in a
+  directory the reader no longer stands in. Resolution happens at write time,
+  the only moment the generating directory is known; entries already recorded
+  stay as stored, since resolving them later would anchor them to the wrong
+  directory.
+- Settings is an editor rather than a wizard. The menu entry used to drop into
+  the linear `iiwi config init` prompts, one blank line per setting, and a blank
+  line never says what belongs there — two settings even defaulted to an empty
+  `[]`. It now opens a full-screen editor in the style of the Generate Report
+  screen: every row shows its current value, settings with a fixed set of
+  choices (`enabled`, `sanitize`, `quick_review_report_type`, `source`,
+  timezone) cycle through them with `←→`, and the rest edit inline on Enter with
+  the current value pre-filled. A change is written the moment it is made, so
+  `config list` and later runs see it. A value coming from an environment
+  variable shows as `[environment]` and stays read-only, because writing it to
+  the settings file would silently do nothing.
+- The wordmark is a softer scarlet. `#D93B28` still reads as the bird's red
+  rather than a different colour, and clears 4.6:1 on both a black and a white
+  terminal. It is the one surface in the TUI that carries identity rather than
+  state, so nothing that carries meaning changes and red stays free for errors.
 - Quick Review says what it is doing while it groups. Synthesis is one
   `opencode run` with a ten-minute timeout, and it reported nothing at all: the
   interactive app paints each frame over the last and repaints only between key
@@ -56,6 +81,39 @@ All notable changes to this project are documented in this file.
   A redirected or dumb-terminal stream now skips the reporter outright, instead
   of relying on Rich to draw nothing there — `Progress` leaves a stray newline
   in that case, which the interactive app would paint over.
+- Distinct repositories stay distinct. Remote normalization parsed a
+  scheme-less local remote such as `../upstream.git` as a network URL, so
+  unrelated clones sharing that relative origin collapsed into one repository,
+  and it dropped non-default SSH ports, so `example.test:2222/org/repo` and
+  `:3333` were the same identity. A scheme-less value that is not scp-style —
+  git's own rule, a colon before the first slash — is now read as a local path
+  and falls back to the git common-dir identity, and a non-default port stays
+  part of the identity while the default ports (ssh 22, git 9418, http 80,
+  https 443, ftp 21, ftps 990) are dropped so the explicit and implicit forms
+  still match.
+- A session from a deleted worktree is reattached only on path evidence.
+  Reattachment accepted a single live repository containing the recorded
+  branch, with nothing else connecting the two, so a common branch such as
+  `main` could file a session under the wrong repository — and with it the
+  report grouping, the exclusions and the Quick Review selection. It now takes
+  two pieces of evidence: the session's recorded working directory must be
+  path-related to the live repository (one nested inside the other, or both
+  sharing a parent, the two layouts `git worktree` actually produces) and
+  exactly one such repository carries the branch. Without both, the session
+  keeps its fallback identity.
+- Usage statistics reach the model instead of racing it. The full narrative
+  prompt asks for a usage overview from attached statistics, but usage was
+  collected after the model had already run and appended afterwards by the
+  renderer — so the model had nothing to read and could invent numbers, report
+  usage as unavailable, or write a section competing with the rendered
+  `## Usage` block. Usage is now collected first and travels in the same
+  transcript file the model reads. Brief detail and `--no-llm` are unchanged.
+- An OpenCode message with no timestamp stays timestamp-less. The mapper
+  substituted the session descriptor's `updated_at`/`created_at`, and the
+  exact-period filter treated that substitute as authoritative, so an export
+  with per-message times stripped or drifted could attribute old content to the
+  requested week without saying so. Those messages now carry no timestamp and
+  take the existing warning-and-exclusion path.
 
 ## 0.11.0 - 2026-08-12
 
