@@ -1508,6 +1508,128 @@ def _settings_value_text(row: SettingsRow) -> Text:
     return value
 
 
+def settings_capacity(terminal_height: int, *, editing: bool = False) -> int:
+    """Settings display lines that fit while the footer stays on screen.
+
+    Chrome: title and rule (2), a blank before and after the list, the detail
+    line (1, or 2 while editing), a blank before the hints, the hint bar, and
+    the terminal's final display row. The subtitle adds one line at the height
+    that shows it, and the inline editor's value line adds one more.
+    """
+
+    chrome = 8 + (1 if terminal_height >= _MIN_SUBTITLE_HEIGHT else 0) + (1 if editing else 0)
+    return max(0, terminal_height - chrome)
+
+
+def settings_display_count(rows: list[SettingsRow]) -> int:
+    """Settings body lines: one per row, plus a header per section and a blank
+    line separating sections."""
+
+    count = 0
+    previous_section = ""
+    for row in rows:
+        if row.section and row.section != previous_section:
+            if previous_section:
+                count += 1
+            count += 1
+            previous_section = row.section
+        count += 1
+    return count
+
+
+def settings_display_index(rows: list[SettingsRow], row_index: int) -> int:
+    """Display-list position of ``rows[row_index]``, counting headers and blanks."""
+
+    display = 0
+    previous_section = ""
+    for index, row in enumerate(rows):
+        if row.section and row.section != previous_section:
+            if previous_section:
+                display += 1
+            display += 1
+            previous_section = row.section
+        if index == row_index:
+            return display
+        display += 1
+    return display
+
+
+def settings_display_offset(
+    rows: list[SettingsRow],
+    row_index: int,
+    *,
+    offset: int,
+    capacity: int,
+) -> int:
+    """Clamp the settings viewport so the selected row stays visible.
+
+    Mirrors ``_history_key``'s clamp, in display space. Up to two display slots
+    go to the ↑/↓ indicators, so they are reserved before the selected row is
+    placed; when everything fits no scrolling is needed.
+    """
+
+    if capacity <= 0 or not rows:
+        return 0
+    count = settings_display_count(rows)
+    selected = settings_display_index(rows, row_index)
+    if count <= capacity:
+        return 0
+    body = max(1, capacity - 2)
+    if row_index == 0:
+        return 0
+    offset = min(max(offset, 0), selected)
+    offset = min(offset, max(0, count - body))
+    if selected >= offset + body:
+        offset = max(0, selected - body + 1)
+    return offset
+
+
+def _settings_display_items(
+    rows: list[SettingsRow],
+    *,
+    selected: int,
+    label_cells: int,
+) -> list[Text]:
+    """Every body line the list renders: section headers, separators, and rows."""
+
+    items: list[Text] = []
+    previous_section = ""
+    for index, row in enumerate(rows):
+        if row.section and row.section != previous_section:
+            if previous_section:
+                items.append(Text(""))
+            items.append(Text(f"  {row.section}", style="bright_black"))
+            previous_section = row.section
+        focused = selected == index
+        lead = Text(_CURSOR if focused else " ", style=_CURSOR_STYLE if focused else "")
+        label = Text(f"{row.label:<{label_cells}}", style=_CURSOR_STYLE if focused else "")
+        items.append(Text.assemble(lead, " ", label, "  ", _settings_value_text(row)))
+    return items
+
+
+def _settings_window(
+    display: list[Text],
+    *,
+    offset: int,
+    capacity: int,
+) -> tuple[list[Text], int, int]:
+    """Slice the settings body, with ↑/↓ indicators taking slots like _detail_window."""
+
+    count = len(display)
+    if capacity <= 0 or not display:
+        return [], 0, count
+    offset = min(max(offset, 0), max(0, count - 1))
+    hidden_above = offset
+    body_capacity = max(0, capacity - (1 if hidden_above else 0))
+    end = min(count, offset + body_capacity)
+    hidden_below = count - end
+    if hidden_below and body_capacity > 0:
+        body_capacity -= 1
+        end = min(count, offset + body_capacity)
+        hidden_below = count - end
+    return display[offset:end], hidden_above, hidden_below
+
+
 def render_settings(
     console: Console,
     *,
@@ -1517,8 +1639,13 @@ def render_settings(
     editing: bool = False,
     edit_value: str = "",
     error: str | None = None,
+    offset: int = 0,
 ) -> None:
-    """The saved-settings editor: one row per setting, values always visible."""
+    """The saved-settings editor: one row per setting, values always visible.
+
+    The list scrolls like history: the selected row and the footer (detail line
+    plus hints) always stay on screen, and ↑/↓ indicators mark clipped lines.
+    """
 
     _print_header(console, "Settings")
     if console.size.height >= _MIN_SUBTITLE_HEIGHT:
@@ -1529,18 +1656,20 @@ def render_settings(
         )
     console.print()
     label_cells = max((cell_len(row.label) for row in rows), default=0)
-    previous_section = ""
-    for index, row in enumerate(rows):
-        if row.section and row.section != previous_section:
-            if previous_section:
-                console.print()
-            _print_viewport_line(console, f"  {row.section}", style="bright_black")
-            previous_section = row.section
-        focused = selected == index
-        lead = Text(_CURSOR if focused else " ", style=_CURSOR_STYLE if focused else "")
-        label = Text(f"{row.label:<{label_cells}}", style=_CURSOR_STYLE if focused else "")
-        text = Text.assemble(lead, " ", label, "  ", _settings_value_text(row))
-        _print_viewport_text(console, text)
+    capacity = settings_capacity(console.size.height, editing=editing)
+    offset = settings_display_offset(rows, selected, offset=offset, capacity=capacity)
+    display = _settings_display_items(rows, selected=selected, label_cells=label_cells)
+    visible, hidden_above, hidden_below = _settings_window(
+        display,
+        offset=offset,
+        capacity=capacity,
+    )
+    if hidden_above:
+        _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")
+    for item in visible:
+        _print_viewport_text(console, item)
+    if hidden_below:
+        _print_viewport_line(console, f"↓ {hidden_below} more", style="dim")
     console.print()
     row = rows[selected]
     if editing:
