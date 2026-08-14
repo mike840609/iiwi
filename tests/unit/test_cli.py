@@ -3,6 +3,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from iiwi.cli import app
+from iiwi.models.time_range import DateRange
 
 runner = CliRunner()
 
@@ -802,3 +803,70 @@ def test_version_flag_prints_the_installed_version() -> None:
 
     assert result.exit_code == 0
     assert f"iiwi {iiwi.__version__}" in result.stdout
+
+
+def _resolve_custom_range(since: str, until: str | None = None) -> DateRange:
+    """Resolve a `--since/--until` range against a fixed clock in Asia/Taipei."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from iiwi.cli import _resolve_period
+
+    return _resolve_period(
+        days=None,
+        period=None,
+        since=since,
+        until=until,
+        timezone="Asia/Taipei",
+        now=datetime(2026, 8, 15, 12, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+
+
+def test_resolve_period_rejects_a_reversed_naive_range() -> None:
+    import pytest
+    import typer
+
+    with pytest.raises(typer.BadParameter, match="earlier than"):
+        _resolve_custom_range(since="2026-08-10T00:00:00", until="2026-08-09T00:00:00")
+
+
+def test_resolve_period_rejects_an_equal_range() -> None:
+    import pytest
+    import typer
+
+    with pytest.raises(typer.BadParameter, match="earlier than"):
+        _resolve_custom_range(since="2026-08-10T00:00:00", until="2026-08-10T00:00:00")
+
+
+def test_resolve_period_rejects_a_since_in_the_future() -> None:
+    """`--until` defaults to now, so a range that starts in the future is empty."""
+    import pytest
+    import typer
+
+    with pytest.raises(typer.BadParameter, match="earlier than"):
+        _resolve_custom_range(since="2026-08-20T00:00:00")
+
+
+def test_resolve_period_attaches_the_timezone_to_a_naive_range() -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    result = _resolve_custom_range(since="2026-08-01T00:00:00", until="2026-08-08T00:00:00")
+
+    assert result.since == datetime(2026, 8, 1, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert result.until == datetime(2026, 8, 8, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+
+
+def test_resolve_period_keeps_an_aware_range_unchanged() -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    since = datetime(2026, 8, 1, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    until = datetime(2026, 8, 8, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+
+    result = _resolve_custom_range(
+        since="2026-08-01T00:00:00+08:00", until="2026-08-08T00:00:00+08:00"
+    )
+
+    assert result.since == since
+    assert result.until == until
