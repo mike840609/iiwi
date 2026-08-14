@@ -82,6 +82,65 @@ def test_config_file_path_defaults_into_the_user_config_directory(
     assert "iiwi" in str(path)
 
 
+@pytest.mark.parametrize(
+    ("module", "resolver", "directory_function", "variable", "filename"),
+    [
+        (
+            "iiwi.config_store",
+            "config_file_path",
+            "user_config_dir",
+            "IIWI_CONFIG_FILE",
+            "config.env",
+        ),
+        (
+            "iiwi.history",
+            "history_file_path",
+            "user_data_dir",
+            "IIWI_HISTORY_FILE",
+            "history.jsonl",
+        ),
+        (
+            "iiwi.state",
+            "state_file_path",
+            "user_data_dir",
+            "IIWI_STATE_FILE",
+            "state.json",
+        ),
+    ],
+)
+def test_a_legacy_decoy_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    module: str,
+    resolver: str,
+    directory_function: str,
+    variable: str,
+    filename: str,
+) -> None:
+    """A file under the pre-rename directory is left untouched, never adopted.
+
+    The autouse fixture sets the override, so clear it to reach the real branch.
+    """
+
+    import importlib
+
+    monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setattr(
+        importlib.import_module(module),
+        directory_function,
+        lambda name: str(tmp_path / name),
+    )
+    decoy = tmp_path / "agent-worklog" / filename
+    decoy.parent.mkdir(parents=True, exist_ok=True)
+    decoy.write_text("kept\n", encoding="utf-8")
+
+    resolved = getattr(importlib.import_module(module), resolver)()
+
+    assert resolved == tmp_path / "iiwi" / filename
+    assert decoy.exists()
+    assert decoy.read_text(encoding="utf-8") == "kept\n"
+
+
 def test_resolve_key_suggests_the_closest_key_for_a_typo() -> None:
     with pytest.raises(ConfigurationError) as error:
         resolve_key("harnesses.opencode.cli.mdoel")
