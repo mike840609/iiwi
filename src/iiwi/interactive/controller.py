@@ -60,6 +60,8 @@ from iiwi.interactive.render import (
     report_preview_capacity,
     report_result_options,
     report_setup_rows,
+    settings_capacity,
+    settings_display_offset,
     visible_outcome_review_rows,
 )
 from iiwi.interactive.selection import SelectionState
@@ -222,6 +224,7 @@ class _State:
     help_offset: int = 0
     settings_rows: list[SettingsRow] | None = None
     settings_cursor: int = 0
+    settings_offset: int = 0
     settings_editing: bool = False
     settings_edit_value: str = ""
     settings_error: str | None = None
@@ -505,6 +508,7 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
     else:
         state.settings_rows = build_settings_rows()
         state.settings_cursor = 0
+        state.settings_offset = 0
         state.settings_editing = False
         state.settings_edit_value = ""
         state.settings_error = None
@@ -615,7 +619,7 @@ def _settings_edit_key(state: _State, key: KeyPress) -> None:
         state.settings_edit_value += key.char
 
 
-def _settings_key(state: _State, key: KeyPress) -> None:
+def _settings_key(state: _State, key: KeyPress, console: Console) -> None:
     """The saved-settings editor: cycle choices, edit rows inline, b leaves."""
 
     assert state.settings_rows is not None
@@ -626,6 +630,12 @@ def _settings_key(state: _State, key: KeyPress) -> None:
     if key.key is Key.ESCAPE or _char(key, "b") or _char(key, "q"):
         state.screen = Screen.MAIN
         return
+    state.settings_offset = settings_display_offset(
+        state.settings_rows,
+        state.settings_cursor,
+        offset=state.settings_offset,
+        capacity=settings_capacity(console.size.height, editing=state.settings_editing),
+    )
     row = state.settings_rows[state.settings_cursor]
     if row.locked:
         return
@@ -1833,6 +1843,7 @@ def _render_screen(state: _State, console: Console) -> None:
             editing=state.settings_editing,
             edit_value=state.settings_edit_value,
             error=state.settings_error,
+            offset=state.settings_offset,
         )
     elif state.screen is Screen.SESSION_BROWSER:
         assert state.browser_scan is not None
@@ -1980,7 +1991,7 @@ def _dispatch(
     elif state.screen is Screen.REPORT_SETUP:
         _setup_key(state, key, actions)
     elif state.screen is Screen.SETTINGS:
-        _settings_key(state, key)
+        _settings_key(state, key, console)
     elif state.screen is Screen.SESSION_BROWSER:
         _browser_key(state, key, actions)
     elif state.screen is Screen.SESSION_REVIEW:

@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -88,3 +89,57 @@ def test_mapper_prefers_export_title_over_descriptor_title() -> None:
     )
 
     assert session.title == "Export title"
+
+
+def test_mapper_keeps_message_without_time_timestamp_less() -> None:
+    """A message with no per-message time must not inherit the descriptor's
+    updated_at/created_at, or old and unknown-time content gets attributed to
+    whatever week the descriptor timestamp falls in."""
+
+    descriptor = SessionDescriptor(
+        harness="opencode",
+        session_id="s1",
+        created_at=datetime(2020, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    payload = {
+        "info": {},
+        "messages": [
+            {
+                "info": {"id": "m1", "role": "user"},
+                "parts": [{"type": "text", "text": "unknown time"}],
+            }
+        ],
+    }
+
+    session = OpenCodeExportMapper().map(payload, descriptor)
+
+    assert session.activities[0].timestamp is None
+
+
+def test_mapper_still_honors_message_time_created() -> None:
+    """Removing the descriptor fallback must not break the message's own
+    top-level time_created resolution path."""
+
+    descriptor = SessionDescriptor(
+        harness="opencode",
+        session_id="s1",
+        created_at=datetime(2020, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    payload = {
+        "info": {},
+        "messages": [
+            {
+                "info": {"id": "m1", "role": "user"},
+                "time_created": "2026-07-22T10:00:00+08:00",
+                "parts": [{"type": "text", "text": "prompt"}],
+            }
+        ],
+    }
+
+    session = OpenCodeExportMapper().map(payload, descriptor)
+
+    assert session.activities[0].timestamp == datetime.fromisoformat(
+        "2026-07-22T10:00:00+08:00"
+    )

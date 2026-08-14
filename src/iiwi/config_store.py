@@ -10,7 +10,7 @@ from pathlib import Path
 
 from dotenv import dotenv_values, set_key, unset_key
 from platformdirs import user_config_dir
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from iiwi.config import AppSettings
 from iiwi.errors import ConfigurationError
@@ -46,12 +46,18 @@ def _as_text(value: object) -> str:
 
 @dataclass(frozen=True)
 class SettingKey:
-    """One settable leaf: its dotted name, its variable, and its fallback."""
+    """One settable leaf: its dotted name, its variable, and its fallback.
+
+    `owner` and `name` let `validate_value` run the owning model's own
+    validation — Field constraints and validators — on the incoming string.
+    """
 
     key: str
     variable: str
     annotation: type
     default: str
+    owner: type[BaseModel]
+    name: str
 
 
 @dataclass(frozen=True)
@@ -77,13 +83,13 @@ def _walk(model: type[BaseModel], prefix: tuple[str, ...]) -> Iterator[SettingKe
             key=dotted,
             variable=ENV_PREFIX + dotted.upper().replace(".", "__"),
             # `field.annotation` is typed as `type[Any] | None` by pydantic, so
-            # non-class annotations (e.g. a `TypeAdapter`-unfriendly generic)
-            # fall back to `str` purely to satisfy the type checker here — no
-            # field in `config.py` currently takes this path, so if one does,
-            # `validate_value` below is not actually validating that field's
-            # real type and needs a second look.
+            # non-class annotations (e.g. a generic) fall back to `str` purely
+            # to satisfy the type checker here — validation itself runs through
+            # the owning model, not this annotation.
             annotation=annotation if isinstance(annotation, type) else str,
             default=_as_text(default),
+            owner=model,
+            name=name,
         )
 
 
@@ -113,12 +119,14 @@ def resolve_key(key: str) -> SettingKey:
 def validate_value(setting: SettingKey, value: str) -> None:
     """Reject a value the settings model would reject at load time.
 
-    Environment values arrive as strings, so this is the same parse
-    pydantic-settings performs: a bad number fails here, not on the next run.
+    Environment values arrive as strings, so validating through the owning
+    model is the same parse pydantic-settings performs, Field constraints and
+    validators included: a bad number or timezone fails here, not on the next
+    run.
     """
 
     try:
-        TypeAdapter(setting.annotation).validate_strings(value)
+        setting.owner.model_validate({setting.name: value})
     except ValidationError as exc:
         detail = exc.errors()[0]["msg"]
         raise ConfigurationError(f"invalid value for {setting.key}: {detail}") from exc
