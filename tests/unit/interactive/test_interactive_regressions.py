@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from datetime import datetime
 from io import StringIO
@@ -256,6 +257,85 @@ def test_posix_reader_consumes_complete_escape_sequence(monkeypatch: pytest.Monk
     )
 
     assert interactive_input._posix_read() == "\x1b[5~"
+
+
+def test_posix_reader_decodes_a_three_byte_utf8_character(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = iter([b"\xe5", b"\xa0", b"\xb1"])
+    monkeypatch.setattr(interactive_input.sys, "stdin", SimpleNamespace(fileno=lambda: 7))
+    monkeypatch.setattr(interactive_input.os, "read", lambda fd, size: next(chunks))
+    monkeypatch.setattr(
+        interactive_input.select,
+        "select",
+        lambda readable, writable, exceptional, timeout: ([7], [], []),
+    )
+
+    assert interactive_input._posix_read() == "報"
+    assert normalize_posix_sequence("報") == KeyPress(char="報")
+
+
+def test_posix_reader_decodes_a_four_byte_utf8_character(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = iter([b"\xf0", b"\x9f", b"\x98", b"\x80"])
+    monkeypatch.setattr(interactive_input.sys, "stdin", SimpleNamespace(fileno=lambda: 7))
+    monkeypatch.setattr(interactive_input.os, "read", lambda fd, size: next(chunks))
+    monkeypatch.setattr(
+        interactive_input.select,
+        "select",
+        lambda readable, writable, exceptional, timeout: ([7], [], []),
+    )
+
+    assert interactive_input._posix_read() == "😀"
+
+
+def test_posix_reader_mixed_ascii_and_multibyte_from_a_pipe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    read_fd, write_fd = os.pipe()
+    try:
+        monkeypatch.setattr(
+            interactive_input.sys,
+            "stdin",
+            SimpleNamespace(fileno=lambda: read_fd),
+        )
+        os.write(write_fd, "a報b".encode())
+        os.write(write_fd, b"\x1b[A")
+
+        assert interactive_input._posix_read() == "a"
+        assert interactive_input._posix_read() == "報"
+        assert interactive_input._posix_read() == "b"
+        assert interactive_input._posix_read() == "\x1b[A"
+        assert normalize_posix_sequence("\x1b[A") == KeyPress(key=Key.UP)
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+def test_posix_reader_returns_empty_on_a_truncated_utf8_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = iter([b"\xe5"])
+    monkeypatch.setattr(interactive_input.sys, "stdin", SimpleNamespace(fileno=lambda: 7))
+    monkeypatch.setattr(interactive_input.os, "read", lambda fd, size: next(chunks))
+    monkeypatch.setattr(
+        interactive_input.select,
+        "select",
+        lambda readable, writable, exceptional, timeout: ([], [], []),
+    )
+
+    assert interactive_input._posix_read() == ""
+
+
+def test_posix_reader_decodes_a_single_ascii_byte(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = iter([b"j"])
+    monkeypatch.setattr(interactive_input.sys, "stdin", SimpleNamespace(fileno=lambda: 7))
+    monkeypatch.setattr(interactive_input.os, "read", lambda fd, size: next(chunks))
+
+    assert interactive_input._posix_read() == "j"
 
 
 def test_ctrl_c_during_scan_returns_to_previous_screen_instead_of_exiting() -> None:

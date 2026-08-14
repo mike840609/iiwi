@@ -194,21 +194,52 @@ def _branches_at(cwd: str, *, runner: Runner, cache: dict[str, frozenset[str]]) 
     return frozen
 
 
+def _worktree_paths_related(left: str, right: str) -> bool:
+    """Whether two working directories could belong to the same repository.
+
+    A git worktree is almost always checked out either inside the main
+    repository (the `.worktrees/` layout this project uses) or as a sibling
+    next to it (`git worktree add ../<name>`), so a deleted worktree's
+    recorded path typically nests inside the live repository or shares its
+    parent with it. One path being an ancestor of the other, or the two
+    sharing an immediate parent, is the corroborating evidence that connects
+    a detached session to a live repository.
+    """
+
+    left_path = Path(left).expanduser().resolve(strict=False)
+    right_path = Path(right).expanduser().resolve(strict=False)
+    if left_path == right_path:
+        return True
+    if left_path in right_path.parents or right_path in left_path.parents:
+        return True
+    return left_path.parent == right_path.parent
+
+
 def reattach_by_branch(
     resolved: list[tuple[AgentSession, RepositoryIdentity]],
     *,
     runner: Runner,
 ) -> tuple[list[tuple[AgentSession, RepositoryIdentity]], int]:
-    """Reattach a detached worktree's session to its live repository by branch.
+    """Reattach a detached worktree's session to its live repository.
 
     A worktree removed from disk defeats `RepositoryResolver.resolve`'s git
-    lookups, so the session falls back to a harness/path identity and appears as
-    its own detached row. The branch Claude Code recorded for that worktree
-    usually still exists in the live repository it was cut from, so this matches
-    on it — but only when exactly one live repository has that branch. `main`
-    exists in nearly every repository; a wrong match would silently put
-    someone's work under the wrong heading, so an ambiguous or absent match
-    leaves the entry untouched rather than guessing.
+    lookups, so the session falls back to a harness/path identity and appears
+    as its own detached row. This matches it back to the live repository it
+    was cut from, but only when TWO pieces of evidence agree:
+
+    * Path: the candidate's recorded `working_directory` and the live
+      repository's `working_directory` are related the way a worktree and its
+      repository are — one nests inside the other (e.g. a `.worktrees/`
+      layout) or the two share the same parent directory
+      (`git worktree add ../<name>`).
+    * Branch: exactly one path-related live repository has the session's
+      recorded branch.
+
+    A branch name alone is never treated as repository identity: `main`
+    exists in nearly every repository, and a wrong match would silently put
+    someone's work under the wrong heading. When either piece of evidence is
+    missing, or two or more path-related repositories have the branch, the
+    entry is left untouched rather than guessing.
     """
 
     live_repositories = _live_repositories(resolved)
@@ -218,11 +249,16 @@ def reattach_by_branch(
     reattached: list[tuple[AgentSession, RepositoryIdentity]] = []
     for session, identity in resolved:
         branch = session.branch
-        if identity.identity_type in _CANDIDATE_IDENTITY_TYPES and branch:
+        if (
+            identity.identity_type in _CANDIDATE_IDENTITY_TYPES
+            and branch
+            and identity.working_directory
+        ):
             matches = [
                 live
                 for live in live_repositories.values()
                 if live.working_directory is not None
+                and _worktree_paths_related(identity.working_directory, live.working_directory)
                 and branch
                 in _branches_at(live.working_directory, runner=runner, cache=branch_cache)
             ]
