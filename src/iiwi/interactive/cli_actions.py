@@ -57,10 +57,6 @@ _ALL_DAILY_SOURCES_UNAVAILABLE_WARNING = (
     "All Daily Standup activity sources are unavailable."
 )
 
-# Must name one of `_named_periods`; `test_default_period_label_is_a_named_period`
-# holds the two together.
-_DEFAULT_PERIOD_LABEL = "Last 7 days"
-
 
 def _new_draft() -> ReportDraft:
     from iiwi import cli
@@ -69,7 +65,7 @@ def _new_draft() -> ReportDraft:
     now = cli._now_in_timezone(settings.report.timezone)
     enabled = cli._enabled_harnesses(settings)
     harness = cli.Harness.OPENCODE if cli.Harness.OPENCODE in enabled else enabled[0]
-    label, period = _default_period(now)
+    label, period = _named_periods(now)[0]
     return ReportDraft(
         harness=harness.value,
         period=period,
@@ -104,21 +100,6 @@ def _named_periods(now: datetime) -> list[tuple[str, DateRange]]:
         ("Last 14 days", DateRange.from_days(days=14, now=now)),
         ("Last 30 days", DateRange.from_days(days=30, now=now)),
     ]
-
-
-def _default_period(now: datetime) -> tuple[str, DateRange]:
-    """The window a fresh draft opens on.
-
-    A calendar week-to-date is almost empty on a Monday morning — precisely
-    when a weekly review is most likely — so a fresh draft opens on a rolling
-    window instead, which reads the same on any weekday. `_named_periods`
-    keeps its own order regardless: that order is the `→` cycle, not a
-    statement about which window comes first.
-    """
-
-    periods = _named_periods(now)
-    names = [name for name, _ in periods]
-    return periods[names.index(_DEFAULT_PERIOD_LABEL)]
 
 
 def _choose_period(current_label: str | None) -> tuple[str, DateRange]:
