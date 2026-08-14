@@ -483,7 +483,46 @@ def test_narrative_failure_falls_back_to_the_structured_report(
     assert "NARRATIVE BODY" not in content
 
 
-def test_narrative_mode_render_usage_and_warnings(tmp_path: Path) -> None:
+def test_narrative_mode_feeds_usage_to_the_transcript_before_the_model_call(
+    tmp_path: Path,
+) -> None:
+    """The FULL prompt asks the model for a Usage Overview, so the real usage
+    statistics must be attached to the transcript (the `--file`) the model
+    reads — never collected only after the model call (issue #103).
+    """
+
+    source = FakeSource()
+    output = tmp_path / "report.md"
+    runner = FakeOpenCodeRunner()
+    usage_calls: list[ScanResult] = []
+
+    def usage_provider(scan: ScanResult) -> str:
+        usage_calls.append(scan)
+        return "REAL-USAGE 123"
+
+    narrative_service(
+        source,
+        output,
+        runner=runner,
+        usage_provider=usage_provider,
+    ).generate(force=False)
+
+    assert len(usage_calls) == 1
+    assert len(runner.calls) == 1
+    transcript = runner.calls[0]["transcript"]
+    assert "## Usage" in transcript
+    assert "REAL-USAGE 123" in transcript
+    assert "## Usage Overview" in runner.calls[0]["prompt"]
+
+
+def test_narrative_full_report_has_no_duplicate_usage_section(
+    tmp_path: Path,
+) -> None:
+    """A FULL narrative report must not contain both the model's Usage Overview
+    (now fed by the transcript) and a second, deterministic `## Usage` block —
+    the report cannot carry competing usage summaries (issue #103 acceptance).
+    """
+
     source = FakeSource()
     output = tmp_path / "report.md"
     runner = FakeOpenCodeRunner()
@@ -492,13 +531,14 @@ def test_narrative_mode_render_usage_and_warnings(tmp_path: Path) -> None:
         source,
         output,
         runner=runner,
-        usage_provider=lambda _scan: "gpt-5-mini  1234 tokens",
+        usage_provider=lambda _scan: "REAL-USAGE 123",
     ).generate(force=False)
 
-    assert result.report.usage_text == "gpt-5-mini  1234 tokens"
+    assert result.report.narrative_text == "NARRATIVE BODY"
+    assert result.report.usage_text is None
+    assert result.report.usage_days is None
     content = output.read_text()
-    assert "## Usage" in content
-    assert "gpt-5-mini  1234 tokens" in content
+    assert "## Usage" not in content
 
 
 def test_narrative_brief_detail_changes_the_prompt_and_wrapper(tmp_path: Path) -> None:
