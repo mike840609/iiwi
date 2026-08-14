@@ -106,6 +106,31 @@ def test_validate_value_accepts_the_boolean_spellings_env_settings_use() -> None
     validate_value(resolve_key("harnesses.codex.enabled"), "true")
 
 
+@pytest.mark.parametrize(
+    "value",
+    ["nan", "inf", "-inf", "0", "-5"],
+)
+def test_validate_value_rejects_a_non_finite_or_non_positive_timeout(
+    value: str,
+) -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="invalid value for harnesses.opencode.cli.timeout_seconds",
+    ):
+        validate_value(resolve_key("harnesses.opencode.cli.timeout_seconds"), value)
+
+
+def test_validate_value_rejects_an_unknown_timezone() -> None:
+    with pytest.raises(ConfigurationError, match="unknown timezone"):
+        validate_value(resolve_key("report.timezone"), "Mars/Olympus")
+
+
+def test_validate_value_accepts_valid_domain_values() -> None:
+    validate_value(resolve_key("harnesses.opencode.cli.timeout_seconds"), "30.5")
+    validate_value(resolve_key("report.timezone"), "Asia/Taipei")
+    validate_value(resolve_key("report.timezone"), "UTC")
+
+
 @pytest.fixture
 def settings_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point the store at a throwaway file for the duration of one test."""
@@ -151,6 +176,24 @@ def test_set_value_refuses_a_bad_value_without_creating_the_file(
 ) -> None:
     with pytest.raises(ConfigurationError):
         set_value("harnesses.opencode.cli.run_timeout_seconds", "abc")
+
+    assert not settings_file.exists()
+
+
+def test_set_value_refuses_a_nan_timeout_without_creating_the_file(
+    settings_file: Path,
+) -> None:
+    with pytest.raises(ConfigurationError):
+        set_value("harnesses.opencode.cli.timeout_seconds", "nan")
+
+    assert not settings_file.exists()
+
+
+def test_set_value_refuses_an_unknown_timezone_without_creating_the_file(
+    settings_file: Path,
+) -> None:
+    with pytest.raises(ConfigurationError):
+        set_value("report.timezone", "Mars/Olympus")
 
     assert not settings_file.exists()
 

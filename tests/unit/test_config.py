@@ -1,11 +1,12 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from iiwi import config_store
 from iiwi.cli import app
-from iiwi.config import AppSettings
+from iiwi.config import AppSettings, OpenCodeCliSettings, ReportSettings
 from iiwi.models.report_options import ReportType
 
 
@@ -215,3 +216,46 @@ def test_every_harness_enum_member_has_settings_field_with_enabled() -> None:
         assert hasattr(field_value, "enabled"), (
             f"HarnessSettings.{field_name} missing `enabled` attribute"
         )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [float("nan"), float("inf"), float("-inf"), 0.0, -5.0],
+)
+def test_opencode_cli_timeout_seconds_rejects_non_finite_or_non_positive_values(
+    value: float,
+) -> None:
+    with pytest.raises(ValidationError):
+        OpenCodeCliSettings(timeout_seconds=value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [float("nan"), float("inf"), float("-inf"), 0.0, -5.0],
+)
+def test_opencode_cli_run_timeout_seconds_rejects_non_finite_or_non_positive_values(
+    value: float,
+) -> None:
+    with pytest.raises(ValidationError):
+        OpenCodeCliSettings(run_timeout_seconds=value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [30.0, 600.0, 0.5, 120.5],
+)
+def test_opencode_cli_timeout_accepts_finite_strictly_positive_values(
+    value: float,
+) -> None:
+    assert OpenCodeCliSettings(timeout_seconds=value).timeout_seconds == value
+    assert OpenCodeCliSettings(run_timeout_seconds=value).run_timeout_seconds == value
+
+
+def test_report_timezone_rejects_an_unknown_zone() -> None:
+    with pytest.raises(ValidationError, match="unknown timezone"):
+        ReportSettings(timezone="Mars/Olympus")
+
+
+@pytest.mark.parametrize("timezone", ["UTC", "America/New_York", "Asia/Taipei"])
+def test_report_timezone_accepts_known_zones(timezone: str) -> None:
+    assert ReportSettings(timezone=timezone).timezone == timezone
