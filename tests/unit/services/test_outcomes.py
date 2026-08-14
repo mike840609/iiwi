@@ -857,6 +857,41 @@ def test_undated_sessions_keep_their_scan_order_behind_dated_ones() -> None:
     ]
 
 
+def test_measure_synthesis_budget_counts_the_full_selection_and_the_fit() -> None:
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8), dated("ses-c", day=7)]
+    budget = payload_size(sessions[:2])
+
+    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=budget)
+
+    assert estimate.selected_count == 3
+    assert estimate.fit_count == 2
+    assert estimate.bytes_used == payload_size(sessions)
+    assert estimate.max_bytes == budget
+    assert estimate.over_limit is True
+
+
+def test_measure_synthesis_budget_reports_when_everything_fits() -> None:
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+
+    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=100_000)
+
+    assert estimate.selected_count == 2
+    assert estimate.fit_count == 2
+    assert estimate.over_limit is False
+
+
+def test_measure_synthesis_budget_never_holds_back_the_first_session() -> None:
+    """A session larger than the whole budget is still counted as sent."""
+
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+
+    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=1)
+
+    assert estimate.selected_count == 2
+    assert estimate.fit_count == 1
+    assert estimate.over_limit is True
+
+
 def detailed(
     session_id: str,
     repository_id: str = "repo-a",

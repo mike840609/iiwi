@@ -35,6 +35,7 @@ from iiwi.models.repository import (
 )
 from iiwi.models.session import ActivityType, AgentSession, SessionActivity
 from iiwi.models.time_range import DateRange
+from iiwi.services.outcomes import SynthesisBudgetEstimate
 from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -795,6 +796,74 @@ def test_narrative_on_still_routes_generate_into_quick_review(
         draft,
         log,
         [*_open_review_keys(), char("b"), char("q"), char("q")],
+    )
+
+    assert len(log.synthesis_scans) == 1
+    assert Screen.OUTCOME_REVIEW in screens
+
+
+def test_over_budget_selection_blocks_synthesis_with_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    log = ActionLog(_review())
+    actions = replace(
+        _actions(draft, log),
+        measure_synthesis_fit=lambda scan: SynthesisBudgetEstimate(
+            selected_count=5,
+            fit_count=2,
+            bytes_used=30000,
+            max_bytes=40000,
+        ),
+    )
+    frames: list[tuple[Screen, str | None]] = []
+    monkeypatch.setattr(
+        controller,
+        "_render_screen",
+        lambda state, console: frames.append((state.screen, state.review_message)),
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput([*_open_review_keys(), char("q"), char("q")]),
+        console=Console(file=StringIO(), color_system=None, force_terminal=False),
+    )
+
+    assert log.synthesis_scans == []
+    assert (
+        Screen.SESSION_REVIEW,
+        "5 selected; synthesis handles about 2. "
+        "Narrow the period, or deselect what does not belong in the update. "
+        "(30000 / 40000 bytes)",
+    ) in frames
+    assert Screen.OUTCOME_REVIEW not in [screen for screen, _ in frames]
+
+
+def test_within_budget_selection_still_synthesizes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    log = ActionLog(_review())
+    actions = replace(
+        _actions(draft, log),
+        measure_synthesis_fit=lambda scan: SynthesisBudgetEstimate(
+            selected_count=1,
+            fit_count=1,
+            bytes_used=100,
+            max_bytes=40000,
+        ),
+    )
+    screens: list[Screen] = []
+    monkeypatch.setattr(
+        controller,
+        "_render_screen",
+        lambda state, console: screens.append(state.screen),
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput([*_open_review_keys(), char("q"), char("q")]),
+        console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
 
     assert len(log.synthesis_scans) == 1

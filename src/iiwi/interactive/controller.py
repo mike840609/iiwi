@@ -77,6 +77,7 @@ from iiwi.models.report_options import ReportType
 from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
 from iiwi.renderers.markdown import DetailLevel
+from iiwi.services.outcomes import SynthesisBudgetEstimate
 from iiwi.services.scan import ScanResult
 
 _ADVANCED_ROW = "Advanced settings"
@@ -132,6 +133,17 @@ def _daily_add_not_configured(section: DailySection) -> str | None:
     return None
 
 
+def _synthesis_fit_not_configured(scan: ScanResult) -> SynthesisBudgetEstimate:
+    """Never blocks: callers that do not wire the seam keep the old path."""
+
+    return SynthesisBudgetEstimate(
+        selected_count=0,
+        fit_count=0,
+        bytes_used=0,
+        max_bytes=0,
+    )
+
+
 @dataclass(frozen=True)
 class InteractiveActions:
     """Business-logic seams supplied by `cli.py`, keeping this module cycle-free."""
@@ -154,6 +166,9 @@ class InteractiveActions:
     restore_selection: Callable[[str, DateRange, bool], set[str] | None]
     save_selection: Callable[[str, DateRange, bool, set[str]], None]
     exclude_repository: Callable[[str, str], str]
+    measure_synthesis_fit: Callable[
+        [ScanResult], SynthesisBudgetEstimate
+    ] = _synthesis_fit_not_configured
     start_daily: Callable[
         [DailyStandupDraft | None], DailyStandupDraft
     ] = _daily_start_not_configured
@@ -1240,6 +1255,16 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         return
     _sync_selection(state, actions)
     filtered_scan = state.selection.filtered_scan()
+    budget = actions.measure_synthesis_fit(filtered_scan)
+    if budget.over_limit:
+        state.review_message = (
+            f"{budget.selected_count} selected; synthesis handles about "
+            f"{budget.fit_count}. Narrow the period, or deselect what does "
+            f"not belong in the update. "
+            f"({budget.bytes_used} / {budget.max_bytes} bytes)"
+        )
+        state.screen = Screen.SESSION_REVIEW
+        return
     selection_key = (
         tuple(sorted(item.session.session_id for item in filtered_scan.resolved_sessions)),
         state.draft.detail,
