@@ -564,6 +564,40 @@ def test_choose_period_starts_the_cycle_for_an_unnamed_window(
     assert period == DateRange.current_week(now=now)
 
 
+def test_default_period_label_is_a_named_period() -> None:
+    """`_default_period` indexes the cycle by name, so a rename must move both."""
+
+    now = datetime(2026, 8, 10, 12, tzinfo=TZ)
+    names = [name for name, _ in cli_actions._named_periods(now)]
+
+    assert cli_actions._DEFAULT_PERIOD_LABEL in names
+
+
+def test_new_draft_opens_on_a_rolling_window_not_the_calendar_week(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Monday 09:00 is the likeliest moment for a weekly review and the worst
+    showing for a week-to-date window: it holds nine hours of work."""
+
+    settings = SimpleNamespace(
+        report=SimpleNamespace(
+            timezone="Asia/Taipei",
+            quick_review_report_type=ReportType.ENGINEERING,
+        )
+    )
+    now = datetime(2026, 8, 10, 9, tzinfo=TZ)  # a Monday
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
+    monkeypatch.setattr(cli, "_enabled_harnesses", lambda settings: [cli.Harness.CODEX])
+
+    draft = cli_actions._new_draft()
+
+    assert draft.period_label == "Last 7 days"
+    assert draft.period == DateRange.from_days(days=7, now=now)
+    # The whole point: it reaches back past the Monday boundary.
+    assert draft.period.since < DateRange.current_week(now=now).since
+
+
 def test_exclude_repository_appends_to_the_exclusion_setting(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("IIWI_CONFIG_FILE", str(tmp_path / "config.env"))
 
