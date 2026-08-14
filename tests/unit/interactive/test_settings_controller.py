@@ -10,9 +10,20 @@ import pytest
 from rich.console import Console
 
 from iiwi import config_store
-from iiwi.interactive.controller import InteractiveActions, run_interactive
+from iiwi.interactive.controller import (
+    InteractiveActions,
+    _settings_key,
+    _State,
+    run_interactive,
+)
 from iiwi.interactive.input import Key, KeyPress
-from iiwi.interactive.models import ReportDraft
+from iiwi.interactive.models import ReportDraft, Screen
+from iiwi.interactive.render import (
+    settings_capacity,
+    settings_display_count,
+    settings_display_index,
+)
+from iiwi.interactive.settings import SettingsRow
 from iiwi.models.time_range import DateRange
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -64,9 +75,73 @@ def _actions() -> InteractiveActions:
     )
 
 
-def _console() -> tuple[Console, StringIO]:
+def _console(height: int | None = None) -> tuple[Console, StringIO]:
     stream = StringIO()
-    return Console(file=stream, color_system=None, force_terminal=False, width=100), stream
+    return (
+        Console(
+            file=stream,
+            color_system=None,
+            force_terminal=False,
+            width=100,
+            height=height,
+        ),
+        stream,
+    )
+
+
+def _viewport_settings_rows() -> list[SettingsRow]:
+    """Sixteen rows across the four real sections, as the editor builds them."""
+    keys = [
+        "harnesses.opencode.enabled",
+        "harnesses.opencode.source",
+        "harnesses.opencode.cli.executable",
+        "harnesses.opencode.cli.timeout_seconds",
+        "harnesses.opencode.cli.run_timeout_seconds",
+        "harnesses.opencode.cli.model",
+        "harnesses.opencode.cli.sanitize",
+        "harnesses.claude_code.enabled",
+        "harnesses.claude_code.projects_directory",
+        "harnesses.codex.enabled",
+        "harnesses.codex.home_directory",
+        "report.timezone",
+        "report.output_directory",
+        "report.exclude_repositories",
+        "report.quick_review_report_type",
+        "report.quick_review_max_evidence_bytes",
+    ]
+    sections = [
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "Claude Code",
+        "Claude Code",
+        "Codex",
+        "Codex",
+        "General",
+        "General",
+        "General",
+        "General",
+        "General",
+    ]
+    return [
+        SettingsRow(
+            key=key,
+            label=key.removeprefix("harnesses."),
+            value="true",
+            source="default",
+            default="true",
+            choices=("true", "false"),
+            show_all=True,
+            locked=False,
+            variable=f"IIWI_TEST_{index}",
+            section=section,
+        )
+        for index, (key, section) in enumerate(zip(keys, sections, strict=True))
+    ]
 
 
 def _open_settings(keys: list[KeyPress]) -> list[KeyPress]:
@@ -248,6 +323,66 @@ def test_an_invalid_value_keeps_the_old_value_and_shows_the_error(
     assert "invalid value" in stream.getvalue()
 
 
+def test_an_invalid_timezone_keeps_the_old_value_and_shows_the_error(
+    config_file: Path,
+) -> None:
+    config_store.set_value("report.timezone", "Asia/Taipei")
+    downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)
+    console, stream = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            _open_settings(
+                [
+                    *downs,
+                    KeyPress(key=Key.ENTER),
+                    *[char(c) for c in "Mars/Olympus"],
+                    KeyPress(key=Key.ENTER),  # validation fails; editor stays open
+                    KeyPress(key=Key.ESCAPE),  # cancel the still-open editor
+                    char("q"),
+                    char("q"),
+                ]
+            )
+        ),
+        console=console,
+    )
+
+    assert config_store.stored_values(config_file) == {
+        "IIWI_REPORT__TIMEZONE": "Asia/Taipei"
+    }
+    assert "unknown timezone" in stream.getvalue()
+
+
+def test_editing_the_timezone_row_to_a_known_zone_writes_it(config_file: Path) -> None:
+    downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)
+    console, _ = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            _open_settings(
+                [
+                    *downs,
+                    KeyPress(key=Key.ENTER),
+                    # The editor prefills the current "Asia/Taipei"; clear it
+                    # before typing, like the empty-value test does.
+                    *([KeyPress(key=Key.BACKSPACE)] * 11),
+                    *[char(c) for c in "America/New_York"],
+                    KeyPress(key=Key.ENTER),
+                    char("q"),
+                    char("q"),
+                ]
+            )
+        ),
+        console=console,
+    )
+
+    assert config_store.stored_values(config_file) == {
+        "IIWI_REPORT__TIMEZONE": "America/New_York"
+    }
+
+
 def test_environment_rows_are_locked(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("IIWI_REPORT__TIMEZONE", "UTC")
     downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)
@@ -293,3 +428,38 @@ def test_back_returns_to_the_main_menu(config_file: Path) -> None:
     first_menu = text.index("Review Activity")
     settings_frame = text.index("opencode.enabled")
     assert first_menu < settings_frame < text.rindex("Review Activity")
+
+
+def test_settings_offset_follows_the_cursor_and_saturates_at_the_end() -> None:
+    rows = _viewport_settings_rows()
+    count = settings_display_count(rows)
+    capacity = settings_capacity(16)
+    body = max(1, capacity - 2)  # the ↑/↓ indicators each take a display slot
+    assert count > capacity  # height 16 really clips
+
+    state = _State(screen=Screen.SETTINGS, settings_rows=rows)
+    console, _ = _console(height=16)
+
+    _settings_key(state, KeyPress(key=Key.DOWN), console)
+    _settings_key(state, KeyPress(key=Key.DOWN), console)
+    assert state.settings_offset == 0
+
+    seen = {state.settings_offset}
+    while state.settings_cursor < len(rows) - 1:
+        _settings_key(state, KeyPress(key=Key.DOWN), console)
+        selected = settings_display_index(rows, state.settings_cursor)
+        assert state.settings_offset <= selected
+        assert selected < state.settings_offset + capacity
+        seen.add(state.settings_offset)
+    assert max(seen) == count - body
+
+    _settings_key(state, KeyPress(key=Key.DOWN), console)
+    _settings_key(state, KeyPress(key=Key.DOWN), console)
+    assert state.settings_offset == count - body
+
+    while state.settings_cursor > 0:
+        _settings_key(state, KeyPress(key=Key.UP), console)
+        selected = settings_display_index(rows, state.settings_cursor)
+        assert state.settings_offset <= selected
+        assert selected < state.settings_offset + capacity
+    assert state.settings_offset == 0

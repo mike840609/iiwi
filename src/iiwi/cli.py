@@ -161,6 +161,8 @@ def _resolve_period(
     assert since is not None
     start = _parse_iso_datetime(since, timezone=timezone)
     end = _parse_iso_datetime(until, timezone=timezone) if until else now
+    if start >= end:
+        raise typer.BadParameter("--since must be earlier than --until")
     return DateRange(since=start, until=end)
 
 

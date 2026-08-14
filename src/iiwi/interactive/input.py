@@ -86,21 +86,46 @@ def _escape_sequence_complete(sequence: str) -> bool:
     return final == "~" or "@" <= final <= "~"
 
 
+def _utf8_character_length(lead: int) -> int:
+    """Total bytes in the UTF-8 code point a lead byte begins."""
+
+    if lead < 0x80:
+        return 1
+    if 0xC2 <= lead <= 0xDF:
+        return 2
+    if 0xE0 <= lead <= 0xEF:
+        return 3
+    if 0xF0 <= lead <= 0xF4:
+        return 4
+    # Invalid lead bytes (overlong 0xC0-0xC1, stray continuations 0x80-0xBF,
+    # or 0xF5-0xFF) are consumed alone and dropped by errors="ignore".
+    return 1
+
+
 def _posix_read() -> str:
     fd = sys.stdin.fileno()
-    first = os.read(fd, 1).decode(errors="ignore")
-    if first != "\x1b":
-        return first
+    first = os.read(fd, 1)
+    if not first:
+        return ""
 
-    sequence = first
-    for _ in range(7):
+    if first == b"\x1b":
+        sequence = "\x1b"
+        for _ in range(7):
+            readable, _, _ = select.select([fd], [], [], 0.02)
+            if not readable:
+                break
+            sequence += os.read(fd, 1).decode(errors="ignore")
+            if _escape_sequence_complete(sequence):
+                break
+        return sequence
+
+    collected = bytearray(first)
+    for _ in range(_utf8_character_length(first[0]) - 1):
         readable, _, _ = select.select([fd], [], [], 0.02)
         if not readable:
             break
-        sequence += os.read(fd, 1).decode(errors="ignore")
-        if _escape_sequence_complete(sequence):
-            break
-    return sequence
+        collected += os.read(fd, 1)
+    return bytes(collected).decode(errors="ignore")
 
 
 def _windows_setup() -> object:
