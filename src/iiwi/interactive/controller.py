@@ -1854,6 +1854,7 @@ def _render_screen(state: _State, console: Console) -> None:
             message=state.review_message,
             query=state.search_query,
             searching=state.searching,
+            draft=state.draft,
         )
     elif state.screen is Screen.OUTCOME_REVIEW:
         assert state.outcome_review is not None

@@ -265,6 +265,36 @@ def test_session_review_hides_warning_line_when_scan_is_clean() -> None:
     assert "⚠" not in stream.getvalue()
 
 
+def test_session_review_names_the_period_it_is_filtered_to() -> None:
+    """Nothing else on this screen names the window, so without it a quiet week
+    and a failed scan render identically."""
+
+    console, stream = _console()
+    draft = ReportDraft(harness="opencode", period=_period(), period_label="Last 7 days")
+
+    render_session_review(
+        console,
+        _selection(),
+        expanded_repositories=set(),
+        cursor=0,
+        draft=draft,
+    )
+
+    text = stream.getvalue()
+    assert "Last 7 days ·" in text
+    assert "Aug 03 – Aug 10" in text
+
+
+def test_session_review_without_a_draft_keeps_the_plain_subtitle() -> None:
+    console, stream = _console()
+
+    render_session_review(console, _selection(), expanded_repositories=set(), cursor=0)
+
+    text = stream.getvalue()
+    assert "Select sessions to include in the report:" in text
+    assert "Aug 03" not in text
+
+
 def test_session_browser_surfaces_scan_warnings() -> None:
     console, stream = _console()
     state = _selection(warnings=["skipped ses-x1: unreadable transcript"])
