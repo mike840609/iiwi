@@ -1,5 +1,6 @@
 .venv/
 __pycache__/
+.omo/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
@@ -13,6 +14,16 @@ build/
 .superpowers/
 reports/
 .env
+.env.*
+!.env.example
+*.log
+coverage.xml
 # Per-task scratch state from the /do orchestrator. Only this subdirectory:
 # .claude/ itself can hold project settings worth committing.
 .claude/do-tasks/
+
+# macOS / Windows / editor junk
+.DS_Store
+.Thumbs.db
+.idea/
+
