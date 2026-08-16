@@ -616,6 +616,50 @@ def test_one_extraction_failure_becomes_ungrouped_without_blocking_success(
     assert any(item.bucket is OutcomeBucket.UNGROUPED for item in result.outcomes)
 
 
+def raise_for(original, session_id: str):
+    """Fail one session inside the per-session work, past `extract_evidence`."""
+
+    def call(evidence, *args, **kwargs):
+        if evidence.session_id == session_id:
+            raise RuntimeError("boom")
+        return original(evidence, *args, **kwargs)
+
+    return call
+
+
+@pytest.mark.parametrize("stage", ["_compact_session", "_local_texts"])
+def test_a_session_failing_after_extraction_is_a_failure_and_nothing_else(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Half a session in the maps is counted as sent and as failed at once."""
+
+    original = getattr(outcomes, stage)
+    monkeypatch.setattr(outcomes, stage, raise_for(original, "ses-b"))
+
+    extracted = outcomes._extract_sessions(two_session_scan())
+
+    failed = [item.session.session_id for item in extracted.failed_sessions]
+    assert failed == ["ses-b"]
+    assert source_id("ses-b") not in extracted.evidence_by_source
+    assert source_id("ses-b") not in extracted.compact_by_source
+    assert source_id("ses-b") not in extracted.local_texts_by_source
+    assert source_id("ses-b") not in extracted.started_at
+    assert source_id("ses-a") in extracted.evidence_by_source
+
+
+def test_every_kept_session_has_redacted_texts_for_the_corpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_corpus` reads this map by key; a miss would validate against raw evidence."""
+
+    monkeypatch.setattr(outcomes, "_local_texts", raise_for(outcomes._local_texts, "ses-b"))
+
+    extracted = outcomes._extract_sessions(two_session_scan())
+
+    assert set(extracted.local_texts_by_source) == set(extracted.evidence_by_source)
+
+
 def test_ungrouped_failed_session_titles_are_redacted(monkeypatch) -> None:
     monkeypatch.setattr(outcomes, "extract_evidence", fail_only("ses-b"))
     result = service_for_json(payload_for_sessions(["ses-a"])).synthesize(
@@ -1317,7 +1361,10 @@ def _corpus_evidence(words: list[str]) -> SessionEvidence:
 
 def _support(proposed: str, corpus_words: list[str]) -> str:
     evidence = _corpus_evidence(corpus_words)
-    return _supported_title(proposed, [evidence], {})
+    # The corpus map covers every selected session in production, so supply it
+    # here too rather than leaning on a lookup miss.
+    texts = {outcomes._source_id(evidence): outcomes._local_texts(evidence)}
+    return _supported_title(proposed, [evidence], texts)
 
 
 def test_a_fully_supported_title_is_kept() -> None:
