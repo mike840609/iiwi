@@ -833,7 +833,7 @@ def test_over_budget_selection_blocks_synthesis_with_guidance(
 
     run_interactive(
         actions=actions,
-        input_source=ScriptedInput([*_open_review_keys(), char("q"), char("q")]),
+        input_source=ScriptedInput([*_open_review_keys(), char("q"), char("q"), char("q")]),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
 
@@ -877,7 +877,7 @@ def test_capital_g_groups_an_over_budget_selection_anyway(
     run_interactive(
         actions=actions,
         input_source=ScriptedInput(
-            [*_open_review_keys(), char("G"), char("q"), char("q")]
+            [*_open_review_keys(), char("G"), char("q"), char("q"), char("q"), char("q")]
         ),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
@@ -910,7 +910,9 @@ def test_within_budget_selection_still_synthesizes(
 
     run_interactive(
         actions=actions,
-        input_source=ScriptedInput([*_open_review_keys(), char("q"), char("q")]),
+        input_source=ScriptedInput(
+            [*_open_review_keys(), char("q"), char("q"), char("q"), char("q")]
+        ),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
 
@@ -947,7 +949,7 @@ def test_returning_to_a_cached_review_does_not_measure_the_budget_again(
     run_interactive(
         actions=actions,
         input_source=ScriptedInput(
-            [*_open_review_keys(), char("b"), char("g"), char("q"), char("q")]
+            [*_open_review_keys(), char("b"), char("g"), char("q"), char("q"), char("q"), char("q")]
         ),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )

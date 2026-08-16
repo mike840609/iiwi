@@ -580,7 +580,14 @@ def test_history_enter_shows_the_cursor_row_not_the_first_row(
     run_interactive(
         actions=_actions(),
         input_source=ScriptedInput(
-            [char("4"), char("j"), KeyPress(key=Key.ENTER), char("q"), char("q")]
+            [
+                char("4"),
+                char("j"),
+                KeyPress(key=Key.ENTER),
+                char("q"),
+                char("q"),
+                char("q"),
+            ]
         ),
         console=console,
     )
