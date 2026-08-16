@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.13.0 - 2026-08-16
 
 - Quick Review says a selection is too large before the model run, not after
   it. The evidence budget used to make its cut silently during synthesis: you
