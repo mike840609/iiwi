@@ -1146,7 +1146,7 @@ def render_daily_result(
     for index, label in enumerate(daily_result_options()):
         _print_option_line(console, label, index, selected)
     console.print()
-    _print_hints(console, ["↑↓ jk", "Enter Select", "? Help", "q Menu"])
+    _print_hints(console, ["↑↓ jk", "Enter Select", "? Help", "q Back"])
 
 
 @dataclass(frozen=True)
@@ -2293,7 +2293,7 @@ _DAILY_HELP_LINES = (
     "g              Generate the Daily Standup",
     "?              Open or close this help",
     "b / Esc        Back to the main menu",
-    "q              Main menu",
+    "q              Back to the main menu",
     "Ctrl-C         Cancel the current operation and go back",
 )
 _HELP_HINTS = ["↑↓ jk Scroll", "b / Esc / Enter Back"]
