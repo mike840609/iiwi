@@ -1,7 +1,8 @@
+import time
 from datetime import UTC, datetime
 
-from iiwi.extraction.pipeline import EVIDENCE_TEXT_MAX_LENGTH, extract_evidence
-from iiwi.models.evidence import EvidenceConfidence, EvidenceStatus
+from iiwi.extraction.pipeline import EVIDENCE_TEXT_MAX_LENGTH, _append_unique, extract_evidence
+from iiwi.models.evidence import EvidenceConfidence, EvidenceItem, EvidenceStatus
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -550,3 +551,123 @@ def test_a_short_session_title_is_left_alone() -> None:
     evidence = extract_evidence(session)
 
     assert evidence.title == "Add retry to the price fetcher"
+
+
+def evidence_item(text: str) -> EvidenceItem:
+    return EvidenceItem(
+        text=text,
+        source_activity_ids=["a-1"],
+        confidence=EvidenceConfidence.HIGH,
+        extraction_method="tool_command",
+    )
+
+
+class CountingSet(set[tuple[str, str]]):
+    """Set double that counts membership probes and insertions.
+
+    `_append_unique` must consult the persistent `seen` set exactly once per
+    candidate and grow it once per accepted candidate. If a regression rebuilds
+    a set from `items` on every call, the probe count on this double drops to
+    zero and the guard test fails.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.contains_calls = 0
+        self.add_calls = 0
+
+    def __contains__(self, key: object) -> bool:
+        self.contains_calls += 1
+        return super().__contains__(key)
+
+    def add(self, element: tuple[str, str]) -> None:
+        self.add_calls += 1
+        super().add(element)
+
+
+def test_append_unique_skips_candidate_already_in_seen() -> None:
+    """A candidate whose (casefolded text, repository) key is already known is dropped."""
+
+    seen: set[tuple[str, str]] = {("add login", "git:repo-1")}
+    items: list[EvidenceItem] = []
+
+    _append_unique(
+        items,
+        evidence_item("ADD LOGIN"),
+        seen=seen,
+        repository_id="git:repo-1",
+    )
+
+    assert items == []
+
+
+def test_append_unique_preserves_first_seen_order() -> None:
+    """The first occurrence of each text wins; later case-insensitive repeats vanish."""
+
+    seen: set[tuple[str, str]] = set()
+    items: list[EvidenceItem] = []
+
+    for text in ("alpha", "beta", "alpha", "gamma", "BETA"):
+        _append_unique(items, evidence_item(text), seen=seen, repository_id="git:repo")
+
+    assert [item.text for item in items] == ["alpha", "beta", "gamma"]
+
+
+def test_append_unique_consults_seen_once_per_candidate() -> None:
+    """The persistent seen set, not a per-candidate rebuild, drives dedup."""
+
+    items: list[EvidenceItem] = []
+    seen = CountingSet()
+
+    for index in range(10):
+        _append_unique(
+            items, evidence_item(f"cmd {index}"), seen=seen, repository_id="git:repo"
+        )
+
+    assert seen.contains_calls == 10
+    assert seen.add_calls == 10
+    assert len(items) == 10
+
+
+def test_identical_text_across_collections_does_not_cross_dedup() -> None:
+    """Dedup is per evidence collection; goals and outcomes stay independent."""
+
+    evidence = extract_evidence(
+        resolved(
+            SessionActivity(
+                activity_id="u-1",
+                activity_type=ActivityType.USER_MESSAGE,
+                content="Implemented the feature successfully.",
+            ),
+            SessionActivity(
+                activity_id="m-1",
+                activity_type=ActivityType.ASSISTANT_MESSAGE,
+                content="Implemented the feature successfully.",
+            ),
+        )
+    )
+
+    assert [goal.text for goal in evidence.goals] == ["Implemented the feature successfully."]
+    assert [outcome.text for outcome in evidence.outcomes] == [
+        "Implemented the feature successfully."
+    ]
+
+
+def test_extract_evidence_dedup_scales_linearly() -> None:
+    """A large distinct stream finishes well under the O(n²) wall-clock bound."""
+
+    activities = [
+        SessionActivity(
+            activity_id=f"u-{index}",
+            activity_type=ActivityType.USER_MESSAGE,
+            content=f"request number {index}",
+        )
+        for index in range(20000)
+    ]
+
+    started = time.monotonic()
+    evidence = extract_evidence(resolved(*activities))
+    elapsed = time.monotonic() - started
+
+    assert len(evidence.goals) == 20000
+    assert elapsed < 5.0
