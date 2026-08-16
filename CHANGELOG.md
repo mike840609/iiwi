@@ -2,6 +2,66 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Quick Review says a selection is too large before the model run, not after
+  it. The evidence budget used to make its cut silently during synthesis: you
+  waited, and then a report arrived covering the newest sessions that fit with
+  the rest listed as ungrouped candidates. The selection is now measured on
+  Review Sessions, before `opencode run` is spent, and an over-budget selection
+  says so on the spot — how many are selected, how many synthesis carries, and
+  the payload size against the budget. Narrowing the period or deselecting what
+  does not belong is the first answer; `G` takes the old behaviour deliberately,
+  grouping the newest that fit and leaving the rest as ungrouped candidates with
+  the same warning. The measurement is the payload's own size rather than a
+  session count, so one session too large for the whole budget is caught as
+  well, and a session whose evidence could not be extracted is not mistaken for
+  a budget problem.
+- Non-ASCII input works on POSIX terminals. Each raw byte was decoded on its
+  own with `errors="ignore"`, so a CJK, accented or emoji character decoded to
+  nothing at all, one byte at a time — model names, paths, time zones,
+  settings values and search queries with any of those characters simply could
+  not be typed. The reader now collects a whole code point before decoding it.
+  The escape-sequence path is byte-for-byte unchanged: `0x1b` is neither a UTF-8
+  lead nor a continuation byte, so the two cases never overlap.
+- The settings editor scrolls on a short terminal. Sixteen settings plus
+  section headers and chrome is 31 rows, printed unconditionally, so on a
+  20- or 24-row terminal navigating to the lower settings pushed the selected
+  row, its description and the footer off screen. The editor now windows to the
+  terminal height, always keeping the selected row and the footer visible, and
+  marks what is outside the window with `↑ N more` / `↓ N more`.
+- Invalid timeouts and time zones are rejected before they are written.
+  Validation checked only a leaf's primitive type, so `timeout_seconds nan` and
+  `report.timezone Mars/Olympus` were accepted and saved, then crashed `doctor`
+  or failed the next scan — the settings file had to be repaired by hand. A
+  value now goes through its owning model's full validation, which covers
+  `config set`, `config init` and the interactive editor at once, and nothing
+  is written when it fails.
+- A reversed date range is a usage error rather than a traceback. `--since`
+  later than `--until` reached the model directly and surfaced as exit 1 with a
+  Rich traceback, while every other invalid option exits 2 with one line. It is
+  now `--since must be earlier than --until` at exit 2, for `scan` and `report`
+  alike. An equal pair, and a `--since` in the future against the default
+  `--until` of now, take the same path.
+- The update check orders releases the way PEP 440 does. A hand-written tuple
+  parser fell back to extracting digits for forms it did not know, so `1.0.0`
+  against `1.0.0.post1`, and `999.0.0` against `1!1.0.0`, both reported no
+  update available when one was. Comparison uses `packaging.version` now, and
+  an index version that cannot be parsed reports a failed check instead of a
+  confident wrong answer.
+- Evidence extraction no longer scales quadratically. Deduplication rebuilt a
+  set from the entire growing evidence list for every candidate: 1,000 items
+  took 0.05s, 2,000 took 0.20s, 4,000 took 0.81s and 8,000 took 3.64s —
+  doubling the input cost about four times as much. One persistent set per
+  collection makes membership amortized constant, with ordering and
+  case-insensitive deduplication unchanged. Busy transcripts and
+  multi-repository reports feel it on both report paths, Quick Review included.
+- **The automatic migration from `agent-worklog` 0.8.0 is gone.** Settings,
+  report history and session selection were adopted from an old install on
+  first run; that path was meant to last one release past 0.9.0 and this is
+  0.13.0. Anyone still holding 0.8.0 state should run 0.12.0 once to adopt it
+  before upgrading. The `IIWI_*_FILE` environment overrides are untouched.
+
 ## 0.12.0 - 2026-08-14
 
 - Daily Standup. `iiwi daily`, or **Daily Standup** from the main menu, turns
