@@ -32,7 +32,7 @@ History, Check Setup, and Settings. Completed actions return to an interactive s
 the main menu instead of requiring a new process.
 
 Generate Report opens a summary before scanning. Harness, period, detail, subagent
-inclusion, narrative mode, sanitize mode, and dry-run mode can be changed independently;
+inclusion, narrative mode, and sanitize mode can be changed independently;
 only harness, period, subagent inclusion, and sanitize changes invalidate a cached scan.
 When editing harness or period, Enter keeps the value already shown in the draft. Sanitize
 is shown as unavailable for non-OpenCode harnesses rather than acting like a selectable
@@ -45,7 +45,10 @@ that session's transcript (redacted before display). The repository marker is de
 its children: `●` means all selected, `○` means none selected, and `◐` means partially
 selected. `a` selects all sessions, `n` selects none, `g` synthesizes the selected
 sessions and opens Quick Review, and `b` returns to the setup summary. A report cannot
-be generated with zero selected sessions. Long session
+be generated with zero selected sessions. A selection larger than the Quick Review
+evidence budget is measured before any model call is spent and reported as a message
+naming how many sessions synthesis can carry; `G` groups those and leaves the rest as
+ungrouped candidates rather than requiring the selection to be cut by hand. Long session
 lists use the terminal height as a viewport, keeping the active row visible and showing
 `↑ N more` / `↓ N more` when rows exist outside the current window.
 
@@ -123,7 +126,7 @@ the complete review, refresh, fallback, and local-state behavior.
 | `--sanitize / --no-sanitize` | Enables or disables OpenCode export redaction. Raw export is the default. OpenCode only. |
 | `--verbose` | Also shows export, fallback, and narrative warnings. For `scan`, also lists each repository's session titles and working folders. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
-| `--json / --no-json` | Emits machine-readable JSON (redacted) instead of the human output. When stdout is piped, JSON is the default; `--no-json` forces the human output. `doctor` and `history` accept the same flag. |
+| `--json / --no-json` | Emits machine-readable JSON (redacted) instead of the human output. When stdout is piped, JSON is the default; `--no-json` forces the human output. Shared by `scan`, `doctor`, `history`, and `update`; `report` does not accept it. |
 
 Three rules apply:
 
@@ -134,7 +137,7 @@ Three rules apply:
 
 ## Machine-readable output
 
-`scan --json`, `doctor --json`, and `history --json` print a single JSON
+`scan --json`, `doctor --json`, `history --json`, and `update --json` print a single JSON
 document to stdout; progress stays on stderr. Every value is redacted before
 it is emitted, matching the redaction the interactive and file paths apply.
 

@@ -82,6 +82,65 @@ def test_config_file_path_defaults_into_the_user_config_directory(
     assert "iiwi" in str(path)
 
 
+@pytest.mark.parametrize(
+    ("module", "resolver", "directory_function", "variable", "filename"),
+    [
+        (
+            "iiwi.config_store",
+            "config_file_path",
+            "user_config_dir",
+            "IIWI_CONFIG_FILE",
+            "config.env",
+        ),
+        (
+            "iiwi.history",
+            "history_file_path",
+            "user_data_dir",
+            "IIWI_HISTORY_FILE",
+            "history.jsonl",
+        ),
+        (
+            "iiwi.state",
+            "state_file_path",
+            "user_data_dir",
+            "IIWI_STATE_FILE",
+            "state.json",
+        ),
+    ],
+)
+def test_a_legacy_decoy_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    module: str,
+    resolver: str,
+    directory_function: str,
+    variable: str,
+    filename: str,
+) -> None:
+    """A file under the pre-rename directory is left untouched, never adopted.
+
+    The autouse fixture sets the override, so clear it to reach the real branch.
+    """
+
+    import importlib
+
+    monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setattr(
+        importlib.import_module(module),
+        directory_function,
+        lambda name: str(tmp_path / name),
+    )
+    decoy = tmp_path / "agent-worklog" / filename
+    decoy.parent.mkdir(parents=True, exist_ok=True)
+    decoy.write_text("kept\n", encoding="utf-8")
+
+    resolved = getattr(importlib.import_module(module), resolver)()
+
+    assert resolved == tmp_path / "iiwi" / filename
+    assert decoy.exists()
+    assert decoy.read_text(encoding="utf-8") == "kept\n"
+
+
 def test_resolve_key_suggests_the_closest_key_for_a_typo() -> None:
     with pytest.raises(ConfigurationError) as error:
         resolve_key("harnesses.opencode.cli.mdoel")
@@ -104,6 +163,31 @@ def test_validate_value_rejects_a_timeout_that_is_not_a_number() -> None:
 def test_validate_value_accepts_the_boolean_spellings_env_settings_use() -> None:
     validate_value(resolve_key("harnesses.opencode.enabled"), "false")
     validate_value(resolve_key("harnesses.codex.enabled"), "true")
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["nan", "inf", "-inf", "0", "-5"],
+)
+def test_validate_value_rejects_a_non_finite_or_non_positive_timeout(
+    value: str,
+) -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="invalid value for harnesses.opencode.cli.timeout_seconds",
+    ):
+        validate_value(resolve_key("harnesses.opencode.cli.timeout_seconds"), value)
+
+
+def test_validate_value_rejects_an_unknown_timezone() -> None:
+    with pytest.raises(ConfigurationError, match="unknown timezone"):
+        validate_value(resolve_key("report.timezone"), "Mars/Olympus")
+
+
+def test_validate_value_accepts_valid_domain_values() -> None:
+    validate_value(resolve_key("harnesses.opencode.cli.timeout_seconds"), "30.5")
+    validate_value(resolve_key("report.timezone"), "Asia/Taipei")
+    validate_value(resolve_key("report.timezone"), "UTC")
 
 
 @pytest.fixture
@@ -151,6 +235,24 @@ def test_set_value_refuses_a_bad_value_without_creating_the_file(
 ) -> None:
     with pytest.raises(ConfigurationError):
         set_value("harnesses.opencode.cli.run_timeout_seconds", "abc")
+
+    assert not settings_file.exists()
+
+
+def test_set_value_refuses_a_nan_timeout_without_creating_the_file(
+    settings_file: Path,
+) -> None:
+    with pytest.raises(ConfigurationError):
+        set_value("harnesses.opencode.cli.timeout_seconds", "nan")
+
+    assert not settings_file.exists()
+
+
+def test_set_value_refuses_an_unknown_timezone_without_creating_the_file(
+    settings_file: Path,
+) -> None:
+    with pytest.raises(ConfigurationError):
+        set_value("report.timezone", "Mars/Olympus")
 
     assert not settings_file.exists()
 

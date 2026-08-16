@@ -141,12 +141,13 @@ def _append_unique(
     items: list[EvidenceItem],
     candidate: EvidenceItem,
     *,
+    seen: set[tuple[str, str]],
     repository_id: str,
 ) -> None:
     key = (candidate.text.casefold(), repository_id)
-    existing = {(item.text.casefold(), repository_id) for item in items}
-    if key not in existing:
+    if key not in seen:
         items.append(candidate)
+        seen.add(key)
 
 
 def _redirects_stderr(command: str) -> bool:
@@ -173,6 +174,7 @@ def _append_stderr_heuristic(
     activity: SessionActivity,
     content: str,
     repository_id: str,
+    seen_outcomes: set[tuple[str, str]],
 ) -> None:
     """Record what a command was, not how it ended, when nothing was observed.
 
@@ -206,6 +208,7 @@ def _append_stderr_heuristic(
                 extraction_method="stderr_heuristic",
                 status=EvidenceStatus.UNKNOWN,
             ),
+            seen=seen_outcomes,
             repository_id=repository_id,
         )
 
@@ -227,6 +230,14 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
     )
     repository_id = resolved.repository.repository_id
 
+    # One persistent set per collection; the (casefolded text, repository_id)
+    # key keeps exact prior semantics while each candidate costs one lookup.
+    seen_goals: set[tuple[str, str]] = set()
+    seen_commands: set[tuple[str, str]] = set()
+    seen_errors: set[tuple[str, str]] = set()
+    seen_outcomes: set[tuple[str, str]] = set()
+    seen_files_changed: set[tuple[str, str]] = set()
+
     for activity in resolved.session.activities:
         content = _normalize(activity.content)
         if activity.activity_type == ActivityType.USER_MESSAGE and is_meaningful_user_text(content):
@@ -239,6 +250,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                     extraction_method="user_message",
                     status=EvidenceStatus.IN_PROGRESS,
                 ),
+                seen=seen_goals,
                 repository_id=repository_id,
             )
             continue
@@ -256,6 +268,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                     confidence=EvidenceConfidence.HIGH,
                     extraction_method="tool_command",
                 ),
+                seen=seen_commands,
                 repository_id=repository_id,
             )
             failed = observed_command_failure(activity)
@@ -269,6 +282,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                         extraction_method="observed_command_failure",
                         status=EvidenceStatus.BLOCKED,
                     ),
+                    seen=seen_errors,
                     repository_id=repository_id,
                 )
             elif failed is False and is_verification_command(content):
@@ -281,6 +295,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                         extraction_method="successful_verification_command",
                         status=EvidenceStatus.COMPLETED,
                     ),
+                    seen=seen_outcomes,
                     repository_id=repository_id,
                 )
             elif failed is None:
@@ -289,6 +304,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                     activity=activity,
                     content=content,
                     repository_id=repository_id,
+                    seen_outcomes=seen_outcomes,
                 )
             continue
 
@@ -305,6 +321,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                         confidence=EvidenceConfidence.HIGH,
                         extraction_method="file_tool",
                     ),
+                    seen=seen_files_changed,
                     repository_id=repository_id,
                 )
             continue
@@ -323,6 +340,7 @@ def extract_evidence(resolved: ResolvedSession) -> SessionEvidence:
                     extraction_method="assistant_claim",
                     status=EvidenceStatus.UNKNOWN,
                 ),
+                seen=seen_outcomes,
                 repository_id=repository_id,
             )
 

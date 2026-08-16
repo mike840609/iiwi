@@ -2,7 +2,67 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.13.0 - 2026-08-16
+
+- Quick Review says a selection is too large before the model run, not after
+  it. The evidence budget used to make its cut silently during synthesis: you
+  waited, and then a report arrived covering the newest sessions that fit with
+  the rest listed as ungrouped candidates. The selection is now measured on
+  Review Sessions, before `opencode run` is spent, and an over-budget selection
+  says so on the spot — how many are selected, how many synthesis carries, and
+  the payload size against the budget. Narrowing the period or deselecting what
+  does not belong is the first answer; `G` takes the old behaviour deliberately,
+  grouping the newest that fit and leaving the rest as ungrouped candidates with
+  the same warning. The measurement is the payload's own size rather than a
+  session count, so one session too large for the whole budget is caught as
+  well, and a session whose evidence could not be extracted is not mistaken for
+  a budget problem.
+- Non-ASCII input works on POSIX terminals. Each raw byte was decoded on its
+  own with `errors="ignore"`, so a CJK, accented or emoji character decoded to
+  nothing at all, one byte at a time — model names, paths, time zones,
+  settings values and search queries with any of those characters simply could
+  not be typed. The reader now collects a whole code point before decoding it.
+  The escape-sequence path is byte-for-byte unchanged: `0x1b` is neither a UTF-8
+  lead nor a continuation byte, so the two cases never overlap.
+- The settings editor scrolls on a short terminal. Sixteen settings plus
+  section headers and chrome is 31 rows, printed unconditionally, so on a
+  20- or 24-row terminal navigating to the lower settings pushed the selected
+  row, its description and the footer off screen. The editor now windows to the
+  terminal height, always keeping the selected row and the footer visible, and
+  marks what is outside the window with `↑ N more` / `↓ N more`.
+- Invalid timeouts and time zones are rejected before they are written.
+  Validation checked only a leaf's primitive type, so `timeout_seconds nan` and
+  `report.timezone Mars/Olympus` were accepted and saved, then crashed `doctor`
+  or failed the next scan — the settings file had to be repaired by hand. A
+  value now goes through its owning model's full validation, which covers
+  `config set`, `config init` and the interactive editor at once, and nothing
+  is written when it fails.
+- A reversed date range is a usage error rather than a traceback. `--since`
+  later than `--until` reached the model directly and surfaced as exit 1 with a
+  Rich traceback, while every other invalid option exits 2 with one line. It is
+  now `--since must be earlier than --until` at exit 2, for `scan` and `report`
+  alike. An equal pair, and a `--since` in the future against the default
+  `--until` of now, take the same path.
+- The update check orders releases the way PEP 440 does. A hand-written tuple
+  parser fell back to extracting digits for forms it did not know, so `1.0.0`
+  against `1.0.0.post1`, and `999.0.0` against `1!1.0.0`, both reported no
+  update available when one was. Comparison uses `packaging.version` now, and
+  an index version that cannot be parsed reports a failed check instead of a
+  confident wrong answer.
+- Evidence extraction no longer scales quadratically. Deduplication rebuilt a
+  set from the entire growing evidence list for every candidate: 1,000 items
+  took 0.05s, 2,000 took 0.20s, 4,000 took 0.81s and 8,000 took 3.64s —
+  doubling the input cost about four times as much. One persistent set per
+  collection makes membership amortized constant, with ordering and
+  case-insensitive deduplication unchanged. Busy transcripts and
+  multi-repository reports feel it on both report paths, Quick Review included.
+- **The automatic migration from `agent-worklog` 0.8.0 is gone.** Settings,
+  report history and session selection were adopted from an old install on
+  first run; that path was meant to last one release past 0.9.0 and this is
+  0.13.0. Anyone still holding 0.8.0 state should run 0.12.0 once to adopt it
+  before upgrading. The `IIWI_*_FILE` environment overrides are untouched.
+
+## 0.12.0 - 2026-08-14
 
 - Daily Standup. `iiwi daily`, or **Daily Standup** from the main menu, turns
   yesterday's and today's coding-agent activity into a short update you review
@@ -19,9 +79,12 @@ All notable changes to this project are documented in this file.
   `daily-standup-YYYY-MM-DD.md`. Refreshing later in the day keeps every edit,
   exclusion and ordering already made and flags what is new since the last look;
   the reviewed draft is kept owner-only on your machine for that date and
-  cleaned up after 30 days. If grouping is unavailable, Daily falls back to a
-  draft built from local evidence alone, and if a harness cannot be read the
-  review says which one and continues on the rest.
+  cleaned up after 30 days. If grouping is unavailable, Daily retries once and
+  then falls back to a draft built from local evidence alone, saying so in the
+  review and in the written report rather than letting raw evidence pass as a
+  grouped update; a later refresh that does group successfully replaces that
+  fallback instead of leaving its raw text behind. If a harness cannot be read
+  the review says which one and continues on the rest.
 - Blockers reports only failures worth reporting. A command exiting nonzero is
   not by itself a blocker: an agent's shell is mostly exploration, and
   exploration fails constantly without anything being blocked. Measured over one
@@ -32,6 +95,31 @@ All notable changes to this project are documented in this file.
   can become candidates, a candidate resolved by a later completion or a later
   successful rerun drops out, and whatever survives starts excluded so an error
   is never published without review.
+- History from inside the TUI. The interactive menu gains a **History** row, a
+  read-only list of past reports and their output paths, reading the same
+  append-only log as `iiwi history` so finding an earlier report no longer means
+  leaving the app. Newly recorded entries store an absolute path: the log kept
+  `output_path` exactly as it was passed, so a report written to the default
+  relative `reports/…` was recorded as a string that only meant something in a
+  directory the reader no longer stands in. Resolution happens at write time,
+  the only moment the generating directory is known; entries already recorded
+  stay as stored, since resolving them later would anchor them to the wrong
+  directory.
+- Settings is an editor rather than a wizard. The menu entry used to drop into
+  the linear `iiwi config init` prompts, one blank line per setting, and a blank
+  line never says what belongs there — two settings even defaulted to an empty
+  `[]`. It now opens a full-screen editor in the style of the Generate Report
+  screen: every row shows its current value, settings with a fixed set of
+  choices (`enabled`, `sanitize`, `quick_review_report_type`, `source`,
+  timezone) cycle through them with `←→`, and the rest edit inline on Enter with
+  the current value pre-filled. A change is written the moment it is made, so
+  `config list` and later runs see it. A value coming from an environment
+  variable shows as `[environment]` and stays read-only, because writing it to
+  the settings file would silently do nothing.
+- The wordmark is a softer scarlet. `#D93B28` still reads as the bird's red
+  rather than a different colour, and clears 4.6:1 on both a black and a white
+  terminal. It is the one surface in the TUI that carries identity rather than
+  state, so nothing that carries meaning changes and red stays free for errors.
 - Quick Review says what it is doing while it groups. Synthesis is one
   `opencode run` with a ten-minute timeout, and it reported nothing at all: the
   interactive app paints each frame over the last and repaints only between key
@@ -53,6 +141,39 @@ All notable changes to this project are documented in this file.
   A redirected or dumb-terminal stream now skips the reporter outright, instead
   of relying on Rich to draw nothing there — `Progress` leaves a stray newline
   in that case, which the interactive app would paint over.
+- Distinct repositories stay distinct. Remote normalization parsed a
+  scheme-less local remote such as `../upstream.git` as a network URL, so
+  unrelated clones sharing that relative origin collapsed into one repository,
+  and it dropped non-default SSH ports, so `example.test:2222/org/repo` and
+  `:3333` were the same identity. A scheme-less value that is not scp-style —
+  git's own rule, a colon before the first slash — is now read as a local path
+  and falls back to the git common-dir identity, and a non-default port stays
+  part of the identity while the default ports (ssh 22, git 9418, http 80,
+  https 443, ftp 21, ftps 990) are dropped so the explicit and implicit forms
+  still match.
+- A session from a deleted worktree is reattached only on path evidence.
+  Reattachment accepted a single live repository containing the recorded
+  branch, with nothing else connecting the two, so a common branch such as
+  `main` could file a session under the wrong repository — and with it the
+  report grouping, the exclusions and the Quick Review selection. It now takes
+  two pieces of evidence: the session's recorded working directory must be
+  path-related to the live repository (one nested inside the other, or both
+  sharing a parent, the two layouts `git worktree` actually produces) and
+  exactly one such repository carries the branch. Without both, the session
+  keeps its fallback identity.
+- Usage statistics reach the model instead of racing it. The full narrative
+  prompt asks for a usage overview from attached statistics, but usage was
+  collected after the model had already run and appended afterwards by the
+  renderer — so the model had nothing to read and could invent numbers, report
+  usage as unavailable, or write a section competing with the rendered
+  `## Usage` block. Usage is now collected first and travels in the same
+  transcript file the model reads. Brief detail and `--no-llm` are unchanged.
+- An OpenCode message with no timestamp stays timestamp-less. The mapper
+  substituted the session descriptor's `updated_at`/`created_at`, and the
+  exact-period filter treated that substitute as authoritative, so an export
+  with per-message times stripped or drifted could attribute old content to the
+  requested week without saying so. Those messages now carry no timestamp and
+  take the existing warning-and-exclusion path.
 
 ## 0.11.0 - 2026-08-12
 

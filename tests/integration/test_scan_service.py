@@ -398,7 +398,7 @@ def test_scan_reattaches_a_detached_session_by_branch(tmp_path, fake_runner) -> 
     live_dir.mkdir()
     source = BranchAwareSource(
         live_cwd=str(live_dir),
-        detached_cwd="/deleted/worktree",
+        detached_cwd=str(tmp_path / "repo-a-wt"),
         branch="feature/from-worktree",
     )
     resolver = IdResolver(
@@ -416,7 +416,7 @@ def test_scan_reattaches_a_detached_session_by_branch(tmp_path, fake_runner) -> 
                 repository_id="harness:claude-code:detached-1",
                 display_name="detached-1",
                 identity_type=RepositoryIdentityType.HARNESS_PROJECT,
-                working_directory="/deleted/worktree",
+                working_directory=str(tmp_path / "repo-a-wt"),
                 resolution_method="harness_project_id",
             ),
         }

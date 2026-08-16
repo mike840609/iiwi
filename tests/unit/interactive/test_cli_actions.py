@@ -101,6 +101,25 @@ def _daily_draft(*, standup_date: date = date(2026, 8, 13)) -> DailyStandupDraft
     )
 
 
+def _pin_standup_clock(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: SimpleNamespace,
+) -> None:
+    """Hold the clock on the reviewed draft's own date.
+
+    Preview and Generate refuse a review whose local date has passed, so a test
+    reading the real clock stops testing what it names the moment the calendar
+    moves past `_daily_draft`'s date.
+    """
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli,
+        "_now_in_timezone",
+        lambda timezone: datetime(2026, 8, 13, 10, tzinfo=TZ),
+    )
+
+
 def test_new_draft_uses_saved_manager_type_and_its_brief_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -769,6 +788,10 @@ def test_preview_daily_only_renders_the_supplied_draft(
         def generate(self, *args: object, **kwargs: object) -> None:
             pytest.fail("preview must not generate or write")
 
+    _pin_standup_clock(
+        monkeypatch,
+        SimpleNamespace(report=SimpleNamespace(timezone="Asia/Taipei")),
+    )
     monkeypatch.setattr(cli_actions, "DailyReportService", FakeDailyReportService)
 
     result = cli_actions._preview_daily(draft)
@@ -851,7 +874,7 @@ def test_generate_daily_stops_before_bookkeeping_when_the_artifact_write_fails(
         def generate(self, *args: object, **kwargs: object) -> None:
             raise ReportOutputError("disk unavailable")
 
-    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    _pin_standup_clock(monkeypatch, settings)
     monkeypatch.setattr(cli_actions, "DailyReportService", FailingDailyReportService)
     monkeypatch.setattr(
         cli_actions,
@@ -1003,3 +1026,25 @@ def test_build_interactive_actions_wires_all_daily_callbacks() -> None:
     assert actions.generate_daily is cli_actions._generate_daily
     assert actions.edit_daily_statement is cli_actions._edit_daily_statement
     assert actions.add_daily_statement is cli_actions._add_daily_statement
+
+
+def test_build_interactive_actions_wires_measure_synthesis_fit() -> None:
+    actions = cli_actions.build_interactive_actions()
+
+    assert actions.measure_synthesis_fit is cli_actions._measure_synthesis_fit
+
+
+def test_measure_synthesis_fit_uses_the_configured_evidence_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = SimpleNamespace(
+        report=SimpleNamespace(quick_review_max_evidence_bytes=4321)
+    )
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+
+    estimate = cli_actions._measure_synthesis_fit(_scan())
+
+    assert estimate.max_bytes == 4321
+    assert estimate.selected_count == 0
+    assert estimate.fit_count == 0
+    assert estimate.over_limit is False

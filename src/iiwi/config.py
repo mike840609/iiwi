@@ -1,8 +1,9 @@
 """Application configuration models."""
 
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from iiwi.models.report_options import ReportType
@@ -19,8 +20,11 @@ class OpenCodeCliSettings(BaseModel):
     """OpenCode executable invocation settings."""
 
     executable: str = "opencode"
-    timeout_seconds: float = 30.0
-    run_timeout_seconds: float = 600.0
+    # A timeout must be a finite positive number: nan/inf would crash the int()
+    # conversion at run time, and a zero or negative timeout would fire
+    # immediately or never.
+    timeout_seconds: float = Field(default=30.0, gt=0, allow_inf_nan=False)
+    run_timeout_seconds: float = Field(default=600.0, gt=0, allow_inf_nan=False)
     model: str = ""
     sanitize: bool = False
 
@@ -77,6 +81,15 @@ class ReportSettings(BaseModel):
     # Sessions past the budget are not sent at all; they stay ungrouped
     # candidates rather than disappearing.
     quick_review_max_evidence_bytes: int = DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"unknown timezone: {value}") from exc
+        return value
 
     def excluded_repository_ids(self) -> tuple[str, ...]:
         """Normalise the string setting into the repository ids it names.

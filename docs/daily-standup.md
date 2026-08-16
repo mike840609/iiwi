@@ -51,7 +51,10 @@ The coverage warning names the missing sources in Quick Review and directly
 below the final Markdown title. If every source is unavailable, the recovery
 screen offers Retry, Continue with an empty draft, or Back; continuing keeps a
 coverage warning and still allows manual Add. If outcome grouping fails, Daily
-uses a labeled deterministic fallback draft without inventing a Today plan.
+retries once, then uses a labeled deterministic fallback draft without inventing
+a Today plan; a coverage warning names the failure in Quick Review and in the
+Markdown, so a report built from raw evidence says so. Refreshing after a
+fallback replaces that draft outright unless you had already edited it.
 
 ## Preview, generate, and local state
 

@@ -32,12 +32,16 @@ def build_grouped_transcript(
     generated_at: datetime,
     include_subagents: bool,
     sanitized: bool,
+    usage_text: str | None = None,
 ) -> str:
     """Render a redacted, repository-grouped transcript of the session content.
 
     Only user and assistant message activities are included; tool calls,
     commands, and other structured activity kinds are dropped because the model
     is asked to reason from the conversation, not from tool scaffolding.
+    Usage statistics, when available, are appended as a final `## Usage`
+    section so the model sees the same data the FULL prompt asks it to
+    summarize, from the same `--file`.
     """
 
     ordered_groups = sorted(
@@ -89,5 +93,15 @@ def build_grouped_transcript(
                 lines.append("")
                 lines.append(redact_text(activity.content))
                 lines.append("")
+
+    if usage_text:
+        lines += [
+            "## Usage",
+            "",
+            "```text",
+            usage_text,
+            "```",
+            "",
+        ]
 
     return redact_text("\n".join(lines).rstrip() + "\n")

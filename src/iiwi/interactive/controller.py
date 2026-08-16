@@ -59,6 +59,8 @@ from iiwi.interactive.render import (
     report_preview_capacity,
     report_result_options,
     report_setup_rows,
+    settings_capacity,
+    settings_display_offset,
     visible_outcome_review_rows,
 )
 from iiwi.interactive.selection import SelectionState
@@ -74,6 +76,7 @@ from iiwi.models.report_options import ReportType
 from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
 from iiwi.renderers.markdown import DetailLevel
+from iiwi.services.outcomes import SynthesisBudgetEstimate
 from iiwi.services.scan import ScanResult
 
 _ADVANCED_ROW = "Advanced settings"
@@ -129,6 +132,17 @@ def _daily_add_not_configured(section: DailySection) -> str | None:
     return None
 
 
+def _synthesis_fit_not_configured(scan: ScanResult) -> SynthesisBudgetEstimate:
+    """Never blocks: callers that do not wire the seam keep the old path."""
+
+    return SynthesisBudgetEstimate(
+        selected_count=0,
+        fit_count=0,
+        bytes_used=0,
+        max_bytes=0,
+    )
+
+
 @dataclass(frozen=True)
 class InteractiveActions:
     """Business-logic seams supplied by `cli.py`, keeping this module cycle-free."""
@@ -151,6 +165,9 @@ class InteractiveActions:
     restore_selection: Callable[[str, DateRange, bool], set[str] | None]
     save_selection: Callable[[str, DateRange, bool, set[str]], None]
     exclude_repository: Callable[[str, str], str]
+    measure_synthesis_fit: Callable[
+        [ScanResult], SynthesisBudgetEstimate
+    ] = _synthesis_fit_not_configured
     start_daily: Callable[
         [DailyStandupDraft | None], DailyStandupDraft
     ] = _daily_start_not_configured
@@ -219,6 +236,7 @@ class _State:
     help_offset: int = 0
     settings_rows: list[SettingsRow] | None = None
     settings_cursor: int = 0
+    settings_offset: int = 0
     settings_editing: bool = False
     settings_edit_value: str = ""
     settings_error: str | None = None
@@ -502,6 +520,7 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
     else:
         state.settings_rows = build_settings_rows()
         state.settings_cursor = 0
+        state.settings_offset = 0
         state.settings_editing = False
         state.settings_edit_value = ""
         state.settings_error = None
@@ -612,7 +631,7 @@ def _settings_edit_key(state: _State, key: KeyPress) -> None:
         state.settings_edit_value += key.char
 
 
-def _settings_key(state: _State, key: KeyPress) -> None:
+def _settings_key(state: _State, key: KeyPress, console: Console) -> None:
     """The saved-settings editor: cycle choices, edit rows inline, b leaves."""
 
     assert state.settings_rows is not None
@@ -623,6 +642,12 @@ def _settings_key(state: _State, key: KeyPress) -> None:
     if key.key is Key.ESCAPE or _char(key, "b") or _char(key, "q"):
         state.screen = Screen.MAIN
         return
+    state.settings_offset = settings_display_offset(
+        state.settings_rows,
+        state.settings_cursor,
+        offset=state.settings_offset,
+        capacity=settings_capacity(console.size.height, editing=state.settings_editing),
+    )
     row = state.settings_rows[state.settings_cursor]
     if row.locked:
         return
@@ -862,6 +887,14 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         return
     if _exact_char(key, "g"):
         _begin_outcome_review(state, actions)
+        return
+    if _exact_char(key, "G"):
+        # The guard's way out. Synthesis groups what it can carry and leaves
+        # the rest as ungrouped candidates with a warning naming how many —
+        # what an over-budget selection produced before the guard existed.
+        # A byte counter refusing the work outright is the same editorial call
+        # the guard was added to stop it from making.
+        _begin_outcome_review(state, actions, force=True)
         return
     if _exact_char(key, "p"):
         _preview_from_row(
@@ -1170,7 +1203,12 @@ def _daily_result_key(state: _State, key: KeyPress) -> None:
     state.screen = Screen.RECOVERABLE_ERROR
 
 
-def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
+def _begin_outcome_review(
+    state: _State,
+    actions: InteractiveActions,
+    *,
+    force: bool = False,
+) -> None:
     assert state.draft is not None
     assert state.selection is not None
     if state.selection.selected_count == 0:
@@ -1188,6 +1226,9 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         tuple(sorted(item.session.session_id for item in filtered_scan.resolved_sessions)),
         state.draft.detail,
     )
+    # The cache short-circuit comes first. A review only exists because this
+    # selection already cleared the guard, and measuring re-extracts every
+    # session — the whole cost this screen switch exists to avoid.
     if (
         state.outcome_review is not None
         and state.outcome_review_selection_key == selection_key
@@ -1200,6 +1241,18 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         state.error = None
         state.screen = Screen.OUTCOME_REVIEW
         return
+    if not force:
+        budget = actions.measure_synthesis_fit(filtered_scan)
+        if budget.over_limit:
+            state.review_message = (
+                f"{budget.selected_count} selected; synthesis handles about "
+                f"{budget.fit_count}. Narrow the period, deselect what does "
+                f"not belong in the update, or press G to group the newest "
+                f"that fit and leave the rest as ungrouped candidates. "
+                f"({budget.bytes_used} / {budget.max_bytes} bytes)"
+            )
+            state.screen = Screen.SESSION_REVIEW
+            return
     try:
         state.outcome_review = actions.synthesize(state.draft, filtered_scan)
     except OutcomeSynthesisError as exc:
@@ -1778,6 +1831,7 @@ def _render_screen(state: _State, console: Console) -> None:
             editing=state.settings_editing,
             edit_value=state.settings_edit_value,
             error=state.settings_error,
+            offset=state.settings_offset,
         )
     elif state.screen is Screen.SESSION_REVIEW:
         assert state.selection is not None
@@ -1913,7 +1967,7 @@ def _dispatch(
     elif state.screen is Screen.REPORT_SETUP:
         _setup_key(state, key, actions)
     elif state.screen is Screen.SETTINGS:
-        _settings_key(state, key)
+        _settings_key(state, key, console)
     elif state.screen is Screen.SESSION_REVIEW:
         _review_key(state, key, actions)
     elif state.screen is Screen.OUTCOME_REVIEW:

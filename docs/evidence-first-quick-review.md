@@ -27,6 +27,12 @@ so much evidence at a time. Anything beyond the budget is never lost: those
 sessions skip synthesis and stay under **Ungrouped candidates**, and Quick Review
 opens with a message naming how many were held back.
 
+That budget is measured on Review Sessions, before a model run is spent, so a
+selection too large to group in one pass says so while the selection is still on
+screen rather than after the wait. Narrowing the period or deselecting what does
+not belong is the first answer; `G` proceeds with the selection as it stands and
+takes the hold-back above.
+
 ## Review keys
 
 ```text
