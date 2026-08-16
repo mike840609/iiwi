@@ -9,10 +9,11 @@ for a version check.
 from __future__ import annotations
 
 import json
-import re
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+
+from packaging.version import InvalidVersion, Version
 
 from iiwi import __version__ as _current_version
 from iiwi.errors import IiwiError
@@ -40,27 +41,18 @@ def current_version() -> str:
     return _current_version
 
 
-def _version_tuple(value: str) -> tuple[int, ...]:
-    """A comparable view of a version, covering the forms this project uses.
+def _parse_version(value: str) -> Version:
+    """Parse a version for comparison, rejecting values outside PEP 440.
 
-    `1.2.3` beats `1.2.3rc1`: a release is newer than its own pre-release,
-    which a naive digit extraction would get backwards. Suffix ranks put `rc`
-    above `b` above `a`; the release sentinel sits above every rank, so a
-    release is strictly greater than every pre-release of the same numbers.
+    The hand-written digit parser that preceded this misordered post-release,
+    epoch, and local forms; `packaging` implements the reference ordering used
+    by Python package metadata.
     """
 
-    match = re.fullmatch(r"(\d+(?:\.\d+)*)(?:[-.]([ab]|rc)(\d+))?", value.strip())
-    if match is None:
-        # Digit extraction is approximate for unusual PEP 440 forms — it would
-        # order `0.9.0.post1` and `0.9.0rc1` wrongly — but it is only reached
-        # for versions outside the forms this project publishes.
-        return tuple(int(part) for part in re.findall(r"\d+", value)) or (0,)
-    numbers = tuple(int(part) for part in match.group(1).split("."))
-    suffix = match.group(2)
-    if suffix is None:
-        return (*numbers, 10)
-    rank = {"a": 1, "b": 2, "rc": 3}[suffix]
-    return (*numbers, rank, int(match.group(3) or "0"))
+    try:
+        return Version(value)
+    except InvalidVersion as exc:
+        raise UpdateCheckError(f"the version index returned an invalid version: {value}") from exc
 
 
 def _fetch_raw(*, url: str, timeout: float) -> str:
@@ -116,7 +108,7 @@ def check_for_update(
     return UpdateInfo(
         current=installed,
         latest=latest,
-        update_available=_version_tuple(latest) > _version_tuple(installed),
+        update_available=_parse_version(latest) > _parse_version(installed),
         upgrade_command=UPGRADE_COMMAND,
     )
 
