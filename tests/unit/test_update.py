@@ -74,3 +74,60 @@ def test_current_version_defaults_to_the_installed_version() -> None:
     info = check_for_update(fetcher=_fetcher({"info": {"version": "0.9.0"}}))
 
     assert info.current == iiwi.__version__
+
+
+def test_post_release_is_newer_than_its_final_release() -> None:
+    info = check_for_update(fetcher=_fetcher({"info": {"version": "1.0.0.post1"}}), current="1.0.0")
+
+    assert info.update_available is True
+
+    up_to_date = check_for_update(
+        fetcher=_fetcher({"info": {"version": "1.0.0"}}), current="1.0.0.post1"
+    )
+    assert up_to_date.update_available is False
+
+
+def test_final_release_is_newer_than_its_dev_release() -> None:
+    info = check_for_update(fetcher=_fetcher({"info": {"version": "1.1.0"}}), current="1.1.0.dev1")
+
+    assert info.update_available is True
+
+    up_to_date = check_for_update(
+        fetcher=_fetcher({"info": {"version": "1.1.0.dev1"}}), current="1.1.0"
+    )
+    assert up_to_date.update_available is False
+
+
+def test_epoch_dominates_all_release_versions() -> None:
+    info = check_for_update(fetcher=_fetcher({"info": {"version": "1!1.0.0"}}), current="2.0.0")
+
+    assert info.update_available is True
+
+
+def test_local_segment_is_ignored_when_only_one_side_has_it() -> None:
+    info = check_for_update(
+        fetcher=_fetcher({"info": {"version": "1.0.0"}}), current="1.0.0+local.1"
+    )
+
+    assert info.update_available is False
+
+
+def test_prerelease_ordering_follows_the_pep440_ladder() -> None:
+    alpha_to_beta = check_for_update(
+        fetcher=_fetcher({"info": {"version": "1.0.0b1"}}), current="1.0.0a1"
+    )
+    assert alpha_to_beta.update_available is True
+
+    rc_to_final = check_for_update(
+        fetcher=_fetcher({"info": {"version": "1.0.0"}}), current="1.0.0rc1"
+    )
+    assert rc_to_final.update_available is True
+
+    equal = check_for_update(fetcher=_fetcher({"info": {"version": "1.0.0"}}), current="1.0.0")
+    assert equal.update_available is False
+
+
+@pytest.mark.parametrize("invalid", ["not-a-version", "1.0.0..1"])
+def test_invalid_index_version_raises_update_check_error(invalid: str) -> None:
+    with pytest.raises(UpdateCheckError):
+        check_for_update(fetcher=_fetcher({"info": {"version": invalid}}), current="1.0.0")
