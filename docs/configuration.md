@@ -66,7 +66,7 @@ change is written to the settings file immediately; `config list` reflects
 it right away.
 
 Keys are the lowercase, dot-separated form of the variable name, so
-`IIWI_HARNESSES__OPENCODE__CLI__MODEL` is `opencode.cli.model` and
+`IIWI_HARNESSES__OPENCODE__CLI__MODEL` is `harnesses.opencode.cli.model` and
 `IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE` is
 `harnesses.opencode.cli.executable`. `config list` shows every setting's key, its
 current value, whether that value came from the environment, the file, or the default,
