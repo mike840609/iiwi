@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
 
@@ -26,6 +27,7 @@ from iiwi.models.evidence import (
     EvidenceStatus,
     SessionEvidence,
 )
+from iiwi.models.repository import ResolvedSession
 from iiwi.security.redactor import redact_text, redact_value
 from iiwi.services.scan import ScanResult
 from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
@@ -92,6 +94,122 @@ def _index_json(sessions: list[_CompactSession]) -> str:
     return _CompactIndex(sessions=sessions).model_dump_json(indent=2, exclude_none=True)
 
 
+@dataclass(frozen=True)
+class _ExtractedSessions:
+    """What the extraction loop learned from one scan, shared by every caller."""
+
+    evidence_by_source: dict[str, SessionEvidence]
+    compact_by_source: dict[str, _CompactSession]
+    local_texts_by_source: dict[str, list[str]]
+    started_at: dict[str, datetime]
+    failed_sessions: list[ResolvedSession]
+
+
+def _extract_sessions(scan: ScanResult) -> _ExtractedSessions:
+    """Run the boundary extraction once for a scan.
+
+    `synthesize` and `measure_synthesis_budget` both call this, so the guard's
+    measurement is byte-identical to what synthesis actually sends.
+    """
+
+    evidence_by_source: dict[str, SessionEvidence] = {}
+    compact_by_source: dict[str, _CompactSession] = {}
+    local_texts_by_source: dict[str, list[str]] = {}
+    started_at: dict[str, datetime] = {}
+    failed_sessions: list[ResolvedSession] = []
+    for resolved in scan.resolved_sessions:
+        try:
+            extracted = extract_evidence(resolved)
+            redacted = redact_value(extracted.model_dump(mode="json"))
+            model_evidence = SessionEvidence.model_validate(redacted)
+            source_id = _source_id(extracted)
+            # Durable provenance stays raw and local. The model sees only
+            # this opaque token and the separately redacted compact fields.
+            evidence_by_source[source_id] = extracted
+            compact_by_source[source_id] = _compact_session(
+                model_evidence,
+                source_id=source_id,
+                branch=resolved.session.branch or resolved.repository.branch,
+            )
+            if resolved.session.created_at is not None:
+                started_at[source_id] = resolved.session.created_at
+            local_texts_by_source[source_id] = _local_texts(
+                model_evidence,
+                # These come from the resolved session rather than the
+                # redacted evidence, so they are redacted here: the corpus
+                # validates model output, and the model only ever saw the
+                # redacted form.
+                extra_values=[
+                    redact_text(value)
+                    for value in (
+                        resolved.session.branch,
+                        resolved.repository.branch,
+                        resolved.repository.repository_id,
+                        resolved.repository.display_name,
+                    )
+                    if value
+                ],
+            )
+        except Exception:  # Extraction failures remain visible candidates.
+            failed_sessions.append(resolved)
+    return _ExtractedSessions(
+        evidence_by_source=evidence_by_source,
+        compact_by_source=compact_by_source,
+        local_texts_by_source=local_texts_by_source,
+        started_at=started_at,
+        failed_sessions=failed_sessions,
+    )
+
+
+@dataclass(frozen=True)
+class SynthesisBudgetEstimate:
+    """What the selection screen needs before any model call is spent."""
+
+    selected_count: int
+    fit_count: int
+    bytes_used: int
+    max_bytes: int
+
+    @property
+    def over_limit(self) -> bool:
+        """Whether the payload synthesis would send is larger than the budget.
+
+        Bytes, not counts. `_sessions_within_budget` always keeps the first
+        session, so one selected session larger than the whole budget leaves
+        `fit_count == selected_count` while the payload still cannot be sent.
+        The comparison runs both ways — a selection inside the budget is never
+        trimmed — so it covers the held-back case too, and it does not read a
+        session that failed extraction as a budget problem.
+        """
+
+        return self.bytes_used > self.max_bytes
+
+
+def measure_synthesis_budget(scan: ScanResult, *, max_bytes: int) -> SynthesisBudgetEstimate:
+    """Measure the selection exactly as synthesis will send it.
+
+    Both paths share extraction, newest-first ordering, and the same budget
+    trim, so the counts and bytes shown at selection cannot drift from the
+    payload synthesis would actually send. No model call happens here.
+    """
+
+    extracted = _extract_sessions(scan)
+    compact_list = [
+        extracted.compact_by_source[source_id]
+        for source_id in _most_recent_first(extracted.evidence_by_source, extracted.started_at)
+    ]
+    within_budget = _sessions_within_budget(compact_list, max_bytes=max_bytes)
+    return SynthesisBudgetEstimate(
+        # What the user selected, not what extraction produced: this number is
+        # read beside the checked rows, and a session whose extraction failed
+        # is still one of them. Deselecting it has to move the count.
+        selected_count=len(scan.resolved_sessions),
+        fit_count=len(within_budget),
+        bytes_used=len(_index_json(compact_list).encode()),
+        max_bytes=max_bytes,
+    )
+
+
 # Measured, not guessed: across one live synthesis the all-or-nothing gate
 # refused five of ten proposals at 84.6%, 66.7%, 85.7%, 90.9% and 90.0% word
 # support, and the words that missed were "selection", "improvements",
@@ -120,46 +238,12 @@ class OutcomeSynthesisService:
         self._max_evidence_bytes = max_evidence_bytes
 
     def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
-        evidence_by_source: dict[str, SessionEvidence] = {}
-        compact_by_source: dict[str, _CompactSession] = {}
-        local_texts_by_source: dict[str, list[str]] = {}
-        started_at: dict[str, datetime] = {}
-        failed_sessions = []
-        for resolved in scan.resolved_sessions:
-            try:
-                extracted = extract_evidence(resolved)
-                redacted = redact_value(extracted.model_dump(mode="json"))
-                model_evidence = SessionEvidence.model_validate(redacted)
-                source_id = _source_id(extracted)
-                # Durable provenance stays raw and local. The model sees only
-                # this opaque token and the separately redacted compact fields.
-                evidence_by_source[source_id] = extracted
-                compact_by_source[source_id] = _compact_session(
-                    model_evidence,
-                    source_id=source_id,
-                    branch=resolved.session.branch or resolved.repository.branch,
-                )
-                if resolved.session.created_at is not None:
-                    started_at[source_id] = resolved.session.created_at
-                local_texts_by_source[source_id] = _local_texts(
-                    model_evidence,
-                    # These come from the resolved session rather than the
-                    # redacted evidence, so they are redacted here: the corpus
-                    # validates model output, and the model only ever saw the
-                    # redacted form.
-                    extra_values=[
-                        redact_text(value)
-                        for value in (
-                            resolved.session.branch,
-                            resolved.repository.branch,
-                            resolved.repository.repository_id,
-                            resolved.repository.display_name,
-                        )
-                        if value
-                    ],
-                )
-            except Exception:  # Extraction failures remain visible candidates.
-                failed_sessions.append(resolved)
+        extracted = _extract_sessions(scan)
+        evidence_by_source = extracted.evidence_by_source
+        compact_by_source = extracted.compact_by_source
+        local_texts_by_source = extracted.local_texts_by_source
+        started_at = extracted.started_at
+        failed_sessions = extracted.failed_sessions
 
         if not evidence_by_source:
             raise OutcomeSynthesisError("could not extract evidence from any selected session")

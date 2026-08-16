@@ -49,7 +49,11 @@ from iiwi.services.daily_report import (
 )
 from iiwi.services.daily_scan import DailyScanCoordinator, DailyWindow
 from iiwi.services.daily_workflow import DailyWorkflowService
-from iiwi.services.outcomes import OutcomeSynthesisService
+from iiwi.services.outcomes import (
+    OutcomeSynthesisService,
+    SynthesisBudgetEstimate,
+    measure_synthesis_budget,
+)
 from iiwi.services.scan import ScanResult
 from iiwi.summarizers.opencode_run import OpenCodeRunError, OpenCodeRunner
 
@@ -191,6 +195,18 @@ def _generate(
         content=result.content,
         repository_count=len(scan.sessions_by_repository),
         session_count=scan.loaded_session_count,
+    )
+
+
+def _measure_synthesis_fit(scan: ScanResult) -> SynthesisBudgetEstimate:
+    """How much of the selection the Quick Review budget can actually send."""
+
+    from iiwi import cli
+
+    settings = cli._load_settings()
+    return measure_synthesis_budget(
+        scan,
+        max_bytes=settings.report.quick_review_max_evidence_bytes,
     )
 
 
@@ -640,6 +656,7 @@ def build_interactive_actions() -> InteractiveActions:
         restore_selection=_restore_selection,
         save_selection=_save_selection,
         exclude_repository=_exclude_repository,
+        measure_synthesis_fit=_measure_synthesis_fit,
         start_daily=_start_daily,
         continue_daily_empty=_continue_daily_empty,
         persist_daily=_persist_daily,

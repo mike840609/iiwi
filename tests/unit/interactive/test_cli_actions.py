@@ -1026,3 +1026,25 @@ def test_build_interactive_actions_wires_all_daily_callbacks() -> None:
     assert actions.generate_daily is cli_actions._generate_daily
     assert actions.edit_daily_statement is cli_actions._edit_daily_statement
     assert actions.add_daily_statement is cli_actions._add_daily_statement
+
+
+def test_build_interactive_actions_wires_measure_synthesis_fit() -> None:
+    actions = cli_actions.build_interactive_actions()
+
+    assert actions.measure_synthesis_fit is cli_actions._measure_synthesis_fit
+
+
+def test_measure_synthesis_fit_uses_the_configured_evidence_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = SimpleNamespace(
+        report=SimpleNamespace(quick_review_max_evidence_bytes=4321)
+    )
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+
+    estimate = cli_actions._measure_synthesis_fit(_scan())
+
+    assert estimate.max_bytes == 4321
+    assert estimate.selected_count == 0
+    assert estimate.fit_count == 0
+    assert estimate.over_limit is False
