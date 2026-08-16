@@ -94,12 +94,17 @@ class DailyWorkflowService:
         The observed failures are transient — a model turn that returns no valid
         outcome JSON — so one retry recovers the day rather than publishing raw
         evidence text until tomorrow.
+
+        An over-budget window is forced through rather than refused: the Daily
+        window is fixed by its date, so there is no narrower selection to offer.
+        Synthesis groups the newest sessions that fit and names what it left out
+        in its warnings, which the draft carries to the reader.
         """
 
         try:
-            return self._outcome_service.synthesize(scan)
+            return self._outcome_service.synthesize(scan, force=True)
         except OutcomeSynthesisError:
-            return self._outcome_service.synthesize(scan)
+            return self._outcome_service.synthesize(scan, force=True)
 
 
 def _supersedes_fallback(

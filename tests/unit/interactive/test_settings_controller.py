@@ -62,7 +62,7 @@ def _actions() -> InteractiveActions:
         choose_period=lambda current: ("Last week", _period()),
         scan=lambda current: None,
         generate=lambda current, scan, force: None,
-        synthesize=lambda draft, scan: None,
+        synthesize=lambda draft, scan, force: None,
         generate_reviewed=lambda draft, scan, review, force: None,
         edit_outcome=lambda outcome: outcome,
         add_outcome=lambda: None,

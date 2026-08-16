@@ -146,7 +146,7 @@ def _actions(
     draft: ReportDraft,
     log: ActionLog,
     *,
-    synthesize: Callable[[ReportDraft, ScanResult], OutcomeReviewDraft],
+    synthesize: Callable[[ReportDraft, ScanResult, bool], OutcomeReviewDraft],
     generate_session: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
     | None = None,
     generate_reviewed: Callable[
@@ -200,8 +200,9 @@ def _actions(
         choose_period=lambda current: ("This week", _period()),
         scan=do_scan,
         generate=generate,
-        synthesize=lambda current, selected_scan: (
-            log.synthesis_scans.append(selected_scan) or synthesize(current, selected_scan)
+        synthesize=lambda current, selected_scan, force: (
+            log.synthesis_scans.append(selected_scan)
+            or synthesize(current, selected_scan, force)
         ),
         generate_reviewed=reviewed,
         edit_outcome=lambda outcome: outcome,
@@ -220,7 +221,7 @@ def _run(
     log: ActionLog,
     keys: list[KeyPress],
     *,
-    synthesize: Callable[[ReportDraft, ScanResult], OutcomeReviewDraft],
+    synthesize: Callable[[ReportDraft, ScanResult, bool], OutcomeReviewDraft],
     generate_session: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
     | None = None,
     generate_reviewed: Callable[
@@ -270,7 +271,9 @@ def test_synthesis_retry_reuses_filtered_scan_and_opens_quick_review() -> None:
     log = ActionLog()
     attempts = 0
 
-    def synthesize(current: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+    def synthesize(
+        current: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -297,7 +300,9 @@ def test_complete_synthesis_failure_can_generate_labeled_session_fallback() -> N
     draft = ReportDraft(harness="opencode", period=_period())
     log = ActionLog()
 
-    def fail_synthesis(current: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+    def fail_synthesis(
+        current: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
         raise OutcomeSynthesisError("synthesis unavailable")
 
     _, output = _run(
@@ -324,7 +329,9 @@ def test_session_fallback_notice_survives_output_conflict_overwrite() -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     log = ActionLog()
 
-    def fail_synthesis(current: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+    def fail_synthesis(
+        current: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
         raise OutcomeSynthesisError("synthesis unavailable")
 
     def conflict_once(
@@ -431,7 +438,7 @@ def test_partial_synthesis_opens_review_with_primary_and_ungrouped_candidates() 
         draft,
         log,
         [*_open_review_keys(), char("b"), char("q"), char("q"), char("q")],
-        synthesize=lambda current, selected_scan: review,
+        synthesize=lambda current, selected_scan, force: review,
     )
 
     assert Screen.OUTCOME_REVIEW in screens
@@ -476,7 +483,7 @@ def test_preview_error_back_restores_the_complete_in_memory_review() -> None:
             char("q"),
             char("q"),
         ],
-        synthesize=lambda current, selected_scan: review,
+        synthesize=lambda current, selected_scan, force: review,
         generate_reviewed=fail_preview,
     )
 
@@ -529,7 +536,7 @@ def test_preview_retry_uses_the_same_review_draft_and_succeeds() -> None:
             char("q"),
             char("q"),
         ],
-        synthesize=lambda current, selected_scan: review,
+        synthesize=lambda current, selected_scan, force: review,
         generate_reviewed=preview_once,
     )
 
@@ -565,7 +572,7 @@ def test_reviewed_write_conflict_overwrites_with_reviewed_generation() -> None:
         draft,
         log,
         [*_open_review_keys(), char("g"), KeyPress(key=Key.ENTER), char("q"), char("q")],
-        synthesize=lambda current, selected_scan: review,
+        synthesize=lambda current, selected_scan, force: review,
         generate_reviewed=conflict_once,
     )
 
