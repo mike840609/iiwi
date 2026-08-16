@@ -123,17 +123,12 @@ def _extract_sessions(scan: ScanResult) -> _ExtractedSessions:
             redacted = redact_value(extracted.model_dump(mode="json"))
             model_evidence = SessionEvidence.model_validate(redacted)
             source_id = _source_id(extracted)
-            # Durable provenance stays raw and local. The model sees only
-            # this opaque token and the separately redacted compact fields.
-            evidence_by_source[source_id] = extracted
-            compact_by_source[source_id] = _compact_session(
+            compact = _compact_session(
                 model_evidence,
                 source_id=source_id,
                 branch=resolved.session.branch or resolved.repository.branch,
             )
-            if resolved.session.created_at is not None:
-                started_at[source_id] = resolved.session.created_at
-            local_texts_by_source[source_id] = _local_texts(
+            local_texts = _local_texts(
                 model_evidence,
                 # These come from the resolved session rather than the
                 # redacted evidence, so they are redacted here: the corpus
@@ -152,6 +147,17 @@ def _extract_sessions(scan: ScanResult) -> _ExtractedSessions:
             )
         except Exception:  # Extraction failures remain visible candidates.
             failed_sessions.append(resolved)
+            continue
+        # Every map is written together. A session recorded in one and missing
+        # from another is counted as extracted and as failed at the same time,
+        # and `_corpus` then has no redacted texts to read for it.
+        # Durable provenance stays raw and local. The model sees only this
+        # opaque token and the separately redacted compact fields.
+        evidence_by_source[source_id] = extracted
+        compact_by_source[source_id] = compact
+        local_texts_by_source[source_id] = local_texts
+        if resolved.session.created_at is not None:
+            started_at[source_id] = resolved.session.created_at
     return _ExtractedSessions(
         evidence_by_source=evidence_by_source,
         compact_by_source=compact_by_source,
@@ -782,10 +788,13 @@ def _corpus(
     selected: list[SessionEvidence],
     local_texts_by_source: dict[str, list[str]],
 ) -> str:
+    # Indexed, not `.get(..., _local_texts(evidence))`. The fallback read the
+    # raw evidence, which is kept unredacted on purpose, so a missing entry
+    # would quietly validate model output against text the model never saw.
+    # `_extract_sessions` writes this map for every session it keeps, so a
+    # missing key is a broken invariant and should say so.
     return "\n".join(
-        text
-        for evidence in selected
-        for text in local_texts_by_source.get(_source_id(evidence), _local_texts(evidence))
+        text for evidence in selected for text in local_texts_by_source[_source_id(evidence)]
     ).casefold()
 
 

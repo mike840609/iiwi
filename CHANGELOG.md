@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- A session that fails partway through evidence extraction is reported as a
+  failure and nothing else. The per-session work wrote its results one map at a
+  time, so a failure between the first write and the last left the session
+  recorded as extracted *and* appended to the failures: it was sent to the
+  model, listed among the failed session ids, and shown as an ungrouped
+  candidate, all for the same session. Worse, the texts Quick Review checks
+  model output against were then missing for it, and the check fell back to
+  the raw evidence — deliberately kept unredacted for local provenance — so
+  for exactly those sessions the model's wording was validated against text
+  the model was never shown. The maps are written together now, after the whole
+  session succeeds, and the corpus is read by key so a gap is an error rather
+  than a silent fallback.
 - **`q` means back one level, on every screen except the main menu.** It used
   to jump straight to the main menu from wherever you were, which on a child
   screen skipped a level: pressing it in Quick Review discarded the whole draft
