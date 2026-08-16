@@ -79,8 +79,14 @@ class ReportSettings(BaseModel):
     quick_review_report_type: ReportType = ReportType.MANAGER
     # How much extracted evidence Quick Review may hand to one `opencode run`.
     # Sessions past the budget are not sent at all; they stay ungrouped
-    # candidates rather than disappearing.
-    quick_review_max_evidence_bytes: int = DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES
+    # candidates rather than disappearing. The floor is one session's payload:
+    # a compact session measures roughly 580 bytes, so a budget under a
+    # thousand cannot carry even one of them plus the index envelope, and every
+    # selection is refused as over budget — which reads as Quick Review being
+    # broken rather than as this setting being wrong.
+    quick_review_max_evidence_bytes: int = Field(
+        default=DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES, ge=1000
+    )
 
     @field_validator("timezone")
     @classmethod
