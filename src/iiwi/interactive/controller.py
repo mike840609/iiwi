@@ -1255,20 +1255,13 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         return
     _sync_selection(state, actions)
     filtered_scan = state.selection.filtered_scan()
-    budget = actions.measure_synthesis_fit(filtered_scan)
-    if budget.over_limit:
-        state.review_message = (
-            f"{budget.selected_count} selected; synthesis handles about "
-            f"{budget.fit_count}. Narrow the period, or deselect what does "
-            f"not belong in the update. "
-            f"({budget.bytes_used} / {budget.max_bytes} bytes)"
-        )
-        state.screen = Screen.SESSION_REVIEW
-        return
     selection_key = (
         tuple(sorted(item.session.session_id for item in filtered_scan.resolved_sessions)),
         state.draft.detail,
     )
+    # The cache short-circuit comes first. A review only exists because this
+    # selection already cleared the guard, and measuring re-extracts every
+    # session — the whole cost this screen switch exists to avoid.
     if (
         state.outcome_review is not None
         and state.outcome_review_selection_key == selection_key
@@ -1280,6 +1273,16 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         state.review_message = None
         state.error = None
         state.screen = Screen.OUTCOME_REVIEW
+        return
+    budget = actions.measure_synthesis_fit(filtered_scan)
+    if budget.over_limit:
+        state.review_message = (
+            f"{budget.selected_count} selected; synthesis handles about "
+            f"{budget.fit_count}. Narrow the period, or deselect what does "
+            f"not belong in the update. "
+            f"({budget.bytes_used} / {budget.max_bytes} bytes)"
+        )
+        state.screen = Screen.SESSION_REVIEW
         return
     try:
         state.outcome_review = actions.synthesize(state.draft, filtered_scan)

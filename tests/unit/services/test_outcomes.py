@@ -892,6 +892,33 @@ def test_measure_synthesis_budget_never_holds_back_the_first_session() -> None:
     assert estimate.over_limit is True
 
 
+def test_measure_synthesis_budget_blocks_a_lone_session_that_does_not_fit() -> None:
+    """The one session is sent regardless, so the counts alone cannot see this."""
+
+    sessions = [dated("ses-a", day=9)]
+
+    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=1)
+
+    assert estimate.selected_count == 1
+    assert estimate.fit_count == 1
+    assert estimate.over_limit is True
+
+
+def test_measure_synthesis_budget_counts_a_session_that_failed_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It is still a checked row, and a failure is not a budget problem."""
+
+    monkeypatch.setattr(outcomes, "extract_evidence", fail_only("ses-b"))
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+
+    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=100_000)
+
+    assert estimate.selected_count == 2
+    assert estimate.fit_count == 1
+    assert estimate.over_limit is False
+
+
 def detailed(
     session_id: str,
     repository_id: str = "repo-a",

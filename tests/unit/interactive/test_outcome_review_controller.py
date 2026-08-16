@@ -809,10 +809,12 @@ def test_over_budget_selection_blocks_synthesis_with_guidance(
     log = ActionLog(_review())
     actions = replace(
         _actions(draft, log),
+        # Holding three of five back means the payload ran past the budget:
+        # over_limit reads the bytes, so the two have to agree.
         measure_synthesis_fit=lambda scan: SynthesisBudgetEstimate(
             selected_count=5,
             fit_count=2,
-            bytes_used=30000,
+            bytes_used=52000,
             max_bytes=40000,
         ),
     )
@@ -834,7 +836,7 @@ def test_over_budget_selection_blocks_synthesis_with_guidance(
         Screen.SESSION_REVIEW,
         "5 selected; synthesis handles about 2. "
         "Narrow the period, or deselect what does not belong in the update. "
-        "(30000 / 40000 bytes)",
+        "(52000 / 40000 bytes)",
     ) in frames
     assert Screen.OUTCOME_REVIEW not in [screen for screen, _ in frames]
 
@@ -867,6 +869,45 @@ def test_within_budget_selection_still_synthesizes(
     )
 
     assert len(log.synthesis_scans) == 1
+    assert Screen.OUTCOME_REVIEW in screens
+
+
+def test_returning_to_a_cached_review_does_not_measure_the_budget_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cached review already cleared the guard; measuring re-extracts everything."""
+
+    draft = ReportDraft(harness="opencode", period=_period())
+    log = ActionLog(_review())
+    measured: list[ScanResult] = []
+
+    def measure(scan: ScanResult) -> SynthesisBudgetEstimate:
+        measured.append(scan)
+        return SynthesisBudgetEstimate(
+            selected_count=1,
+            fit_count=1,
+            bytes_used=100,
+            max_bytes=40000,
+        )
+
+    actions = replace(_actions(draft, log), measure_synthesis_fit=measure)
+    screens: list[Screen] = []
+    monkeypatch.setattr(
+        controller,
+        "_render_screen",
+        lambda state, console: screens.append(state.screen),
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput(
+            [*_open_review_keys(), char("b"), char("g"), char("q"), char("q")]
+        ),
+        console=Console(file=StringIO(), color_system=None, force_terminal=False),
+    )
+
+    assert len(log.synthesis_scans) == 1
+    assert len(measured) == 1
     assert Screen.OUTCOME_REVIEW in screens
 
 

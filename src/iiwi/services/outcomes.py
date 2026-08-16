@@ -172,7 +172,17 @@ class SynthesisBudgetEstimate:
 
     @property
     def over_limit(self) -> bool:
-        return self.selected_count > self.fit_count
+        """Whether the payload synthesis would send is larger than the budget.
+
+        Bytes, not counts. `_sessions_within_budget` always keeps the first
+        session, so one selected session larger than the whole budget leaves
+        `fit_count == selected_count` while the payload still cannot be sent.
+        The comparison runs both ways — a selection inside the budget is never
+        trimmed — so it covers the held-back case too, and it does not read a
+        session that failed extraction as a budget problem.
+        """
+
+        return self.bytes_used > self.max_bytes
 
 
 def measure_synthesis_budget(scan: ScanResult, *, max_bytes: int) -> SynthesisBudgetEstimate:
@@ -190,7 +200,10 @@ def measure_synthesis_budget(scan: ScanResult, *, max_bytes: int) -> SynthesisBu
     ]
     within_budget = _sessions_within_budget(compact_list, max_bytes=max_bytes)
     return SynthesisBudgetEstimate(
-        selected_count=len(compact_list),
+        # What the user selected, not what extraction produced: this number is
+        # read beside the checked rows, and a session whose extraction failed
+        # is still one of them. Deselecting it has to move the count.
+        selected_count=len(scan.resolved_sessions),
         fit_count=len(within_budget),
         bytes_used=len(_index_json(compact_list).encode()),
         max_bytes=max_bytes,
