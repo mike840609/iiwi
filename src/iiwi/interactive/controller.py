@@ -940,6 +940,14 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
     if _exact_char(key, "g"):
         _begin_outcome_review(state, actions)
         return
+    if _exact_char(key, "G"):
+        # The guard's way out. Synthesis groups what it can carry and leaves
+        # the rest as ungrouped candidates with a warning naming how many —
+        # what an over-budget selection produced before the guard existed.
+        # A byte counter refusing the work outright is the same editorial call
+        # the guard was added to stop it from making.
+        _begin_outcome_review(state, actions, force=True)
+        return
     if _exact_char(key, "p"):
         _preview_from_row(
             state,
@@ -1241,7 +1249,12 @@ def _daily_result_key(state: _State, key: KeyPress) -> None:
     state.screen = Screen.RECOVERABLE_ERROR
 
 
-def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
+def _begin_outcome_review(
+    state: _State,
+    actions: InteractiveActions,
+    *,
+    force: bool = False,
+) -> None:
     assert state.draft is not None
     assert state.selection is not None
     if state.selection.selected_count == 0:
@@ -1274,16 +1287,18 @@ def _begin_outcome_review(state: _State, actions: InteractiveActions) -> None:
         state.error = None
         state.screen = Screen.OUTCOME_REVIEW
         return
-    budget = actions.measure_synthesis_fit(filtered_scan)
-    if budget.over_limit:
-        state.review_message = (
-            f"{budget.selected_count} selected; synthesis handles about "
-            f"{budget.fit_count}. Narrow the period, or deselect what does "
-            f"not belong in the update. "
-            f"({budget.bytes_used} / {budget.max_bytes} bytes)"
-        )
-        state.screen = Screen.SESSION_REVIEW
-        return
+    if not force:
+        budget = actions.measure_synthesis_fit(filtered_scan)
+        if budget.over_limit:
+            state.review_message = (
+                f"{budget.selected_count} selected; synthesis handles about "
+                f"{budget.fit_count}. Narrow the period, deselect what does "
+                f"not belong in the update, or press G to group the newest "
+                f"that fit and leave the rest as ungrouped candidates. "
+                f"({budget.bytes_used} / {budget.max_bytes} bytes)"
+            )
+            state.screen = Screen.SESSION_REVIEW
+            return
     try:
         state.outcome_review = actions.synthesize(state.draft, filtered_scan)
     except OutcomeSynthesisError as exc:

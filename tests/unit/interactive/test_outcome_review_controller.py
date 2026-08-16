@@ -835,10 +835,50 @@ def test_over_budget_selection_blocks_synthesis_with_guidance(
     assert (
         Screen.SESSION_REVIEW,
         "5 selected; synthesis handles about 2. "
-        "Narrow the period, or deselect what does not belong in the update. "
-        "(52000 / 40000 bytes)",
+        "Narrow the period, deselect what does not belong in the update, or "
+        "press G to group the newest that fit and leave the rest as ungrouped "
+        "candidates. (52000 / 40000 bytes)",
     ) in frames
     assert Screen.OUTCOME_REVIEW not in [screen for screen, _ in frames]
+
+
+def test_capital_g_groups_an_over_budget_selection_anyway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The guard reports the cost; refusing the work outright is not its call."""
+
+    draft = ReportDraft(harness="opencode", period=_period())
+    log = ActionLog(_review())
+    measured: list[ScanResult] = []
+
+    def measure(scan: ScanResult) -> SynthesisBudgetEstimate:
+        measured.append(scan)
+        return SynthesisBudgetEstimate(
+            selected_count=5,
+            fit_count=2,
+            bytes_used=52000,
+            max_bytes=40000,
+        )
+
+    actions = replace(_actions(draft, log), measure_synthesis_fit=measure)
+    screens: list[Screen] = []
+    monkeypatch.setattr(
+        controller,
+        "_render_screen",
+        lambda state, console: screens.append(state.screen),
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput(
+            [*_open_review_keys(), char("G"), char("q"), char("q")]
+        ),
+        console=Console(file=StringIO(), color_system=None, force_terminal=False),
+    )
+
+    assert len(log.synthesis_scans) == 1
+    assert len(measured) == 1
+    assert Screen.OUTCOME_REVIEW in screens
 
 
 def test_within_budget_selection_still_synthesizes(

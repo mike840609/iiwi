@@ -2376,6 +2376,7 @@ _HELP_LINES = (
     "n              Select no sessions",
     "PgUp / PgDn    Scroll error details or report preview by a page",
     "g * / G        Jump to top / bottom in report preview",
+    "G              Group an over-budget selection anyway (Review only)",
     "p *            Preview a session's transcript",
     "e *            Exclude a repository from future scans (Review only)",
     "R              Rescan sessions",

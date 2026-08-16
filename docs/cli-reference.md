@@ -45,7 +45,10 @@ that session's transcript (redacted before display). The repository marker is de
 its children: `●` means all selected, `○` means none selected, and `◐` means partially
 selected. `a` selects all sessions, `n` selects none, `g` synthesizes the selected
 sessions and opens Quick Review, and `b` returns to the setup summary. A report cannot
-be generated with zero selected sessions. Long session
+be generated with zero selected sessions. A selection larger than the Quick Review
+evidence budget is measured before any model call is spent and reported as a message
+naming how many sessions synthesis can carry; `G` groups those and leaves the rest as
+ungrouped candidates rather than requiring the selection to be cut by hand. Long session
 lists use the terminal height as a viewport, keeping the active row visible and showing
 `↑ N more` / `↓ N more` when rows exist outside the current window. Browse Sessions also
 answers to `p` on a session row.
