@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 .omo/
+.codegraph/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
