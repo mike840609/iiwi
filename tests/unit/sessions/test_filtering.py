@@ -193,7 +193,7 @@ def test_titles_iiwi_writes_are_recognized(title: str) -> None:
         "Iiwi main menu rework",
         "Iiwi outcome synthesis rewrite",
         "iiwi-internal notes",
-        "agent-worklog 更名 iiwi 進度整理",
+        "更名 iiwi 進度整理",
         "Iiwi - not a date range",
         "Iiwi - 2026-08-05 to yesterday",
     ],

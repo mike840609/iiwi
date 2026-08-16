@@ -15,8 +15,6 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-from iiwi.paths import LEGACY_APP_NAME, adopt_legacy
-
 HISTORY_FILE_VARIABLE = "IIWI_HISTORY_FILE"
 
 
@@ -58,10 +56,7 @@ def history_file_path() -> Path:
     override = os.environ.get(HISTORY_FILE_VARIABLE)
     if override:
         return Path(override).expanduser()
-    return adopt_legacy(
-        Path(user_data_dir("iiwi")) / "history.jsonl",
-        Path(user_data_dir(LEGACY_APP_NAME)) / "history.jsonl",
-    )
+    return Path(user_data_dir("iiwi")) / "history.jsonl"
 
 
 def _open_for_append(path: Path):
