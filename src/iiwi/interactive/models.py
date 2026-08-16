@@ -18,7 +18,6 @@ class Screen(StrEnum):
     MAIN = "main"
     REPORT_SETUP = "report_setup"
     SESSION_REVIEW = "session_review"
-    SESSION_BROWSER = "session_browser"
     SESSION_PREVIEW = "session_preview"
     OUTCOME_REVIEW = "outcome_review"
     DAILY_REVIEW = "daily_review"

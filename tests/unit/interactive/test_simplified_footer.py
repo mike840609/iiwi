@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import StringIO
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
+from iiwi.interactive.models import Screen
 from iiwi.interactive.render import (
+    render_daily_result,
     render_help,
-    render_session_browser,
+    render_report_result,
     render_session_review,
 )
 from iiwi.interactive.selection import SelectionState
@@ -93,25 +96,6 @@ def test_review_footer_shows_core_actions_not_power_shortcuts() -> None:
     assert "←→ hl" not in text
 
 
-def test_browser_footer_shows_only_browse_essentials() -> None:
-    console, stream = _console()
-
-    render_session_browser(
-        console,
-        _scan(),
-        expanded_repositories=set(),
-        cursor=0,
-    )
-
-    text = stream.getvalue()
-    assert "p Inspect" in text
-    assert "/ Search" in text
-    assert "? More" in text
-    assert "b Back" in text
-    assert "R Rescan" not in text
-    assert "←→ hl" not in text
-
-
 def test_help_keeps_hidden_power_shortcuts_discoverable() -> None:
     console, stream = _console()
 
@@ -148,3 +132,31 @@ def test_help_documents_the_quick_review_keys_and_marks_the_overloaded_ones() ->
     # `a`, `e`, `p` and `g` all mean something else on Quick Review.
     for line in ("a *", "e *", "p *", "g * / G"):
         assert line in text
+
+
+def test_q_reads_the_same_on_both_result_screens_and_in_daily_help() -> None:
+    """`q` and `b` do the same thing now, so one vocabulary has to say so."""
+
+    report_console, report_stream = _console()
+    render_report_result(
+        report_console,
+        period=_scan().period,
+        repository_count=1,
+        session_count=1,
+        output_path=Path("reports/worklog.md"),
+        selected=0,
+    )
+
+    daily_console, daily_stream = _console()
+    render_daily_result(daily_console, output_path=Path("reports/daily.md"), selected=0)
+
+    assert "q Back" in report_stream.getvalue()
+    assert "q Back" in daily_stream.getvalue()
+    assert "q Menu" not in daily_stream.getvalue()
+
+    help_console, help_stream = _console()
+    render_help(help_console, screen=Screen.DAILY_REVIEW)
+
+    daily_help = help_stream.getvalue()
+    assert "b / Esc        Back to the main menu" in daily_help
+    assert "q              Back to the main menu" in daily_help

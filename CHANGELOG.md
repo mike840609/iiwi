@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- **`q` means back one level, on every screen except the main menu.** It used
+  to jump straight to the main menu from wherever you were, which on a child
+  screen skipped a level: pressing it in Quick Review discarded the whole draft
+  with no way back, and in a preview it closed the screen the preview had been
+  opened from as well. `q` now does exactly what `b` does — Quick Review
+  returns to the session list, a preview returns to what opened it, the error
+  screen returns to its own back screen — and on the main menu it still exits.
+  The error screen keeps its explicit **Main menu** option, so the top is one
+  Enter away rather than gone.
+- Escape clears an active session search rather than leaving the review.
+  Committing a search with Enter and then pressing Escape used to navigate
+  back, which is what `b` is for, leaving no way to drop the filter without
+  losing your place. Escape now clears it and keeps you where you are.
+- Excluding a repository no longer rescans the disk. The exclusion is applied
+  to the scan already in memory and the selection is pruned to match, so the
+  review comes back immediately instead of reading every session again to
+  produce a smaller version of what it already had.
+- The unreachable browse screen is gone. Review Activity has landed on the
+  selectable review screen since the activity flows were unified, so the
+  separate browse-only screen behind it had no way in — about 290 lines that
+  could still be maintained but never run.
+
 ## 0.13.0 - 2026-08-16
 
 - Quick Review says a selection is too large before the model run, not after

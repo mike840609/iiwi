@@ -230,7 +230,7 @@ def test_g_synthesizes_selected_scan_once_and_opens_outcome_review(
         monkeypatch,
         draft,
         log,
-        [*_open_review_keys(), char("b"), char("q"), char("q")],
+        [*_open_review_keys(), char("b"), char("q"), char("q"), char("q")],
     )
 
     assert len(log.synthesis_scans) == 1
@@ -256,7 +256,7 @@ def test_setup_generate_enters_quick_review_before_rendering_output(
         monkeypatch,
         draft,
         log,
-        [char("3"), *setup_keys, char("b"), char("q"), char("q")],
+        [char("3"), *setup_keys, char("b"), char("q"), char("q"), char("q")],
     )
 
     assert Screen.OUTCOME_REVIEW in screens
@@ -454,6 +454,7 @@ def test_up_down_changes_focus_and_space_toggles_the_focused_outcome(
             char("b"),
             char("q"),
             char("q"),
+            char("q"),
         ],
     )
 
@@ -487,6 +488,7 @@ def test_uppercase_j_and_k_reorder_while_lowercase_j_and_k_only_navigate(
             char("b"),
             char("q"),
             char("q"),
+            char("q"),
         ],
     )
 
@@ -514,7 +516,7 @@ def test_edit_applies_fields_without_losing_identity_or_evidence(
         monkeypatch,
         draft,
         log,
-        [*_open_review_keys(), char("j"), char("e"), char("b"), char("q"), char("q")],
+        [*_open_review_keys(), char("j"), char("e"), char("b"), char("q"), char("q"), char("q")],
     )
 
     edited = review.ordered()[0]
@@ -538,7 +540,7 @@ def test_split_replaces_a_merged_outcome_with_its_two_source_groups(
         monkeypatch,
         draft,
         log,
-        [*_open_review_keys(), char("j"), char("s"), char("b"), char("q"), char("q")],
+        [*_open_review_keys(), char("j"), char("s"), char("b"), char("q"), char("q"), char("q")],
     )
 
     assert [outcome.id for outcome in review.ordered()] == [
@@ -567,7 +569,7 @@ def test_add_creates_a_user_added_outcome_without_copying_evidence(
         monkeypatch,
         draft,
         log,
-        [*_open_review_keys(), char("a"), char("b"), char("q"), char("q")],
+        [*_open_review_keys(), char("a"), char("b"), char("q"), char("q"), char("q")],
     )
 
     added = review.ordered()[-1]
@@ -599,6 +601,7 @@ def test_activating_blockers_and_next_week_edits_each_gap_and_preserves_none(
             char("b"),
             char("q"),
             char("q"),
+            char("q"),
         ],
     )
 
@@ -624,6 +627,7 @@ def test_report_type_persists_and_detail_defaults_stop_after_an_override(
             char("b"),
             char("q"),
             char("q"),
+            char("q"),
         ],
     )
 
@@ -643,6 +647,7 @@ def test_report_type_persists_and_detail_defaults_stop_after_an_override(
             KeyPress(key=Key.ENTER),
             KeyPress(key=Key.ENTER),
             char("b"),
+            char("q"),
             char("q"),
             char("q"),
         ],
@@ -691,6 +696,7 @@ def test_report_type_persistence_failure_keeps_the_edited_review_open(
                     char("k"),
                     KeyPress(key=Key.ENTER),
                     char("b"),
+                    char("q"),
                     char("q"),
                     char("q"),
                 ]
@@ -795,7 +801,7 @@ def test_narrative_on_still_routes_generate_into_quick_review(
         monkeypatch,
         draft,
         log,
-        [*_open_review_keys(), char("b"), char("q"), char("q")],
+        [*_open_review_keys(), char("b"), char("q"), char("q"), char("q")],
     )
 
     assert len(log.synthesis_scans) == 1
@@ -827,7 +833,7 @@ def test_over_budget_selection_blocks_synthesis_with_guidance(
 
     run_interactive(
         actions=actions,
-        input_source=ScriptedInput([*_open_review_keys(), char("q"), char("q")]),
+        input_source=ScriptedInput([*_open_review_keys(), char("q"), char("q"), char("q")]),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
 
@@ -871,7 +877,7 @@ def test_capital_g_groups_an_over_budget_selection_anyway(
     run_interactive(
         actions=actions,
         input_source=ScriptedInput(
-            [*_open_review_keys(), char("G"), char("q"), char("q")]
+            [*_open_review_keys(), char("G"), char("q"), char("q"), char("q"), char("q")]
         ),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
@@ -904,7 +910,9 @@ def test_within_budget_selection_still_synthesizes(
 
     run_interactive(
         actions=actions,
-        input_source=ScriptedInput([*_open_review_keys(), char("q"), char("q")]),
+        input_source=ScriptedInput(
+            [*_open_review_keys(), char("q"), char("q"), char("q"), char("q")]
+        ),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
 
@@ -941,7 +949,7 @@ def test_returning_to_a_cached_review_does_not_measure_the_budget_again(
     run_interactive(
         actions=actions,
         input_source=ScriptedInput(
-            [*_open_review_keys(), char("b"), char("g"), char("q"), char("q")]
+            [*_open_review_keys(), char("b"), char("g"), char("q"), char("q"), char("q"), char("q")]
         ),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
@@ -970,15 +978,16 @@ def test_excluding_every_outcome_blocks_generation_with_a_message(
     run_interactive(
         actions=_actions(draft, log),
         input_source=ScriptedInput(
-            [*_open_review_keys(), char(action), char("q"), char("q")]
+            [*_open_review_keys(), char(action), char("q"), char("q"), char("q"), char("q")]
         ),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
 
     assert log.reviewed_calls == []
-    screen, message = frames[-2]
-    assert screen is Screen.OUTCOME_REVIEW
-    assert message is not None and "outcome" in message.lower()
+    messages = [message for screen, message in frames if screen is Screen.OUTCOME_REVIEW]
+    assert messages and any(
+        message is not None and "outcome" in message.lower() for message in messages
+    )
     assert Screen.REPORT_PREVIEW not in [item for item, _ in frames]
     assert Screen.REPORT_RESULT not in [item for item, _ in frames]
 

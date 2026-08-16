@@ -5,7 +5,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from iiwi.interactive.selection import SelectionMark, SelectionState, noise_reason
+from iiwi.interactive.selection import (
+    SelectionMark,
+    SelectionState,
+    noise_reason,
+    without_repository,
+)
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -197,3 +202,36 @@ def test_noise_reason_keeps_real_work_whose_title_mentions_test_or_debug() -> No
     assert noise_reason(_session(title="Fix test flakiness in CI", activity_count=25)) is None
     assert noise_reason(_session(title="Debug the payment race", activity_count=38)) is None
     assert noise_reason(_session(title="Scratch parser rewrite", activity_count=40)) is None
+
+
+def test_without_repository_removes_only_that_repository() -> None:
+    filtered = without_repository(_scan(), "repo-a")
+    assert "repo-a" not in filtered.sessions_by_repository
+    assert "repo-b" in filtered.sessions_by_repository
+    assert all(item.session.session_id != "ses-a1" for item in filtered.resolved_sessions)
+    assert all(item.session.session_id != "ses-a2" for item in filtered.resolved_sessions)
+    assert filtered.loaded_session_count == 1
+
+
+def test_without_repository_keeps_scan_metadata() -> None:
+    scan = _scan()
+    filtered = without_repository(scan, "repo-a")
+    assert filtered.period is scan.period
+    assert filtered.candidate_session_count == 5
+    assert filtered.failed_session_count == 2
+    assert filtered.excluded_session_count == 2
+    assert filtered.warnings == ["one warning"]
+
+
+def test_without_repository_unknown_id_raises_key_error() -> None:
+    with pytest.raises(KeyError):
+        without_repository(_scan(), "repo-nope")
+
+
+def test_exclude_repository_prunes_scan_and_selection() -> None:
+    state = SelectionState.from_scan(_scan())
+    state.exclude_repository("repo-a")
+    assert "repo-a" not in state.scan.sessions_by_repository
+    assert state.total_count == 1
+    assert state.selected_count == 1
+    assert state.selected_session_ids == {"ses-b1"}

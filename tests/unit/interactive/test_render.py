@@ -20,7 +20,6 @@ from iiwi.interactive.render import (
     render_recoverable_error,
     render_report_result,
     render_report_setup,
-    render_session_browser,
     render_session_review,
     render_settings,
     report_generate_row,
@@ -268,17 +267,6 @@ def test_session_review_hides_warning_line_when_scan_is_clean() -> None:
     assert "⚠" not in stream.getvalue()
 
 
-def test_session_browser_surfaces_scan_warnings() -> None:
-    console, stream = _console()
-    state = _selection(warnings=["skipped ses-x1: unreadable transcript"])
-
-    render_session_browser(console, state.scan, expanded_repositories=set(), cursor=0)
-
-    text = stream.getvalue()
-    assert "⚠" in text
-    assert "1 warning(s)" in text
-
-
 def test_report_result_renders_summary_and_next_actions() -> None:
     console, stream = _console()
 
@@ -421,50 +409,6 @@ def test_session_review_header_omits_volume_when_the_scan_holds_no_messages() ->
     assert header == "Review Sessions   1 / 3 selected"
 
 
-def test_session_browser_renders_repository_and_session_density() -> None:
-    console, stream = _console()
-    items = [
-        _dense_resolved("d1", "repo-a", last_day=3, volume=1),
-        _dense_resolved("d2", "repo-a", last_day=5, volume=2),
-    ]
-    scan = ScanResult(
-        period=_period(), candidate_session_count=2, loaded_session_count=2,
-        failed_session_count=0, resolved_sessions=items,
-        sessions_by_repository={"repo-a": items},
-    )
-
-    render_session_browser(console, scan, expanded_repositories={"repo-a"}, cursor=0)
-
-    text = stream.getvalue()
-    assert "Aug 3–5 │ 3 msgs" in text
-    assert "Aug 5 │ 2 msgs" in text
-
-
-def test_session_browser_header_totals_message_volume() -> None:
-    console, stream = _console()
-    items = [
-        _dense_resolved("d1", "repo-a", last_day=3, volume=1),
-        _dense_resolved("d2", "repo-a", last_day=5, volume=2),
-    ]
-    scan = ScanResult(
-        period=_period(), candidate_session_count=2, loaded_session_count=2,
-        failed_session_count=0, resolved_sessions=items,
-        sessions_by_repository={"repo-a": items},
-    )
-
-    render_session_browser(console, scan, expanded_repositories=set(), cursor=0)
-
-    header = stream.getvalue().splitlines()[0]
-    assert header == "Browse Sessions   2 sessions │ 3 msgs"
-
-
-def test_session_browser_header_omits_volume_when_the_scan_holds_no_messages() -> None:
-    console, stream = _console()
-    render_session_browser(console, _selection().scan, expanded_repositories=set(), cursor=0)
-    header = stream.getvalue().splitlines()[0]
-    assert header == "Browse Sessions   3 sessions"
-
-
 def test_session_review_density_survives_truncation() -> None:
     console, stream = _console(width=40)
     session_id = "trunc1-with-a-very-long-session-title-that-will-clip-at-forty-cells-wide"
@@ -581,17 +525,6 @@ def test_session_review_aligns_repository_and_session_metadata_in_one_column() -
     assert len(set(columns)) == 1
 
 
-def test_session_browser_aligns_repository_and_session_metadata_in_one_column() -> None:
-    console, stream = _console(width=80)
-    render_session_browser(
-        console, _mixed_volume_scan(),
-        expanded_repositories={"repo-x"}, cursor=0,
-    )
-    columns = _meta_columns(stream.getvalue())
-    assert len(columns) == 4
-    assert len(set(columns)) == 1
-
-
 def test_session_review_drops_repository_metadata_when_too_narrow_for_both_columns() -> None:
     console, stream = _console(width=24)
     items = [_dense_resolved("d1", "repo-x", last_day=5, volume=2)]
@@ -650,7 +583,7 @@ def test_session_review_colors_selection_markers_by_state() -> None:
     assert _glyph_style(_row(text, "Work on some-2"), "○") == "2"
 
 
-def test_session_browser_lists_repositories_most_recent_first() -> None:
+def test_session_review_lists_repositories_most_recent_first() -> None:
     console, stream = _console()
     stale = _dense_resolved("s1", "repo-stale", last_day=3, volume=1)
     fresh = _dense_resolved("f1", "repo-fresh", last_day=6, volume=1)
@@ -659,15 +592,18 @@ def test_session_browser_lists_repositories_most_recent_first() -> None:
         failed_session_count=0, resolved_sessions=[stale, fresh],
         sessions_by_repository={"repo-stale": [stale], "repo-fresh": [fresh]},
     )
-    render_session_browser(console, scan, expanded_repositories=set(), cursor=0)
+    render_session_review(
+        console, SelectionState.from_scan(scan), expanded_repositories=set(), cursor=0,
+    )
     text = stream.getvalue()
     assert text.index("repo-fresh") < text.index("repo-stale")
 
 
-def test_session_browser_separates_the_cursor_from_the_expansion_glyph() -> None:
+def test_session_review_separates_the_cursor_from_the_expansion_glyph() -> None:
     console, stream = _color_console()
-    render_session_browser(
-        console, _mixed_volume_scan(), expanded_repositories={"repo-x"}, cursor=0,
+    render_session_review(
+        console, SelectionState.from_scan(_mixed_volume_scan()),
+        expanded_repositories={"repo-x"}, cursor=0,
     )
     line = _row(stream.getvalue(), "repo-y")
     assert _glyph_style(line, "▶") == "1;36"

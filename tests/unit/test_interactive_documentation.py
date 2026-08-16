@@ -6,9 +6,11 @@ def test_readmes_show_key_driven_bare_command_menu() -> None:
         text = path.read_text(encoding="utf-8")
         assert "↑↓ jk │ Enter Select" in text
         assert "▶ Review Activity" in text
+        assert "Generate Report" in text
         assert "═" in text
         assert "████" in text
         assert "History" in text
+        assert "Daily Standup" in text
         assert "Review sessions" in text
 
 
@@ -19,6 +21,8 @@ def test_cli_reference_documents_repository_and_session_selection() -> None:
     assert "repository" in reference.casefold()
     assert "individual session" in reference.casefold()
     assert "Direct subcommands remain unchanged" in reference
+    assert "Review Activity" in reference
+    assert "Browse Sessions" not in reference
 
 
 def test_quick_review_docs_distinguish_preview_from_generation() -> None:

@@ -482,6 +482,41 @@ def test_setup_horizontal_keys_on_the_action_row_do_not_generate() -> None:
     assert counters.get("generate") is None
 
 
+def test_review_escape_clears_a_committed_search_and_stays_on_review() -> None:
+    stream = StringIO()
+    console = Console(
+        file=stream, color_system=None, force_terminal=False, width=100,
+    )
+    input_source = ScriptedInput(
+        [
+            char("3"),
+            char("r"),
+            char("/"),
+            char("0"),
+            KeyPress(key=Key.ENTER),
+            KeyPress(key=Key.ESCAPE),
+            char("l"),
+            char("j"),
+            char("p"),
+            char("b"),
+            char("q"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=input_source,
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "Search: 0" in text
+    assert "Session Preview" in text
+    assert "Search:" not in text[text.rfind("Review Sessions"):]
+
+
 def _history_entry(output_path: str) -> HistoryEntry:
     return HistoryEntry(
         generated_at=datetime(2026, 8, 12, 9, 30, tzinfo=TZ),
@@ -545,7 +580,14 @@ def test_history_enter_shows_the_cursor_row_not_the_first_row(
     run_interactive(
         actions=_actions(),
         input_source=ScriptedInput(
-            [char("4"), char("j"), KeyPress(key=Key.ENTER), char("q"), char("q")]
+            [
+                char("4"),
+                char("j"),
+                KeyPress(key=Key.ENTER),
+                char("q"),
+                char("q"),
+                char("q"),
+            ]
         ),
         console=console,
     )
@@ -631,13 +673,111 @@ def test_ctrl_c_on_history_returns_to_the_main_menu(
     )
 
     text = console.file.getvalue()
-    # The interrupt lands on the second read (cursor on HISTORY after `3`).
+    # The interrupt lands on the second read (cursor on HISTORY after `4`).
     # The idle-interrupt handler must return to MAIN, so the final frame is
     # the main menu: "Past Reports" appears exactly once (the HISTORY screen
     # never re-renders) and the output ends with the main menu's footer
     # (`q Quit`), not the history screen's (`b Back`).
     assert text.count("Past Reports") == 1
     assert text.rstrip().endswith("q Quit")
+
+
+def test_review_escape_without_a_search_still_goes_back() -> None:
+    counters: dict[str, int] = {}
+    input_source = ScriptedInput(
+        [
+            char("3"),
+            char("r"),
+            KeyPress(key=Key.ESCAPE),
+            char("e"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan, counters=counters),
+        input_source=input_source,
+        console=_console(),
+    )
+
+    assert counters.get("scan", 0) == 1
+
+
+def test_q_on_quick_review_returns_to_review_screen() -> None:
+    console = _console()
+    stream = console.file
+    keys = ScriptedInput(
+        [
+            char("3"),
+            char("g"),
+            char("q"),
+            char("b"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=keys,
+        console=console,
+    )
+
+    assert "Review Sessions" in stream.getvalue()
+
+
+def test_q_on_session_preview_returns_to_review_screen() -> None:
+    console = _console()
+    stream = console.file
+    keys = ScriptedInput(
+        [
+            char("3"),
+            char("r"),
+            KeyPress(key=Key.RIGHT),
+            char("j"),
+            char("p"),
+            char("q"),
+            char("b"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=keys,
+        console=console,
+    )
+
+    assert stream.getvalue().rindex("Review Sessions") > stream.getvalue().rindex(
+        "Session Preview"
+    )
+
+
+def test_q_on_report_preview_returns_to_quick_review() -> None:
+    console = _console()
+    stream = console.file
+    keys = ScriptedInput(
+        [
+            char("3"),
+            char("g"),
+            char("p"),
+            char("q"),
+            char("q"),
+            char("b"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=keys,
+        console=console,
+    )
+
+    assert stream.getvalue().count("Quick Review") >= 2
 
 
 def test_history_q_and_escape_return_to_the_main_menu(

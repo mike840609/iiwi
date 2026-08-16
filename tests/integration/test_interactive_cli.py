@@ -656,6 +656,7 @@ def test_twenty_line_quick_review_expands_more_evidence_and_recovers_preview(
         char("b"),
         char("q"),
         char("q"),
+        char("q"),
     ]
 
     run_interactive(

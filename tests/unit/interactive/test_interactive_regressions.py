@@ -385,7 +385,7 @@ def test_harness_and_period_editors_do_not_fall_back_to_typed_prompts(
     )
 
 
-def test_browser_supports_horizontal_expand_collapse_and_rescan() -> None:
+def test_activity_supports_horizontal_expand_collapse_and_rescan() -> None:
     counters: dict[str, int] = {}
     console, stream = _console()
     keys = ScriptedInput(
@@ -450,6 +450,8 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
             char("G"),
             char("g"),
             char("b"),
+            char("q"),
+            char("q"),
             char("q"),
             char("q"),
         ]
