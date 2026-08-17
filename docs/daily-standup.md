@@ -54,7 +54,11 @@ coverage warning and still allows manual Add. If outcome grouping fails, Daily
 retries once, then uses a labeled deterministic fallback draft without inventing
 a Today plan; a coverage warning names the failure in Quick Review and in the
 Markdown, so a report built from raw evidence says so. Refreshing after a
-fallback replaces that draft outright unless you had already edited it.
+fallback replaces that draft outright unless you had already edited it. If the
+day's evidence is larger than the Quick Review evidence budget, Daily groups the
+most recent sessions that fit — its window is fixed by the date, so there is
+nothing to narrow — and a warning names how many sessions were left out and the
+payload size against the budget.
 
 ## Preview, generate, and local state
 

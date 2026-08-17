@@ -19,6 +19,7 @@ from iiwi.models.time_range import DateRange
 from iiwi.services import outcomes
 from iiwi.services.outcomes import (
     OutcomeSynthesisService,
+    SynthesisBudgetExceededError,
     _fallback_title,
     _supported_title,
 )
@@ -820,7 +821,7 @@ def test_sessions_past_the_budget_never_reach_the_model() -> None:
     OutcomeSynthesisService(
         runner,
         max_evidence_bytes=payload_size(sessions[:2]),
-    ).synthesize(scan_with(sessions))
+    ).synthesize(scan_with(sessions), force=True)
 
     assert sent_session_ids(runner) == [source_id("ses-a"), source_id("ses-b")]
 
@@ -832,7 +833,7 @@ def test_sessions_past_the_budget_remain_excluded_ungrouped_candidates() -> None
     result = OutcomeSynthesisService(
         runner,
         max_evidence_bytes=compact_entry_size(sessions[0]),
-    ).synthesize(scan_with(sessions))
+    ).synthesize(scan_with(sessions), force=True)
 
     held_back = next(item for item in result.outcomes if item.bucket is OutcomeBucket.UNGROUPED)
     assert held_back.title == "Session ses-b"
@@ -847,7 +848,7 @@ def test_budget_warning_names_how_many_sessions_were_held_back() -> None:
     result = OutcomeSynthesisService(
         runner,
         max_evidence_bytes=compact_entry_size(sessions[0]),
-    ).synthesize(scan_with(sessions))
+    ).synthesize(scan_with(sessions), force=True)
 
     assert len(result.warnings) == 1
     assert result.warnings[0].startswith("2 older session(s) did not fit")
@@ -860,7 +861,7 @@ def test_the_most_recent_sessions_are_the_ones_synthesized() -> None:
     OutcomeSynthesisService(
         runner,
         max_evidence_bytes=payload_size([sessions[1], sessions[2]]),
-    ).synthesize(scan_with(sessions))
+    ).synthesize(scan_with(sessions), force=True)
 
     assert sent_session_ids(runner) == [source_id("ses-new"), source_id("ses-mid")]
 
@@ -869,7 +870,9 @@ def test_a_session_larger_than_the_whole_budget_is_still_sent() -> None:
     sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
 
-    OutcomeSynthesisService(runner, max_evidence_bytes=1).synthesize(scan_with(sessions))
+    OutcomeSynthesisService(runner, max_evidence_bytes=1).synthesize(
+        scan_with(sessions), force=True
+    )
 
     assert sent_session_ids(runner) == [source_id("ses-a")]
 
@@ -881,7 +884,9 @@ def test_the_budget_counts_the_index_around_the_entries_not_just_the_entries() -
     budget = compact_entry_size(sessions[0]) + compact_entry_size(sessions[1]) + 1
     runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
 
-    OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(scan_with(sessions))
+    OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(
+        scan_with(sessions), force=True
+    )
 
     assert budget < payload_size(sessions)
     assert sent_session_ids(runner) == [source_id("ses-a")]
@@ -901,66 +906,108 @@ def test_undated_sessions_keep_their_scan_order_behind_dated_ones() -> None:
     ]
 
 
-def test_measure_synthesis_budget_counts_the_full_selection_and_the_fit() -> None:
+def test_an_over_budget_selection_is_refused_before_the_model_call() -> None:
     sessions = [dated("ses-a", day=9), dated("ses-b", day=8), dated("ses-c", day=7)]
     budget = payload_size(sessions[:2])
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
 
-    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=budget)
+    with pytest.raises(SynthesisBudgetExceededError) as error:
+        OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(scan_with(sessions))
 
-    assert estimate.selected_count == 3
-    assert estimate.fit_count == 2
-    assert estimate.bytes_used == payload_size(sessions)
-    assert estimate.max_bytes == budget
-    assert estimate.over_limit is True
+    assert error.value.estimate.selected_count == 3
+    assert error.value.estimate.fit_count == 2
+    assert error.value.estimate.bytes_used == payload_size(sessions)
+    assert error.value.estimate.max_bytes == budget
+    assert runner.calls == []
 
 
-def test_measure_synthesis_budget_reports_when_everything_fits() -> None:
+def test_the_refused_fit_is_exactly_what_forcing_then_sends() -> None:
+    """The number the guard reports and the payload come from one measurement."""
+
+    sessions = [dated(f"ses-{index}", day=9 - index) for index in range(4)]
+    budget = payload_size(sessions[:2])
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-0"])))
+    service = OutcomeSynthesisService(runner, max_evidence_bytes=budget)
+
+    with pytest.raises(SynthesisBudgetExceededError) as error:
+        service.synthesize(scan_with(sessions))
+    service.synthesize(scan_with(sessions), force=True)
+
+    assert sent_session_ids(runner) == [source_id("ses-0"), source_id("ses-1")]
+    assert error.value.estimate.fit_count == len(sent_session_ids(runner))
+
+
+def test_extraction_runs_once_for_the_guard_and_the_payload_together(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Measuring used to cost a whole extraction pass that was then discarded."""
+
     sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+    budget = compact_entry_size(sessions[0])
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+    extracted: list[str] = []
+    original = outcomes.extract_evidence
 
-    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=100_000)
+    def counting(resolved_session: ResolvedSession):
+        extracted.append(resolved_session.session.session_id)
+        return original(resolved_session)
 
-    assert estimate.selected_count == 2
-    assert estimate.fit_count == 2
-    assert estimate.over_limit is False
+    monkeypatch.setattr(outcomes, "extract_evidence", counting)
 
+    OutcomeSynthesisService(runner, max_evidence_bytes=budget).synthesize(
+        scan_with(sessions), force=True
+    )
 
-def test_measure_synthesis_budget_never_holds_back_the_first_session() -> None:
-    """A session larger than the whole budget is still counted as sent."""
-
-    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
-
-    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=1)
-
-    assert estimate.selected_count == 2
-    assert estimate.fit_count == 1
-    assert estimate.over_limit is True
+    assert extracted == ["ses-a", "ses-b"]
 
 
-def test_measure_synthesis_budget_blocks_a_lone_session_that_does_not_fit() -> None:
-    """The one session is sent regardless, so the counts alone cannot see this."""
+def test_a_lone_session_larger_than_the_budget_is_refused_too() -> None:
+    """It is sent regardless once forced, so the counts alone cannot see this."""
 
     sessions = [dated("ses-a", day=9)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
 
-    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=1)
+    with pytest.raises(SynthesisBudgetExceededError) as error:
+        OutcomeSynthesisService(runner, max_evidence_bytes=1).synthesize(scan_with(sessions))
 
-    assert estimate.selected_count == 1
-    assert estimate.fit_count == 1
-    assert estimate.over_limit is True
+    assert error.value.estimate.selected_count == 1
+    assert error.value.estimate.fit_count == 1
 
 
-def test_measure_synthesis_budget_counts_a_session_that_failed_extraction(
+def test_forcing_a_lone_oversized_session_still_reports_the_overrun() -> None:
+    """Nothing is held back, so only the bytes can say the budget was passed."""
+
+    sessions = [dated("ses-a", day=9)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
+
+    result = OutcomeSynthesisService(runner, max_evidence_bytes=1).synthesize(
+        scan_with(sessions), force=True
+    )
+
+    assert result.warnings == [
+        f"The selected evidence is {payload_size(sessions)} bytes, over the "
+        "1-byte Quick Review budget, and was sent anyway"
+    ]
+
+
+def test_the_guard_counts_a_session_that_failed_extraction_as_selected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """It is still a checked row, and a failure is not a budget problem."""
 
-    monkeypatch.setattr(outcomes, "extract_evidence", fail_only("ses-b"))
-    sessions = [dated("ses-a", day=9), dated("ses-b", day=8)]
+    monkeypatch.setattr(outcomes, "extract_evidence", fail_only("ses-c"))
+    sessions = [dated("ses-a", day=9), dated("ses-b", day=8), dated("ses-c", day=7)]
+    runner = StaticRunner(json.dumps(payload_for_sessions(["ses-a"])))
 
-    estimate = outcomes.measure_synthesis_budget(scan_with(sessions), max_bytes=100_000)
+    with pytest.raises(SynthesisBudgetExceededError) as error:
+        OutcomeSynthesisService(
+            runner,
+            max_evidence_bytes=compact_entry_size(sessions[0]),
+        ).synthesize(scan_with(sessions))
 
-    assert estimate.selected_count == 2
-    assert estimate.fit_count == 1
-    assert estimate.over_limit is False
+    assert error.value.estimate.selected_count == 3
+    assert error.value.estimate.fit_count == 1
+
 
 
 def detailed(

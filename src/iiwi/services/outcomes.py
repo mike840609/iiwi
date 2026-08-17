@@ -11,7 +11,7 @@ from hashlib import sha256
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from iiwi.config import DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES
-from iiwi.errors import OutcomeSynthesisError
+from iiwi.errors import IiwiError, OutcomeSynthesisError
 from iiwi.extraction.pipeline import extract_evidence
 from iiwi.models import (
     EvidenceRef,
@@ -108,8 +108,9 @@ class _ExtractedSessions:
 def _extract_sessions(scan: ScanResult) -> _ExtractedSessions:
     """Run the boundary extraction once for a scan.
 
-    `synthesize` and `measure_synthesis_budget` both call this, so the guard's
-    measurement is byte-identical to what synthesis actually sends.
+    `extract_evidence` plus a recursive redaction of every session's full
+    evidence is the expensive half of a generate, so `synthesize` runs it once
+    and measures the budget from what it produced.
     """
 
     evidence_by_source: dict[str, SessionEvidence] = {}
@@ -169,7 +170,7 @@ def _extract_sessions(scan: ScanResult) -> _ExtractedSessions:
 
 @dataclass(frozen=True)
 class SynthesisBudgetEstimate:
-    """What the selection screen needs before any model call is spent."""
+    """What a selection costs, measured before any model call is spent."""
 
     selected_count: int
     fit_count: int
@@ -191,29 +192,82 @@ class SynthesisBudgetEstimate:
         return self.bytes_used > self.max_bytes
 
 
-def measure_synthesis_budget(scan: ScanResult, *, max_bytes: int) -> SynthesisBudgetEstimate:
-    """Measure the selection exactly as synthesis will send it.
+class SynthesisBudgetExceededError(IiwiError):
+    """Raised when the selection is larger than one synthesis can carry.
 
-    Both paths share extraction, newest-first ordering, and the same budget
-    trim, so the counts and bytes shown at selection cannot drift from the
-    payload synthesis would actually send. No model call happens here.
+    Carries the measurement, so a caller that decides to send what fits anyway
+    already knows the cost and never re-extracts the selection to learn it.
     """
 
-    extracted = _extract_sessions(scan)
-    compact_list = [
+    def __init__(self, estimate: SynthesisBudgetEstimate) -> None:
+        super().__init__(
+            f"{estimate.selected_count} selected session(s) need "
+            f"{estimate.bytes_used} bytes of evidence, over the "
+            f"{estimate.max_bytes}-byte Quick Review budget"
+        )
+        self.estimate = estimate
+
+
+@dataclass(frozen=True)
+class _BudgetedPayload:
+    """The sessions synthesis will send, beside the measurement of all of them."""
+
+    sent: list[_CompactSession]
+    estimate: SynthesisBudgetEstimate
+
+
+def _budgeted_payload(
+    extracted: _ExtractedSessions,
+    *,
+    selected_count: int,
+    max_bytes: int,
+) -> _BudgetedPayload:
+    """Order newest first, trim to the budget, and measure what that cost.
+
+    Ordering and trim live here alone, and the estimate is read off the very
+    list the model is then sent, so what the guard reports and what synthesis
+    sends cannot drift apart.
+    """
+
+    ordered = [
         extracted.compact_by_source[source_id]
         for source_id in _most_recent_first(extracted.evidence_by_source, extracted.started_at)
     ]
-    within_budget = _sessions_within_budget(compact_list, max_bytes=max_bytes)
-    return SynthesisBudgetEstimate(
-        # What the user selected, not what extraction produced: this number is
-        # read beside the checked rows, and a session whose extraction failed
-        # is still one of them. Deselecting it has to move the count.
-        selected_count=len(scan.resolved_sessions),
-        fit_count=len(within_budget),
-        bytes_used=len(_index_json(compact_list).encode()),
-        max_bytes=max_bytes,
+    sent = _sessions_within_budget(ordered, max_bytes=max_bytes)
+    return _BudgetedPayload(
+        sent=sent,
+        estimate=SynthesisBudgetEstimate(
+            # What the user selected, not what extraction produced: this number
+            # is read beside the checked rows, and a session whose extraction
+            # failed is still one of them. Deselecting it has to move the count.
+            selected_count=selected_count,
+            fit_count=len(sent),
+            bytes_used=len(_index_json(ordered).encode()),
+            max_bytes=max_bytes,
+        ),
     )
+
+
+def _budget_warnings(estimate: SynthesisBudgetEstimate, *, held_back: int) -> list[str]:
+    """Account for what the budget cost a selection that was sent anyway.
+
+    Quick Review names the cost before the run and can narrow the selection;
+    the Daily window is fixed by its date, so for Daily this is the whole
+    account of work the byte counter left out of the standup.
+    """
+
+    if held_back:
+        return [
+            f"{held_back} older session(s) did not fit the Quick Review evidence "
+            f"budget ({estimate.bytes_used} / {estimate.max_bytes} bytes) and were "
+            "left as ungrouped candidates"
+        ]
+    if estimate.over_limit:
+        return [
+            f"The selected evidence is {estimate.bytes_used} bytes, over the "
+            f"{estimate.max_bytes}-byte Quick Review budget, and was sent anyway"
+        ]
+    return []
 
 
 # Measured, not guessed: across one live synthesis the all-or-nothing gate
@@ -243,38 +297,40 @@ class OutcomeSynthesisService:
         self._runner = runner
         self._max_evidence_bytes = max_evidence_bytes
 
-    def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
-        extracted = _extract_sessions(scan)
-        evidence_by_source = extracted.evidence_by_source
-        compact_by_source = extracted.compact_by_source
-        local_texts_by_source = extracted.local_texts_by_source
-        started_at = extracted.started_at
-        failed_sessions = extracted.failed_sessions
+    def synthesize(self, scan: ScanResult, *, force: bool = False) -> OutcomeSynthesisResult:
+        """Group the selection into outcomes, refusing more than the budget carries.
 
-        if not evidence_by_source:
+        The budget is decided here, where the extraction it measures already
+        happens, rather than by a probe each entry point has to remember: one
+        extraction pass per generate, and every caller guarded by construction.
+        `force` sends the newest sessions that fit and leaves the rest as
+        ungrouped candidates — for a caller that has seen the cost, or whose
+        window cannot be narrowed.
+        """
+
+        extracted = _extract_sessions(scan)
+        if not extracted.evidence_by_source:
             raise OutcomeSynthesisError("could not extract evidence from any selected session")
 
-        sent = _sessions_within_budget(
-            [
-                compact_by_source[source_id]
-                for source_id in _most_recent_first(evidence_by_source, started_at)
-            ],
+        budgeted = _budgeted_payload(
+            extracted,
+            selected_count=len(scan.resolved_sessions),
             max_bytes=self._max_evidence_bytes,
         )
-        sent_by_source = {entry.source_id: evidence_by_source[entry.source_id] for entry in sent}
-        held_back = len(evidence_by_source) - len(sent_by_source)
-        warnings = (
-            [
-                f"{held_back} older session(s) did not fit the Quick Review "
-                "evidence budget and were left as ungrouped candidates"
-            ]
-            if held_back
-            else []
+        if budgeted.estimate.over_limit and not force:
+            raise SynthesisBudgetExceededError(budgeted.estimate)
+        sent_by_source = {
+            entry.source_id: extracted.evidence_by_source[entry.source_id]
+            for entry in budgeted.sent
+        }
+        warnings = _budget_warnings(
+            budgeted.estimate,
+            held_back=len(extracted.evidence_by_source) - len(sent_by_source),
         )
 
         try:
             output = self._runner.run(
-                transcript=_index_json(sent),
+                transcript=_index_json(budgeted.sent),
                 prompt=build_outcome_prompt(),
                 title=f"{IIWI_SESSION_TITLE_PREFIX}outcome synthesis",
             )
@@ -300,7 +356,7 @@ class OutcomeSynthesisService:
                 self._outcomes_for_proposal(
                     proposal,
                     selected,
-                    local_texts_by_source,
+                    extracted.local_texts_by_source,
                     proposal_index=proposal_index,
                 )
             )
@@ -312,19 +368,19 @@ class OutcomeSynthesisService:
 
         omitted = [
             evidence
-            for source_id, evidence in evidence_by_source.items()
+            for source_id, evidence in extracted.evidence_by_source.items()
             if source_id not in used_source_ids
         ]
         ungrouped = [
             *self._ungrouped_evidence_outcomes(omitted, rank_start=len(outcomes)),
             *self._ungrouped_failed_outcomes(
-                failed_sessions,
+                extracted.failed_sessions,
                 rank_start=len(outcomes) + len(omitted),
             ),
         ]
         return OutcomeSynthesisResult(
             outcomes=[*outcomes, *ungrouped],
-            failed_session_ids=[item.session.session_id for item in failed_sessions],
+            failed_session_ids=[item.session.session_id for item in extracted.failed_sessions],
             warnings=warnings,
         )
 

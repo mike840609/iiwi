@@ -76,7 +76,7 @@ from iiwi.models.report_options import ReportType
 from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
 from iiwi.renderers.markdown import DetailLevel
-from iiwi.services.outcomes import SynthesisBudgetEstimate
+from iiwi.services.outcomes import SynthesisBudgetExceededError
 from iiwi.services.scan import ScanResult
 
 _ADVANCED_ROW = "Advanced settings"
@@ -132,17 +132,6 @@ def _daily_add_not_configured(section: DailySection) -> str | None:
     return None
 
 
-def _synthesis_fit_not_configured(scan: ScanResult) -> SynthesisBudgetEstimate:
-    """Never blocks: callers that do not wire the seam keep the old path."""
-
-    return SynthesisBudgetEstimate(
-        selected_count=0,
-        fit_count=0,
-        bytes_used=0,
-        max_bytes=0,
-    )
-
-
 @dataclass(frozen=True)
 class InteractiveActions:
     """Business-logic seams supplied by `cli.py`, keeping this module cycle-free."""
@@ -152,7 +141,7 @@ class InteractiveActions:
     choose_period: Callable[[str | None], tuple[str, DateRange]]
     scan: Callable[[ReportDraft], ScanResult]
     generate: Callable[[ReportDraft, ScanResult, bool], InteractiveReportResult]
-    synthesize: Callable[[ReportDraft, ScanResult], OutcomeReviewDraft]
+    synthesize: Callable[[ReportDraft, ScanResult, bool], OutcomeReviewDraft]
     generate_reviewed: Callable[
         [ReportDraft, ScanResult, OutcomeReviewDraft, bool],
         InteractiveReportResult,
@@ -165,9 +154,6 @@ class InteractiveActions:
     restore_selection: Callable[[str, DateRange, bool], set[str] | None]
     save_selection: Callable[[str, DateRange, bool, set[str]], None]
     exclude_repository: Callable[[str, str], str]
-    measure_synthesis_fit: Callable[
-        [ScanResult], SynthesisBudgetEstimate
-    ] = _synthesis_fit_not_configured
     start_daily: Callable[
         [DailyStandupDraft | None], DailyStandupDraft
     ] = _daily_start_not_configured
@@ -1227,8 +1213,8 @@ def _begin_outcome_review(
         state.draft.detail,
     )
     # The cache short-circuit comes first. A review only exists because this
-    # selection already cleared the guard, and measuring re-extracts every
-    # session — the whole cost this screen switch exists to avoid.
+    # selection already cleared the guard, and synthesizing again re-extracts
+    # every session — the whole cost this screen switch exists to avoid.
     if (
         state.outcome_review is not None
         and state.outcome_review_selection_key == selection_key
@@ -1241,20 +1227,22 @@ def _begin_outcome_review(
         state.error = None
         state.screen = Screen.OUTCOME_REVIEW
         return
-    if not force:
-        budget = actions.measure_synthesis_fit(filtered_scan)
-        if budget.over_limit:
-            state.review_message = (
-                f"{budget.selected_count} selected; synthesis handles about "
-                f"{budget.fit_count}. Narrow the period, deselect what does "
-                f"not belong in the update, or press G to group the newest "
-                f"that fit and leave the rest as ungrouped candidates. "
-                f"({budget.bytes_used} / {budget.max_bytes} bytes)"
-            )
-            state.screen = Screen.SESSION_REVIEW
-            return
     try:
-        state.outcome_review = actions.synthesize(state.draft, filtered_scan)
+        state.outcome_review = actions.synthesize(state.draft, filtered_scan, force)
+    except SynthesisBudgetExceededError as exc:
+        # Synthesis measured the selection on the extraction pass it was going to
+        # run anyway and refused before spending the model call.
+        budget = exc.estimate
+        state.review_message = (
+            f"{budget.selected_count} selected; synthesis handles about "
+            f"{budget.fit_count}. Narrow the period, deselect what does "
+            f"not belong in the update, or press G to group the newest "
+            f"that fit and leave the rest as ungrouped candidates. "
+            f"({budget.bytes_used} / {budget.max_bytes} bytes)"
+        )
+        state.error = None
+        state.screen = Screen.SESSION_REVIEW
+        return
     except OutcomeSynthesisError as exc:
         state.error = _ErrorState(
             kind="outcome-synthesis",

@@ -135,9 +135,11 @@ class _Outcomes:
         self.failures = failures
         self.failed_session_ids = failed_session_ids or []
         self.calls: list[ScanResult] = []
+        self.forced: list[bool] = []
 
-    def synthesize(self, scan: ScanResult) -> OutcomeSynthesisResult:
+    def synthesize(self, scan: ScanResult, *, force: bool = False) -> OutcomeSynthesisResult:
         self.calls.append(scan)
+        self.forced.append(force)
         if self.error is not None and (
             self.failures is None or len(self.calls) <= self.failures
         ):
@@ -297,12 +299,23 @@ def test_refresh_uses_deterministic_fallback_on_outcome_synthesis_error() -> Non
     )
 
 
+def test_refresh_groups_what_fits_instead_of_refusing_an_over_budget_window() -> None:
+    """The Daily window is fixed by its date: there is no narrower selection."""
+
+    outcomes = _Outcomes()
+
+    _service(now_factory=lambda: NOW, outcomes=outcomes).refresh()
+
+    assert outcomes.forced == [True]
+
+
 def test_refresh_retries_synthesis_once_before_falling_back() -> None:
     outcomes = _Outcomes(error=OutcomeSynthesisError("no valid outcome JSON"), failures=1)
 
     draft = _service(now_factory=lambda: NOW, outcomes=outcomes).refresh()
 
     assert len(outcomes.calls) == 2
+    assert outcomes.forced == [True, True]
     assert draft.fallback is False
     assert draft.coverage_warnings == ["Claude Code activity could not be loaded."]
     assert draft.work_items[0].today is not None

@@ -104,7 +104,7 @@ def _actions(log: ActionLog, *, warning: str | None = None) -> InteractiveAction
         choose_period=lambda current: ("Daily", _period()),
         scan=lambda draft: pytest.fail("ordinary scan should not run"),
         generate=lambda draft, scan, force: pytest.fail("ordinary generate should not run"),
-        synthesize=lambda draft, scan: OutcomeReviewDraft(outcomes=[]),
+        synthesize=lambda draft, scan, force: OutcomeReviewDraft(outcomes=[]),
         generate_reviewed=lambda draft, scan, review, force: pytest.fail(
             "reviewed report generation should not run"
         ),

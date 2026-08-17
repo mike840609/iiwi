@@ -127,7 +127,7 @@ def _actions() -> InteractiveActions:
             repository_count=1,
             session_count=1,
         ),
-        synthesize=lambda draft, scan: OutcomeReviewDraft(
+        synthesize=lambda draft, scan, force: OutcomeReviewDraft(
             outcomes=_synthesized_outcomes(), report_type=draft.report_type
         ),
         generate_reviewed=lambda draft, scan, review, force: InteractiveReportResult(

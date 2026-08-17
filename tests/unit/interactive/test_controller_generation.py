@@ -159,7 +159,7 @@ def _actions(
         choose_period=lambda current: ("Last week", _period()),
         scan=do_scan,
         generate=generate,
-        synthesize=lambda draft, scan: OutcomeReviewDraft(
+        synthesize=lambda draft, scan, force: OutcomeReviewDraft(
             outcomes=_synthesized_outcomes(), report_type=draft.report_type
         ),
         generate_reviewed=lambda draft, scan, review, force: generate(

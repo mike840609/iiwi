@@ -167,8 +167,9 @@ def _quick_review_actions(
     def synthesize(
         current: ReportDraft,
         selected_scan: ScanResult,
+        force: bool,
     ) -> OutcomeReviewDraft:
-        result = synthesis.synthesize(selected_scan)
+        result = synthesis.synthesize(selected_scan, force=force)
         return OutcomeReviewDraft(
             outcomes=result.outcomes,
             report_type=current.report_type,
@@ -308,7 +309,7 @@ def test_bare_command_runs_generate_select_result_main_quit_flow(
         choose_period=lambda current: current,
         scan=lambda value: _scan(),
         generate=generate,
-        synthesize=lambda current, selected_scan: OutcomeReviewDraft(
+        synthesize=lambda current, selected_scan, force: OutcomeReviewDraft(
             outcomes=[
                 Outcome(
                     id="reviewed",
