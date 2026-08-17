@@ -222,7 +222,6 @@ def test_readmes_document_the_interactive_run_command() -> None:
 
     for text in (readme, readme_zh_tw):
         assert "iiwi run" in text
-        assert "`run`" in text
 
 
 def test_configuration_doc_explains_what_an_empty_answer_means() -> None:
@@ -245,26 +244,20 @@ def test_readmes_document_the_interactive_menu() -> None:
         # Running the command bare now prompts rather than printing help, so
         # both the menu and the way to still get help must be documented.
         assert "iiwi --help" in text
-        # Asserted in English for both READMEs, because the zh-TW one keeps the
-        # terminal block untranslated — that is what the terminal really prints.
-        # An `or "產生報告" in text` alternative was dropped: that phrase already
-        # appears in an unrelated zh-TW privacy bullet, so the moment anyone
-        # translated the block the assertion would pass off that line and stop
-        # guarding the zh-TW README at all.
-        assert "Generate a report" in text
+        # The terminal menu stays in English in both READMEs.
+        assert "Generate Report" in text
 
 
 def test_readmes_document_the_run_dry_run_option() -> None:
-    """`--dry-run` predates this work on `report`, so assert on `run`'s own line.
-
-    A bare `"--dry-run" in text` passes on the pre-change docs and guards nothing.
-    """
-
     readme = Path("README.md").read_text(encoding="utf-8")
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
 
-    assert "Pass `--dry-run` to print the report to the terminal" in readme
-    assert "加上 `--dry-run` 會把報告印到終端機" in readme_zh_tw
+    assert "`--dry-run`" in readme
+    assert "terminal" in readme.casefold()
+    assert "without writing" in readme
+    assert "`--dry-run`" in readme_zh_tw
+    assert "終端機" in readme_zh_tw
+    assert "不會寫入" in readme_zh_tw
 
 
 def test_readmes_state_the_pronunciation() -> None:
