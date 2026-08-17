@@ -1,7 +1,8 @@
 # Iiwi
 
-**Iiwi** · /ˈiː.wiː/ "ee-wee" — 把你的 coding-agent 工作階段整理成每週工程報告，
-過程中資料完全不離開你的電腦。
+**Iiwi** · /ˈiː.wiː/ "ee-wee"
+
+**把 coding-agent 的工作紀錄整理成清楚的工程報告。**
 
 [![CI](https://github.com/mike840609/iiwi/actions/workflows/ci.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/ci.yml)
 [![Release](https://github.com/mike840609/iiwi/actions/workflows/release.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/release.yml)
@@ -15,13 +16,15 @@
 
 ![Iiwi — 看見你的 agent 做了什麼](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-banner.jpg)
 
-每週工作回報，其實是把已經做過的事再寫一次。Iiwi 直接讀取 coding agent 已經留下的工作階段
-紀錄，依 repository 分組，替你把報告寫出來。支援 OpenCode、Claude Code 與 Codex。
+你已經把工作做完了，Iiwi 幫你把它整理成可以回報的內容。
 
-- **資料不會離開你的電腦。** 敘事式週報由本機的 `opencode run` 撰寫，不需要網路，也不需要 API key。
-- **在哪個資料夾都找得到。** 涵蓋所有專案，不受目前所在資料夾限制。
-- **依 repository 分組。** 同一 repository 的 worktree 合併成一筆，child 與 subagent 工作階段也歸在一起。
-- **先去敏再寫出。** 產生任何內容之前，先在本機清掉常見的機密字串樣式。
+Iiwi 會讀取 OpenCode、Claude Code 與 Codex 留下的工作紀錄，找出你做過什麼，整理成報告草稿。
+挑出重要內容、稍微修改後，就能產生一份可以分享給團隊的 Markdown 報告。
+
+- **跨專案都能用。** Iiwi 會找到你在不同專案留下的 coding-agent 工作紀錄。
+- **相關工作放在一起。** 同一個 repository 的工作會整理在一起。
+- **分享前由你確認。** 挑出重要內容並修改後，再產生最後的報告。
+- **保護敏感資訊。** 寫出報告前，會先移除常見的機密字串樣式。
 
 ## 快速開始
 
