@@ -1,7 +1,8 @@
 # Iiwi
 
-**Iiwi** · /ˈiː.wiː/ "ee-wee" — turns your coding-agent sessions into a weekly
-engineering report, without anything leaving your machine.
+**Iiwi** · /ˈiː.wiː/ "ee-wee"
+
+**Turn your coding-agent sessions into clear engineering reports.**
 
 [![CI](https://github.com/mike840609/iiwi/actions/workflows/ci.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/ci.yml)
 [![Release](https://github.com/mike840609/iiwi/actions/workflows/release.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/release.yml)
@@ -15,16 +16,16 @@ English | [繁體中文](https://github.com/mike840609/iiwi/blob/main/README.zh-
 
 ![Iiwi — see what your agents did](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-banner.jpg)
 
-The weekly status update is work you already did once. Iiwi reads the sessions
-your coding agent already recorded, synthesizes evidence-backed outcomes, and lets
-you review the result before it writes the report. Quick Review targets a 30–60
-second pass from candidate outcomes to a shareable update. Works with OpenCode,
-Claude Code, and Codex.
+You already did the work. Iiwi helps turn it into an update.
 
-- **Nothing leaves your machine.** Your local `opencode run` writes the narrative — no network, no API key.
-- **Finds your sessions anywhere.** Every project, whichever folder you run from.
-- **Groups by repository.** Worktrees collapse into one entry; child and subagent sessions stay with it.
-- **Redacts first.** Common secret patterns are stripped locally before anything is written.
+Iiwi reads the sessions recorded by OpenCode, Claude Code, and Codex, finds what
+you worked on, and turns it into a draft report. Review what matters, make a few
+edits, and generate a Markdown report you can share with your team.
+
+- **Works across projects.** Iiwi finds your coding-agent sessions wherever you worked.
+- **Keeps related work together.** Sessions are grouped by repository.
+- **You review before sharing.** Choose what matters and edit the result before generating the report.
+- **Protects sensitive information.** Common secret patterns are removed before reports are written.
 
 ## Quick start
 
