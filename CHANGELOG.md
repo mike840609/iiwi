@@ -37,6 +37,15 @@ All notable changes to this project are documented in this file.
   selectable review screen since the activity flows were unified, so the
   separate browse-only screen behind it had no way in — about 290 lines that
   could still be maintained but never run.
+- The Quick Review evidence budget cannot be set below what one session needs.
+  `report.quick_review_max_evidence_bytes` took `0` and negative numbers from
+  both `config set` and the interactive settings row, and stored them.
+  Synthesis always keeps the first session, so every later selection came back
+  as over budget, refused by a message that named counts and bytes but never
+  the setting behind them: nothing on screen pointed at the value that had to
+  change. Anything under `1000` — roughly one session's payload — is now
+  rejected where it is set, naming the setting and the constraint, and the
+  settings file is left untouched.
 
 ## 0.13.0 - 2026-08-16
 

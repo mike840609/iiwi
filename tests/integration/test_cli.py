@@ -906,6 +906,38 @@ def test_config_set_accepts_a_known_timezone(monkeypatch, tmp_path) -> None:
     assert cli._load_settings().report.timezone == "UTC"
 
 
+# A negative value needs `--` to reach the command at all; typer would read a
+# bare `-1` as an option.
+@pytest.mark.parametrize("arguments", [["0"], ["--", "-1"]])
+def test_config_set_rejects_a_too_small_evidence_budget_without_writing_the_file(
+    monkeypatch, tmp_path, arguments: list[str]
+) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "report.quick_review_max_evidence_bytes", *arguments]
+    )
+
+    assert result.exit_code == 3
+    assert "invalid value for report.quick_review_max_evidence_bytes" in result.stdout
+    assert "greater than or equal to 1000" in result.stdout
+    assert not path.exists()
+
+
+def test_config_set_accepts_the_smallest_evidence_budget(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "config.env"
+    monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
+    monkeypatch.delenv("IIWI_REPORT__QUICK_REVIEW_MAX_EVIDENCE_BYTES", raising=False)
+
+    result = CliRunner().invoke(
+        cli.app, ["config", "set", "report.quick_review_max_evidence_bytes", "1000"]
+    )
+
+    assert result.exit_code == 0
+    assert cli._load_settings().report.quick_review_max_evidence_bytes == 1000
+
+
 def test_config_set_with_an_empty_value_restores_the_default(monkeypatch, tmp_path) -> None:
     path = tmp_path / "config.env"
     monkeypatch.setenv("IIWI_CONFIG_FILE", str(path))
