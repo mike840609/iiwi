@@ -184,10 +184,20 @@ def test_validate_value_rejects_an_unknown_timezone() -> None:
         validate_value(resolve_key("report.timezone"), "Mars/Olympus")
 
 
+@pytest.mark.parametrize("value", ["0", "-1", "999"])
+def test_validate_value_rejects_an_evidence_budget_under_one_session(value: str) -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match="invalid value for report.quick_review_max_evidence_bytes",
+    ):
+        validate_value(resolve_key("report.quick_review_max_evidence_bytes"), value)
+
+
 def test_validate_value_accepts_valid_domain_values() -> None:
     validate_value(resolve_key("harnesses.opencode.cli.timeout_seconds"), "30.5")
     validate_value(resolve_key("report.timezone"), "Asia/Taipei")
     validate_value(resolve_key("report.timezone"), "UTC")
+    validate_value(resolve_key("report.quick_review_max_evidence_bytes"), "1000")
 
 
 @pytest.fixture
@@ -253,6 +263,16 @@ def test_set_value_refuses_an_unknown_timezone_without_creating_the_file(
 ) -> None:
     with pytest.raises(ConfigurationError):
         set_value("report.timezone", "Mars/Olympus")
+
+    assert not settings_file.exists()
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_set_value_refuses_a_too_small_evidence_budget_without_creating_the_file(
+    settings_file: Path, value: str
+) -> None:
+    with pytest.raises(ConfigurationError):
+        set_value("report.quick_review_max_evidence_bytes", value)
 
     assert not settings_file.exists()
 
