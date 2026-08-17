@@ -2,20 +2,8 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.14.0 - 2026-08-17
 
-- A session that fails partway through evidence extraction is reported as a
-  failure and nothing else. The per-session work wrote its results one map at a
-  time, so a failure between the first write and the last left the session
-  recorded as extracted *and* appended to the failures: it was sent to the
-  model, listed among the failed session ids, and shown as an ungrouped
-  candidate, all for the same session. Worse, the texts Quick Review checks
-  model output against were then missing for it, and the check fell back to
-  the raw evidence — deliberately kept unredacted for local provenance — so
-  for exactly those sessions the model's wording was validated against text
-  the model was never shown. The maps are written together now, after the whole
-  session succeeds, and the corpus is read by key so a gap is an error rather
-  than a silent fallback.
 - **`q` means back one level, on every screen except the main menu.** It used
   to jump straight to the main menu from wherever you were, which on a child
   screen skipped a level: pressing it in Quick Review discarded the whole draft
@@ -25,18 +13,6 @@ All notable changes to this project are documented in this file.
   screen returns to its own back screen — and on the main menu it still exits.
   The error screen keeps its explicit **Main menu** option, so the top is one
   Enter away rather than gone.
-- Escape clears an active session search rather than leaving the review.
-  Committing a search with Enter and then pressing Escape used to navigate
-  back, which is what `b` is for, leaving no way to drop the filter without
-  losing your place. Escape now clears it and keeps you where you are.
-- Excluding a repository no longer rescans the disk. The exclusion is applied
-  to the scan already in memory and the selection is pruned to match, so the
-  review comes back immediately instead of reading every session again to
-  produce a smaller version of what it already had.
-- The unreachable browse screen is gone. Review Activity has landed on the
-  selectable review screen since the activity flows were unified, so the
-  separate browse-only screen behind it had no way in — about 290 lines that
-  could still be maintained but never run.
 - One Quick Review generate extracts each selected session once, and Daily
   Standup reports a window the evidence budget could not carry. The guard that
   names an over-budget selection ran the whole extraction and redaction pass to
@@ -53,6 +29,30 @@ All notable changes to this project are documented in this file.
   Daily, whose window is fixed by its date and so has nothing to narrow, groups
   what fits and carries a warning naming how many sessions were left out and the
   payload size against the budget.
+- Escape clears an active session search rather than leaving the review.
+  Committing a search with Enter and then pressing Escape used to navigate
+  back, which is what `b` is for, leaving no way to drop the filter without
+  losing your place. Escape now clears it and keeps you where you are.
+- Excluding a repository no longer rescans the disk. The exclusion is applied
+  to the scan already in memory and the selection is pruned to match, so the
+  review comes back immediately instead of reading every session again to
+  produce a smaller version of what it already had.
+- The unreachable browse screen is gone. Review Activity has landed on the
+  selectable review screen since the activity flows were unified, so the
+  separate browse-only screen behind it had no way in — about 290 lines that
+  could still be maintained but never run.
+- A session that fails partway through evidence extraction is reported as a
+  failure and nothing else. The per-session work wrote its results one map at a
+  time, so a failure between the first write and the last left the session
+  recorded as extracted *and* appended to the failures: it was sent to the
+  model, listed among the failed session ids, and shown as an ungrouped
+  candidate, all for the same session. Worse, the texts Quick Review checks
+  model output against were then missing for it, and the check fell back to
+  the raw evidence — deliberately kept unredacted for local provenance — so
+  for exactly those sessions the model's wording was validated against text
+  the model was never shown. The maps are written together now, after the whole
+  session succeeds, and the corpus is read by key so a gap is an error rather
+  than a silent fallback.
 - The Quick Review evidence budget cannot be set below what one session needs.
   `report.quick_review_max_evidence_bytes` took `0` and negative numbers from
   both `config set` and the interactive settings row, and stored them.
