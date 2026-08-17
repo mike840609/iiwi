@@ -28,19 +28,22 @@ Iiwi 會讀取 OpenCode、Claude Code 與 Codex 留下的工作紀錄，找出�
 
 ## 快速開始
 
-需要 Python 3.11 以上與 `git`，再加上一個 harness：OpenCode（預設，需要 `opencode`
-執行檔），或 Claude Code / Codex（不需命令列工具，只要有可讀的逐字紀錄存放處
-`~/.claude/projects` 或 `~/.codex`）。
+需要 Python 3.11 以上與 `git`。Iiwi 可以讀取 OpenCode、Claude Code 或 Codex
+保存在本機的工作紀錄。預設使用 OpenCode；Claude Code 與 Codex 只要本機的 session
+資料夾可讀取即可。
+
+報告內容會由你本機安裝的 `opencode run` 協助整理。如果無法使用，Iiwi 也可以改用較簡單的
+session-based report。
 
 ```bash
 pipx install iiwi                 # 或：pip install iiwi
 
-iiwi doctor                       # harness 準備好了嗎？
+iiwi doctor                       # 檢查環境是否準備完成
 iiwi daily                        # 審閱昨天、今天與阻礙事項
-iiwi report --period last-week    # 產生報告
+iiwi report --period last-week    # 產生上週報告
 ```
 
-報告預設寫到 `reports/` 底下。加上 `--dry-run` 會把報告印到終端機，而不寫入檔案。
+報告預設寫到 `reports/`。加上 `--dry-run` 可以直接在終端機預覽，不會寫入檔案。
 
 ## 互動選單
 
@@ -66,9 +69,8 @@ github.com/mike840609/iiwi
 ↑↓ jk │ Enter Select │ 1-6 │ ? Help │ q Quit
 ```
 
-選擇 **Generate a report** 後會一次列出所有設定，不再逐題詢問：`↑↓` 移動，`←→` 改值，
-清單下方那行會說明游標所在的設定實際做什麼。按 `g` 產生報告，或按 `r` 先進入
-**Review sessions**，它會依每個 repository 在這段期間實際佔掉多少對話量排出長條：
+**Generate Report** 可以調整報告設定、確認 Iiwi 找到的 sessions，再產生報告。
+**Review Sessions** 會依 repository 整理工作，讓你快速保留或排除要放進回報的內容：
 
 ```text
 Review Sessions   6 / 6 selected │ 252 / 252 msgs
@@ -85,39 +87,37 @@ Select sessions to include in the report:
 ↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ e Exclude │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
 
-選擇 **History** 會列出工具產生過的所有報告，最新的在前。
-`↑↓` 移動，Enter 顯示該筆的完整輸出路徑。
+**Daily Standup**，或 `iiwi daily`，會開啟 Yesterday / Today / Blockers 的快速審閱；
+**History** 則會列出 Iiwi 已經產生過的報告。
 
-選擇 **Daily Standup**，或執行 `iiwi daily`，會從本地時區的昨天午夜開始掃描所有已啟用的
-harness，並開啟 Yesterday、Today、Blockers 三區的 Quick Review。Preview 與 Generate
-使用同一份已審閱 Markdown，檔名為 `daily-standup-YYYY-MM-DD.md`。來源警告、Today 建議與
-同日審閱狀態保留方式請見 [Daily Standup 指南](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md)。
-
-`Space` 切換整個 repository 或單一 session，`p` 預覽（已去敏的）逐字紀錄，`e` 把某個
-repository 排除在之後所有掃描之外。你的選取會依期間記住。
+真正寫出報告前，Quick Review 讓你保留、修改、排序、拆分或新增工作項目，確保最後的 Markdown
+就是你想分享的內容。完整快捷鍵、報告模式與失敗時的處理方式，請見
+[evidence-first Quick Review 指南](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md)。
+Daily Standup 的完整說明請見
+[Daily Standup 指南](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md)。
 
 ## 指令
 
 ```bash
-iiwi doctor                       # harness 準備好了嗎？
+iiwi doctor                       # 檢查環境是否準備完成
 iiwi daily                        # 審閱昨天、今天與阻礙事項
-iiwi scan --period last-week      # 預覽工作階段如何分組
-iiwi report --period last-week    # 產生報告
-iiwi history                      # 列出已產生過的報告
+iiwi scan --period last-week      # 預覽 Iiwi 找到的 sessions
+iiwi report --period last-week    # 產生上週報告
+iiwi history                      # 列出已產生的報告
 iiwi update                       # 檢查 PyPI 是否有新版
-iiwi run                          # 同樣的問題，改成逐題詢問
+iiwi run                          # 使用逐步引導模式
 ```
 
 | 參數 | 作用 |
 |---|---|
-| `--harness claude-code` / `--harness codex` | 改讀其他 harness 的工作階段，敘事內容仍由本機的 `opencode run` 撰寫 |
-| `--no-llm` | 產生決定性的結構化報告，不論是否安裝 OpenCode 都可使用 |
-| `--sanitize` | 使用 OpenCode 的強力遮蔽，但會刻意移除大部分工作 evidence |
-| `--dry-run` | 把報告印出來而不寫入檔案 |
-| `--json` | `scan`、`doctor`、`history`、`update` 的去敏機器可讀輸出（stdout 被導向時為預設） |
+| `--harness claude-code` / `--harness codex` | 改讀 Claude Code 或 Codex 的 sessions |
+| `--no-llm` | 不使用 OpenCode 撰寫敘事內容，改產生結構化報告 |
+| `--sanitize` | 使用更強的去敏，適合隱私優先於報告細節時 |
+| `--dry-run` | 印出報告，不寫入檔案 |
+| `--json` | 對支援的指令輸出去敏後的機器可讀格式 |
 
-`iiwi --help` 會列出所有指令；偏好被逐題詢問的話就用 `run`。在腳本中請直接呼叫子指令，
-因為沒有終端機可以作答時，選單會以狀態碼 3 結束，而不會去讀取 stdin。
+`iiwi --help` 會列出所有指令與選項。偏好逐步引導的話可用 `iiwi run`；腳本中則直接呼叫需要的
+子指令即可。
 
 ## 設定
 
@@ -135,10 +135,10 @@ iiwi config unset report.timezone                         # 回到預設值
 
 ## 隱私
 
-一切都在本機完成：從磁碟讀取工作階段、清掉常見機密字串，再把去敏後的 transcript 交給本機
-安裝的 `opencode run`。不需要 API key，唯一會用到網路的指令是 `update`。
+讀取 sessions、去敏與產生報告都在你的電腦上完成。Iiwi 會把去敏後的 session 內容交給本機安裝的
+`opencode run`，不需要 API key。`iiwi update` 會連線到 PyPI 檢查是否有新版。
 
-報告仍可能包含私人目標、檔名、指令與完整路徑，分享前請務必檢查。完整資料流向與目前限制
+報告仍可能包含私人目標、檔名、指令與完整工作路徑，因此分享前請先確認內容。完整資料流向與目前限制
 請見
 [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md)。
 
