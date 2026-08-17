@@ -383,6 +383,69 @@ def test_editing_the_timezone_row_to_a_known_zone_writes_it(config_file: Path) -
     }
 
 
+@pytest.mark.parametrize("typed", ["0", "-1"])
+def test_a_too_small_evidence_budget_is_not_written_and_shows_the_error(
+    config_file: Path, typed: str
+) -> None:
+    # cursor 0 -> 15 (report.quick_review_max_evidence_bytes), the last row
+    downs = [KeyPress(key=Key.DOWN)] * 15
+    console, stream = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            _open_settings(
+                [
+                    *downs,
+                    KeyPress(key=Key.ENTER),
+                    # The editor prefills the current "40000"; clear it before
+                    # typing, or the digits only extend the default.
+                    *([KeyPress(key=Key.BACKSPACE)] * 5),
+                    *[char(c) for c in typed],
+                    KeyPress(key=Key.ENTER),  # validation fails; editor stays open
+                    KeyPress(key=Key.ESCAPE),  # cancel the still-open editor
+                    char("q"),
+                    char("q"),
+                ]
+            )
+        ),
+        console=console,
+    )
+
+    assert config_store.stored_values(config_file) == {}
+    assert "invalid value for report.quick_review_max_evidence_bytes" in stream.getvalue()
+
+
+def test_editing_the_evidence_budget_row_to_the_smallest_budget_writes_it(
+    config_file: Path,
+) -> None:
+    # cursor 0 -> 15 (report.quick_review_max_evidence_bytes), the last row
+    downs = [KeyPress(key=Key.DOWN)] * 15
+    console, _ = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            _open_settings(
+                [
+                    *downs,
+                    KeyPress(key=Key.ENTER),
+                    *([KeyPress(key=Key.BACKSPACE)] * 5),
+                    *[char(c) for c in "1000"],
+                    KeyPress(key=Key.ENTER),
+                    char("q"),
+                    char("q"),
+                ]
+            )
+        ),
+        console=console,
+    )
+
+    assert config_store.stored_values(config_file) == {
+        "IIWI_REPORT__QUICK_REVIEW_MAX_EVIDENCE_BYTES": "1000"
+    }
+
+
 def test_environment_rows_are_locked(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("IIWI_REPORT__TIMEZONE", "UTC")
     downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)

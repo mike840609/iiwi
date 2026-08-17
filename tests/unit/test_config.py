@@ -259,3 +259,20 @@ def test_report_timezone_rejects_an_unknown_zone() -> None:
 @pytest.mark.parametrize("timezone", ["UTC", "America/New_York", "Asia/Taipei"])
 def test_report_timezone_accepts_known_zones(timezone: str) -> None:
     assert ReportSettings(timezone=timezone).timezone == timezone
+
+
+@pytest.mark.parametrize("value", [0, -1, -40000, 999])
+def test_quick_review_evidence_budget_rejects_values_under_one_session(
+    value: int,
+) -> None:
+    with pytest.raises(ValidationError, match="greater than or equal to 1000"):
+        ReportSettings(quick_review_max_evidence_bytes=value)
+
+
+@pytest.mark.parametrize("value", [1000, 12000, 40000])
+def test_quick_review_evidence_budget_accepts_a_budget_one_session_fits_in(
+    value: int,
+) -> None:
+    settings = ReportSettings(quick_review_max_evidence_bytes=value)
+
+    assert settings.quick_review_max_evidence_bytes == value
