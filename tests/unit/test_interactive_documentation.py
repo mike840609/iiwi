@@ -11,7 +11,7 @@ def test_readmes_show_key_driven_bare_command_menu() -> None:
         assert "████" in text
         assert "History" in text
         assert "Daily Standup" in text
-        assert "Review sessions" in text
+        assert "review sessions" in text.casefold()
 
 
 def test_cli_reference_documents_repository_and_session_selection() -> None:
@@ -74,4 +74,6 @@ def test_readme_distinguishes_transcript_reading_from_quick_review_synthesis() -
     readme = Path("README.md").read_text(encoding="utf-8")
 
     assert "Claude Code / Codex (no CLI" not in readme
-    assert "Quick Review outcome synthesis still uses your local `opencode run`" in readme
+    assert "Claude Code" in readme
+    assert "Codex" in readme
+    assert "Report drafting uses your locally installed `opencode run`" in readme
