@@ -37,6 +37,22 @@ All notable changes to this project are documented in this file.
   selectable review screen since the activity flows were unified, so the
   separate browse-only screen behind it had no way in — about 290 lines that
   could still be maintained but never run.
+- One Quick Review generate extracts each selected session once, and Daily
+  Standup reports a window the evidence budget could not carry. The guard that
+  names an over-budget selection ran the whole extraction and redaction pass to
+  measure it and then threw the result away, so a ten-session selection cost
+  twenty `extract_evidence` runs and twenty recursive redactions of full session
+  evidence to group ten sessions. Daily called the same synthesis from the other
+  side and measured nothing at all: a wide window silently dropped everything
+  past the budget into ungrouped candidates, and a single session larger than
+  the whole budget went to the model with nothing said. The budget is now
+  decided inside synthesis, on the extraction pass it was always going to
+  run — one pass per generate, and both entry points covered without a separate
+  probe to remember. Quick Review refuses an over-budget selection as before,
+  with the same counts and bytes on screen and `G` to group the newest that fit;
+  Daily, whose window is fixed by its date and so has nothing to narrow, groups
+  what fits and carries a warning naming how many sessions were left out and the
+  payload size against the budget.
 - The Quick Review evidence budget cannot be set below what one session needs.
   `report.quick_review_max_evidence_bytes` took `0` and negative numbers from
   both `config set` and the interactive settings row, and stored them.

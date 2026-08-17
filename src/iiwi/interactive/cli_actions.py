@@ -49,11 +49,7 @@ from iiwi.services.daily_report import (
 )
 from iiwi.services.daily_scan import DailyScanCoordinator, DailyWindow
 from iiwi.services.daily_workflow import DailyWorkflowService
-from iiwi.services.outcomes import (
-    OutcomeSynthesisService,
-    SynthesisBudgetEstimate,
-    measure_synthesis_budget,
-)
+from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.scan import ScanResult
 from iiwi.summarizers.opencode_run import OpenCodeRunError, OpenCodeRunner
 
@@ -198,20 +194,12 @@ def _generate(
     )
 
 
-def _measure_synthesis_fit(scan: ScanResult) -> SynthesisBudgetEstimate:
-    """How much of the selection the Quick Review budget can actually send."""
+def _synthesize(draft: ReportDraft, scan: ScanResult, force: bool) -> OutcomeReviewDraft:
+    """Synthesize the already-filtered review selection into an editable draft.
 
-    from iiwi import cli
-
-    settings = cli._load_settings()
-    return measure_synthesis_budget(
-        scan,
-        max_bytes=settings.report.quick_review_max_evidence_bytes,
-    )
-
-
-def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
-    """Synthesize the already-filtered review selection into an editable draft."""
+    `force` sends the newest sessions that fit the evidence budget instead of
+    refusing an over-budget selection; synthesis measures the budget itself.
+    """
 
     from iiwi import cli
 
@@ -224,9 +212,10 @@ def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
     )
     reporter = ConsoleReporter()
     try:
-        # Synthesis is one `opencode run` that can take minutes, and the TUI holds
-        # the last painted frame until it returns; without this the app looks hung
-        # right after "Exporting sessions".
+        # Synthesis extracts and redacts every selected session and then runs one
+        # `opencode run` that can take minutes, and the TUI holds the last painted
+        # frame until it returns; without this the app looks hung right after
+        # "Exporting sessions".
         # ponytail: one animated status line, no percentage — the work is a single
         # subprocess, so there is nothing finer to report.
         with reporter.progress() as progress:
@@ -234,7 +223,7 @@ def _synthesize(draft: ReportDraft, scan: ScanResult) -> OutcomeReviewDraft:
             result = OutcomeSynthesisService(
                 runner,
                 max_evidence_bytes=settings.report.quick_review_max_evidence_bytes,
-            ).synthesize(scan)
+            ).synthesize(scan, force=force)
     except (OpenCodeRunError, OSError) as exc:
         raise OutcomeSynthesisError(str(exc)) from exc
     arguments: dict[str, object] = {
@@ -656,7 +645,6 @@ def build_interactive_actions() -> InteractiveActions:
         restore_selection=_restore_selection,
         save_selection=_save_selection,
         exclude_repository=_exclude_repository,
-        measure_synthesis_fit=_measure_synthesis_fit,
         start_daily=_start_daily,
         continue_daily_empty=_continue_daily_empty,
         persist_daily=_persist_daily,

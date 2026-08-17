@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from rich.console import Console
 
-from iiwi.errors import ConfigurationError
+from iiwi.errors import ConfigurationError, OutcomeSynthesisError
 from iiwi.interactive import controller
 from iiwi.interactive.controller import (
     InteractiveActions,
@@ -35,7 +35,10 @@ from iiwi.models.repository import (
 )
 from iiwi.models.session import ActivityType, AgentSession, SessionActivity
 from iiwi.models.time_range import DateRange
-from iiwi.services.outcomes import SynthesisBudgetEstimate
+from iiwi.services.outcomes import (
+    SynthesisBudgetEstimate,
+    SynthesisBudgetExceededError,
+)
 from iiwi.services.scan import ScanResult
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -145,7 +148,9 @@ class ActionLog:
 def _actions(draft: ReportDraft, log: ActionLog) -> InteractiveActions:
     scan = _scan()
 
-    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+    def synthesize(
+        _draft: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
         log.synthesis_scans.append(selected_scan)
         return log.review
 
@@ -272,7 +277,9 @@ def test_reentering_quick_review_with_unchanged_selection_preserves_existing_dra
     syntheses = iter([original, replacement])
     log = ActionLog(original)
 
-    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+    def synthesize(
+        _draft: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
         log.synthesis_scans.append(selected_scan)
         return next(syntheses)
 
@@ -323,7 +330,9 @@ def test_report_type_default_change_preserves_review_when_reentering(
     syntheses = iter([original, replacement])
     log = ActionLog(original)
 
-    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+    def synthesize(
+        _draft: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
         log.synthesis_scans.append(selected_scan)
         return next(syntheses)
 
@@ -385,7 +394,9 @@ def test_changing_detail_in_setup_regenerates_quick_review_draft(
     syntheses = iter([original, replacement])
     log = ActionLog(original)
 
-    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+    def synthesize(
+        _draft: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
         log.synthesis_scans.append(selected_scan)
         return next(syntheses)
 
@@ -769,7 +780,9 @@ def test_narrative_off_writes_the_session_report_without_synthesizing(
             session_count=selected_scan.loaded_session_count,
         )
 
-    def synthesize(_draft: ReportDraft, selected_scan: ScanResult) -> OutcomeReviewDraft:
+    def synthesize(
+        _draft: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
         pytest.fail("Narrative off must not spend a synthesis run")
 
     actions = replace(_actions(draft, log), generate=generate, synthesize=synthesize)
@@ -808,22 +821,41 @@ def test_narrative_on_still_routes_generate_into_quick_review(
     assert Screen.OUTCOME_REVIEW in screens
 
 
+def _over_budget() -> SynthesisBudgetExceededError:
+    # Holding three of five back means the payload ran past the budget:
+    # over_limit reads the bytes, so the two have to agree.
+    return SynthesisBudgetExceededError(
+        SynthesisBudgetEstimate(
+            selected_count=5,
+            fit_count=2,
+            bytes_used=52000,
+            max_bytes=40000,
+        )
+    )
+
+
+_OVER_BUDGET_GUIDANCE = (
+    "5 selected; synthesis handles about 2. "
+    "Narrow the period, deselect what does not belong in the update, or "
+    "press G to group the newest that fit and leave the rest as ungrouped "
+    "candidates. (52000 / 40000 bytes)"
+)
+
+
 def test_over_budget_selection_blocks_synthesis_with_guidance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     draft = ReportDraft(harness="opencode", period=_period())
     log = ActionLog(_review())
-    actions = replace(
-        _actions(draft, log),
-        # Holding three of five back means the payload ran past the budget:
-        # over_limit reads the bytes, so the two have to agree.
-        measure_synthesis_fit=lambda scan: SynthesisBudgetEstimate(
-            selected_count=5,
-            fit_count=2,
-            bytes_used=52000,
-            max_bytes=40000,
-        ),
-    )
+    forced: list[bool] = []
+
+    def synthesize(
+        _draft: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
+        forced.append(force)
+        raise _over_budget()
+
+    actions = replace(_actions(draft, log), synthesize=synthesize)
     frames: list[tuple[Screen, str | None]] = []
     monkeypatch.setattr(
         controller,
@@ -837,14 +869,10 @@ def test_over_budget_selection_blocks_synthesis_with_guidance(
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
 
-    assert log.synthesis_scans == []
-    assert (
-        Screen.SESSION_REVIEW,
-        "5 selected; synthesis handles about 2. "
-        "Narrow the period, deselect what does not belong in the update, or "
-        "press G to group the newest that fit and leave the rest as ungrouped "
-        "candidates. (52000 / 40000 bytes)",
-    ) in frames
+    # One consultation of the synthesis layer, which is also the one that
+    # measured: nothing extracts the selection a second time.
+    assert forced == [False]
+    assert (Screen.SESSION_REVIEW, _OVER_BUDGET_GUIDANCE) in frames
     assert Screen.OUTCOME_REVIEW not in [screen for screen, _ in frames]
 
 
@@ -855,18 +883,18 @@ def test_capital_g_groups_an_over_budget_selection_anyway(
 
     draft = ReportDraft(harness="opencode", period=_period())
     log = ActionLog(_review())
-    measured: list[ScanResult] = []
+    forced: list[bool] = []
 
-    def measure(scan: ScanResult) -> SynthesisBudgetEstimate:
-        measured.append(scan)
-        return SynthesisBudgetEstimate(
-            selected_count=5,
-            fit_count=2,
-            bytes_used=52000,
-            max_bytes=40000,
-        )
+    def synthesize(
+        _draft: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
+        forced.append(force)
+        if not force:
+            raise _over_budget()
+        log.synthesis_scans.append(selected_scan)
+        return log.review
 
-    actions = replace(_actions(draft, log), measure_synthesis_fit=measure)
+    actions = replace(_actions(draft, log), synthesize=synthesize)
     screens: list[Screen] = []
     monkeypatch.setattr(
         controller,
@@ -882,63 +910,59 @@ def test_capital_g_groups_an_over_budget_selection_anyway(
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
 
+    # The refusal, then the run that produced the review: forcing pays for no
+    # measurement it then ignores.
+    assert forced == [False, True]
     assert len(log.synthesis_scans) == 1
-    assert len(measured) == 1
     assert Screen.OUTCOME_REVIEW in screens
 
 
-def test_within_budget_selection_still_synthesizes(
+def test_an_over_budget_refusal_clears_the_error_it_returns_from(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Every other exit from generation clears it; a stale error would outlive it."""
+
     draft = ReportDraft(harness="opencode", period=_period())
     log = ActionLog(_review())
-    actions = replace(
-        _actions(draft, log),
-        measure_synthesis_fit=lambda scan: SynthesisBudgetEstimate(
-            selected_count=1,
-            fit_count=1,
-            bytes_used=100,
-            max_bytes=40000,
-        ),
-    )
-    screens: list[Screen] = []
+    attempts = 0
+
+    def synthesize(
+        _draft: ReportDraft, selected_scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OutcomeSynthesisError("temporary synthesis failure")
+        raise _over_budget()
+
+    actions = replace(_actions(draft, log), synthesize=synthesize)
+    frames: list[tuple[Screen, bool]] = []
     monkeypatch.setattr(
         controller,
         "_render_screen",
-        lambda state, console: screens.append(state.screen),
+        lambda state, console: frames.append((state.screen, state.error is None)),
     )
 
     run_interactive(
         actions=actions,
         input_source=ScriptedInput(
-            [*_open_review_keys(), char("q"), char("q"), char("q"), char("q")]
+            [*_open_review_keys(), KeyPress(key=Key.ENTER), char("q"), char("q"), char("q")]
         ),
         console=Console(file=StringIO(), color_system=None, force_terminal=False),
     )
 
-    assert len(log.synthesis_scans) == 1
-    assert Screen.OUTCOME_REVIEW in screens
+    assert attempts == 2
+    assert (Screen.RECOVERABLE_ERROR, False) in frames
+    assert (Screen.SESSION_REVIEW, True) in frames
 
 
-def test_returning_to_a_cached_review_does_not_measure_the_budget_again(
+def test_returning_to_a_cached_review_does_not_synthesize_again(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The cached review already cleared the guard; measuring re-extracts everything."""
+    """The cached review already cleared the guard; synthesizing re-extracts everything."""
 
     draft = ReportDraft(harness="opencode", period=_period())
     log = ActionLog(_review())
-    measured: list[ScanResult] = []
-
-    def measure(scan: ScanResult) -> SynthesisBudgetEstimate:
-        measured.append(scan)
-        return SynthesisBudgetEstimate(
-            selected_count=1,
-            fit_count=1,
-            bytes_used=100,
-            max_bytes=40000,
-        )
-
-    actions = replace(_actions(draft, log), measure_synthesis_fit=measure)
     screens: list[Screen] = []
     monkeypatch.setattr(
         controller,
@@ -947,7 +971,7 @@ def test_returning_to_a_cached_review_does_not_measure_the_budget_again(
     )
 
     run_interactive(
-        actions=actions,
+        actions=_actions(draft, log),
         input_source=ScriptedInput(
             [*_open_review_keys(), char("b"), char("g"), char("q"), char("q"), char("q"), char("q")]
         ),
@@ -955,7 +979,6 @@ def test_returning_to_a_cached_review_does_not_measure_the_budget_again(
     )
 
     assert len(log.synthesis_scans) == 1
-    assert len(measured) == 1
     assert Screen.OUTCOME_REVIEW in screens
 
 

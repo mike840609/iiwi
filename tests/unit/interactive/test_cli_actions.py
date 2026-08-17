@@ -39,6 +39,7 @@ from iiwi.models.repository import (
 from iiwi.models.session import AgentSession
 from iiwi.models.time_range import DateRange
 from iiwi.progress import ProgressStage
+from iiwi.services.outcomes import SynthesisBudgetExceededError
 from iiwi.services.scan import ScanResult
 from iiwi.summarizers.opencode_run import OpenCodeRunError
 from tests.progress import RecordingProgressReporter
@@ -61,6 +62,36 @@ def _scan() -> ScanResult:
         failed_session_count=0,
         resolved_sessions=[],
         sessions_by_repository={},
+    )
+
+
+def _scan_with(*session_ids: str) -> ScanResult:
+    repository = RepositoryIdentity(
+        repository_id="repo-a",
+        display_name="repo-a",
+        identity_type=RepositoryIdentityType.PATH_FALLBACK,
+        working_directory="/tmp/repo-a",
+        resolution_method="test",
+    )
+    resolved = [
+        ResolvedSession(
+            session=AgentSession(
+                harness="codex",
+                session_id=session_id,
+                title=f"Session {session_id}",
+                working_directory="/tmp/repo-a",
+            ),
+            repository=repository,
+        )
+        for session_id in session_ids
+    ]
+    return ScanResult(
+        period=_period(),
+        candidate_session_count=len(resolved),
+        loaded_session_count=len(resolved),
+        failed_session_count=0,
+        resolved_sessions=resolved,
+        sessions_by_repository={"repo-a": resolved},
     )
 
 
@@ -160,6 +191,7 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
     opencode_arguments: list[dict[str, object]] = []
     synthesized_scans: list[ScanResult] = []
     evidence_budgets: list[int] = []
+    forced: list[bool] = []
 
     class FakeCommandRunner:
         def __init__(self, *, timeout_seconds: float) -> None:
@@ -174,8 +206,9 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
             assert isinstance(runner, FakeOpenCodeRunner)
             evidence_budgets.append(max_evidence_bytes)
 
-        def synthesize(self, received: ScanResult) -> SimpleNamespace:
+        def synthesize(self, received: ScanResult, *, force: bool) -> SimpleNamespace:
             synthesized_scans.append(received)
+            forced.append(force)
             return SimpleNamespace(
                 outcomes=_review().outcomes,
                 warnings=["3 older session(s) did not fit"],
@@ -196,7 +229,7 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
         report_type=ReportType.MANAGER,
     )
 
-    review = cli_actions._synthesize(draft, scan)
+    review = cli_actions._synthesize(draft, scan, False)
 
     assert runner_timeouts == [321.0]
     assert len(opencode_arguments) == 1
@@ -205,6 +238,7 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
     assert synthesized_scans == [scan]
     assert synthesized_scans[0] is scan
     assert evidence_budgets == [4321]
+    assert forced == [False]
     assert review.warnings == ["3 older session(s) did not fit"]
     assert review.report_type is ReportType.MANAGER
     assert review.detail is DetailLevel.BRIEF
@@ -240,7 +274,8 @@ def test_synthesize_reports_progress_while_the_model_call_runs(
         def __init__(self, runner: object, *, max_evidence_bytes: int) -> None:
             pass
 
-        def synthesize(self, received: ScanResult) -> SimpleNamespace:
+        def synthesize(self, received: ScanResult, *, force: bool) -> SimpleNamespace:
+            del received, force
             stages_during_call.extend(recorder.events)
             return SimpleNamespace(outcomes=_review().outcomes, warnings=[])
 
@@ -255,7 +290,7 @@ def test_synthesize_reports_progress_while_the_model_call_runs(
     )
     draft = ReportDraft(harness="codex", period=_period(), report_type=ReportType.MANAGER)
 
-    cli_actions._synthesize(draft, _scan())
+    cli_actions._synthesize(draft, _scan(), False)
 
     assert stages_during_call == [
         ("start", ProgressStage.SYNTHESIZING_OUTCOMES, None)
@@ -320,6 +355,7 @@ def test_synthesize_translates_real_opencode_failure_for_controller_recovery(
         cli_actions._synthesize(
             ReportDraft(harness="codex", period=_period()),
             scan,
+            False,
         )
 
 
@@ -343,8 +379,8 @@ def test_synthesize_translates_temp_io_failure_for_controller_recovery(
         def __init__(self, runner: object, *, max_evidence_bytes: int) -> None:
             del runner, max_evidence_bytes
 
-        def synthesize(self, scan: ScanResult) -> object:
-            del scan
+        def synthesize(self, scan: ScanResult, *, force: bool) -> object:
+            del scan, force
             raise OSError("cannot write synthesis transcript")
 
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
@@ -362,6 +398,7 @@ def test_synthesize_translates_temp_io_failure_for_controller_recovery(
         cli_actions._synthesize(
             ReportDraft(harness="codex", period=_period()),
             _scan(),
+            False,
         )
 
 
@@ -1028,23 +1065,47 @@ def test_build_interactive_actions_wires_all_daily_callbacks() -> None:
     assert actions.add_daily_statement is cli_actions._add_daily_statement
 
 
-def test_build_interactive_actions_wires_measure_synthesis_fit() -> None:
-    actions = cli_actions.build_interactive_actions()
-
-    assert actions.measure_synthesis_fit is cli_actions._measure_synthesis_fit
-
-
-def test_measure_synthesis_fit_uses_the_configured_evidence_budget(
+def test_synthesize_guards_the_configured_evidence_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A real selection, so the trim and the byte count have something to say."""
+
     settings = SimpleNamespace(
-        report=SimpleNamespace(quick_review_max_evidence_bytes=4321)
+        harnesses=SimpleNamespace(
+            opencode=SimpleNamespace(
+                cli=SimpleNamespace(
+                    executable="opencode",
+                    model=None,
+                    run_timeout_seconds=1.0,
+                )
+            )
+        ),
+        report=SimpleNamespace(quick_review_max_evidence_bytes=137),
     )
+    runs: list[str] = []
+
+    class RecordingOpenCodeRunner:
+        def run(self, *, transcript: str, prompt: str, title: str) -> str:
+            del prompt, title
+            runs.append(transcript)
+            return "{}"
+
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        cli_actions,
+        "OpenCodeRunner",
+        lambda **kwargs: RecordingOpenCodeRunner(),
+    )
 
-    estimate = cli_actions._measure_synthesis_fit(_scan())
+    with pytest.raises(SynthesisBudgetExceededError) as error:
+        cli_actions._synthesize(
+            ReportDraft(harness="codex", period=_period()),
+            _scan_with("ses-a", "ses-b"),
+            False,
+        )
 
-    assert estimate.max_bytes == 4321
-    assert estimate.selected_count == 0
-    assert estimate.fit_count == 0
-    assert estimate.over_limit is False
+    assert error.value.estimate.max_bytes == 137
+    assert error.value.estimate.selected_count == 2
+    assert error.value.estimate.fit_count == 1
+    assert error.value.estimate.bytes_used > 137
+    assert runs == []
