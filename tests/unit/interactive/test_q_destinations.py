@@ -148,7 +148,7 @@ def _actions() -> InteractiveActions:
         choose_period=lambda current: ("Last 7 days", _period()),
         scan=lambda draft: _scan(),
         generate=lambda draft, scan, force: _result("reports/worklog.md"),
-        synthesize=lambda draft, scan: OutcomeReviewDraft(
+        synthesize=lambda draft, scan, force: OutcomeReviewDraft(
             outcomes=_outcomes(), report_type=draft.report_type
         ),
         generate_reviewed=lambda draft, scan, review, force: _result("reports/worklog.md"),
