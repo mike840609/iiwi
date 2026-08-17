@@ -518,6 +518,13 @@ def test_review_escape_clears_a_committed_search_and_stays_on_review() -> None:
 
 
 def _history_entry(output_path: str) -> HistoryEntry:
+    """One recorded report.
+
+    `append_history` resolves the path against the current directory, so tests
+    that assert on the rendered path pass an absolute one; a relative path
+    would let the checkout's depth decide whether the row fits the console.
+    """
+
     return HistoryEntry(
         generated_at=datetime(2026, 8, 12, 9, 30, tzinfo=TZ),
         harness="opencode",
@@ -553,7 +560,7 @@ def test_history_enter_shows_the_recorded_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
-    append_history(_history_entry("reports/worklog.md"))
+    append_history(_history_entry("/history-fixture/reports/worklog.md"))
     console = _console()
 
     run_interactive(
@@ -566,15 +573,16 @@ def test_history_enter_shows_the_recorded_path(
 
     text = console.file.getvalue()
     assert "Report path" in text
-    assert "reports/worklog.md" in text
+    # Too long for a list row, so only the path screen can show it in full.
+    assert "/history-fixture/reports/worklog.md" in text
 
 
 def test_history_enter_shows_the_cursor_row_not_the_first_row(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
-    append_history(_history_entry("reports/first.md"))
-    append_history(_history_entry("reports/second.md"))
+    append_history(_history_entry("/history-fixture/reports/first.md"))
+    append_history(_history_entry("/history-fixture/reports/second.md"))
     console = _console()
 
     run_interactive(
@@ -598,8 +606,8 @@ def test_history_enter_shows_the_cursor_row_not_the_first_row(
     # first: index 0 is second.md, cursor moves to index 1 = first.md. The
     # path screen must show the cursor's row.
     first_title = text.index("Report path")
-    assert text.rindex("reports/first.md") > first_title
-    assert "reports/second.md" not in text
+    assert text.rindex("/history-fixture/reports/first.md") > first_title
+    assert "/history-fixture/reports/second.md" not in text
 
 
 def test_history_g_and_G_jump_follow_the_viewport(
@@ -607,7 +615,7 @@ def test_history_g_and_G_jump_follow_the_viewport(
 ) -> None:
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
     for index in range(20):
-        append_history(_history_entry(f"reports/{index}.md"))
+        append_history(_history_entry(f"/history-fixture/reports/{index}.md"))
     console = _console()
 
     run_interactive(
@@ -623,8 +631,9 @@ def test_history_g_and_G_jump_follow_the_viewport(
     # 20 entries exceed the test console's ~17-row viewport, so G clamps the
     # offset; Enter on the bottom row shows the oldest entry, then g jumps
     # back to the top and Enter shows the newest.
-    assert text.rindex("reports/0.md") > text.index("Report path")
-    assert text.rindex("reports/19.md") > text.rindex("reports/0.md")
+    oldest = text.rindex("/history-fixture/reports/0.md")
+    assert oldest > text.index("Report path")
+    assert text.rindex("/history-fixture/reports/19.md") > oldest
 
 
 def test_history_empty_state_ignores_enter(
