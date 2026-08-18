@@ -43,6 +43,7 @@ from iiwi.services import outcomes as outcome_service
 from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.report import ReportService
 from iiwi.services.scan import ScanResult, ScanService
+from iiwi.summarizers.narrator import NarrativeRunError
 from iiwi.summarizers.opencode_run import OpenCodeRunner
 from iiwi.summarizers.rule_based import RuleBasedSummarizer
 
@@ -282,6 +283,46 @@ def test_direct_daily_initial_screen_refreshes_before_the_first_frame(tmp_path: 
 
     assert starts == [None]
     assert "Daily Standup" in stream.getvalue()
+
+
+def test_direct_daily_initial_screen_recovers_from_narrative_run_error(
+    tmp_path: Path,
+) -> None:
+    """`iiwi daily` calls run_interactive with initial_screen=DAILY_REVIEW,
+
+    which invokes _begin_daily_review before the main loop's try/except
+    exists, and cli.daily() itself catches only ConfigurationError. A
+    NarrativeRunError raised while resolving the daily narrator (Codex
+    available but no `codex` executable on PATH, or narrator.executable set
+    without narrator.provider) must degrade to the recoverable-error screen
+    instead of escaping as a raw traceback.
+    """
+
+    actions = _quick_review_actions(
+        draft=ReportDraft(harness="opencode", period=_period()),
+        scan=_scan(),
+        payload={"outcomes": []},
+        output_path=tmp_path / "unused.md",
+        review_calls=[],
+    )
+
+    def start(previous: DailyStandupDraft | None) -> DailyStandupDraft:
+        raise NarrativeRunError(
+            "no narration provider is installed; looked for codex. "
+            "Set narrator.provider or narrator.executable."
+        )
+
+    stream = StringIO()
+    run_interactive(
+        actions=replace(actions, start_daily=start),
+        input_source=ScriptedInput([char("q"), char("q")]),
+        console=Console(file=stream, color_system=None, force_terminal=False),
+        initial_screen=Screen.DAILY_REVIEW,
+    )
+
+    output = stream.getvalue()
+    assert "Could not start Daily Standup" in output
+    assert "no narration provider is installed" in output
 
 
 def test_bare_command_runs_generate_select_result_main_quit_flow(
