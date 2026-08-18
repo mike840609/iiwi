@@ -359,7 +359,10 @@ def _doctor(harness_name: str) -> list[str]:
     runner = CommandRunner(
         timeout_seconds=settings.harnesses.opencode.cli.timeout_seconds
     )
-    result = cli.run_doctor(settings, runner=runner, harness=harness.value)
+    narrator = cli._describe_narrator(settings, harness)
+    result = cli.run_doctor(
+        settings, runner=runner, harness=harness.value, narrator=narrator
+    )
     return [
         f"{'OK' if check.ok else 'ERROR'} {check.name}: {check.detail}"
         for check in result.checks

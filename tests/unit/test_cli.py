@@ -530,7 +530,7 @@ def test_doctor_json_flag_emits_machine_readable_output(monkeypatch) -> None:
     monkeypatch.setattr(
         cli,
         "run_doctor",
-        lambda settings, runner, harness: DoctorResult(
+        lambda settings, runner, harness, narrator: DoctorResult(
             checks=[DoctorCheck(name="git", ok=True, detail="git version 2.47.0")]
         ),
     )

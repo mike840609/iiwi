@@ -51,7 +51,7 @@ from iiwi.renderers.markdown import DetailLevel, MarkdownRenderer
 from iiwi.renderers.usage import render_activity_usage
 from iiwi.repositories.resolver import RepositoryResolver
 from iiwi.security.redactor import redact_text
-from iiwi.services.doctor import run_doctor
+from iiwi.services.doctor import NarratorDescription, run_doctor
 from iiwi.services.report import ReportService
 from iiwi.services.scan import ScanResult, ScanService
 from iiwi.summarizers.narrator import NarrativeRunError, NarrativeRunner
@@ -359,6 +359,24 @@ def _resolve_executable(settings: AppSettings, provider: str) -> str:
     return provider
 
 
+def _describe_narrator(settings: AppSettings, harness: Harness) -> NarratorDescription:
+    """Name the resolved narrator for `doctor`, and where that choice came from.
+
+    Sharing `_resolve_provider`/`_resolve_executable` with the narration path
+    is what makes "scan Codex, narrate with Claude" visible: doctor reports
+    exactly what a report run would pick.
+    """
+
+    provider = _resolve_provider(settings, harness)
+    configured = settings.narrator.provider.strip()
+    source = "narrator.provider" if configured else f"--harness {harness.value}"
+    return NarratorDescription(
+        provider=provider,
+        executable=_resolve_executable(settings, provider),
+        source=source,
+    )
+
+
 def _resolve_model(settings: AppSettings, provider: str) -> str:
     if settings.narrator.model:
         return settings.narrator.model
@@ -585,7 +603,10 @@ def doctor(
         runner = CommandRunner(
             timeout_seconds=settings.harnesses.opencode.cli.timeout_seconds
         )
-        result = run_doctor(settings, runner=runner, harness=harness.value)
+        narrator = _describe_narrator(settings, harness)
+        result = run_doctor(
+            settings, runner=runner, harness=harness.value, narrator=narrator
+        )
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)
         return
