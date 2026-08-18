@@ -460,7 +460,7 @@ def test_narrative_mode_feeds_a_grouped_transcript(tmp_path: Path) -> None:
     assert "# Iiwi sessions grouped by repository" in transcript
     assert "## Project:" in transcript
     assert "Subagent sessions included: yes" in transcript
-    assert "OpenCode" in runner.calls[0]["prompt"]
+    assert "session transcript" in runner.calls[0]["prompt"]
 
 
 def test_narrative_failure_falls_back_to_the_structured_report(
