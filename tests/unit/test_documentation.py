@@ -241,7 +241,24 @@ def test_privacy_doc_warns_about_raw_export_and_dry_run() -> None:
 
     assert "raw" in privacy
     assert "--dry-run" in privacy
-    assert "opencode run" in privacy
+    assert "narration cli" in privacy
+
+
+def test_privacy_doc_does_not_claim_opencode_run_narrates_unconditionally() -> None:
+    """Narration is provider-dependent; pin that this doc stopped overclaiming.
+
+    Every prior mention of `opencode run` as *the* narrator was made false by
+    provider resolution (opencode/claude/codex) landing underneath report
+    narration. The substantive guarantees — local subprocess, no API key,
+    redaction before invocation, `--no-llm` skips it — must survive; only the
+    hardcoded tool name should be gone.
+    """
+
+    privacy = Path("docs/privacy.md").read_text(encoding="utf-8")
+
+    assert "opencode run" not in privacy
+    assert "narration CLI" in privacy
+    assert "no API key is read" in privacy
 
 
 def test_readmes_document_the_interactive_config_commands() -> None:

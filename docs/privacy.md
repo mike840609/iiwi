@@ -5,7 +5,7 @@ document defines what the MVP protects and what remains the operator's responsib
 
 ## Data flow
 
-With `--harness opencode` (the default):
+With `--harness opencode`:
 
 1. Iiwi queries candidate session metadata with `opencode db`.
 2. It requests each transcript with `opencode export <session-id> --sanitize`.
@@ -44,7 +44,7 @@ All three harnesses then continue:
    holds model, token, and tool totals rather than session content, and it is redacted
    before it reaches the report.
 6. The redacted evidence is rendered to the structured report, or grouped into a
-   redacted raw transcript for the locally installed `opencode run` to narrate.
+   redacted raw transcript for the locally installed narration CLI to narrate.
 7. Markdown is written with an atomic replacement and owner-only `0600` permissions on
    POSIX systems.
 
@@ -67,7 +67,7 @@ The redactor covers common patterns including:
 
 Redaction is applied recursively to evidence metadata, to OpenCode, Claude Code, and Codex
 usage output, before rendering, before verbose warnings are written to reports, and before
-the narrative `opencode run` invocation. For Claude Code and Codex, redaction runs after the
+the narration CLI invocation. For Claude Code and Codex, redaction runs after the
 mapper minimization described below, on the fields that minimization leaves behind.
 
 Pattern-based redaction is not a proof that every secret has been removed. New credential
@@ -106,8 +106,8 @@ fall outside that set. For those, the mapper falls back to serializing the tool'
 input object to JSON and truncating it to 200 characters, so what the mapper keeps is not
 one command or path but as much of the full call as fits in that budget.
 
-Everything else is dropped at that boundary and never reaches a report or the narrative
-`opencode run` transcript:
+Everything else is dropped at that boundary and never reaches a report or the narration
+CLI's transcript:
 tool `stdout` and `stderr`, model thinking blocks, hook output, and system reminders. The
 only trace a tool result leaves behind is two derived booleans — whether its `stderr` was
 empty, and whether the call was interrupted. That is also why a Claude Code report never
@@ -150,8 +150,8 @@ it carries — and the input of every `exec` call. Only the changed file's path 
 tool's name survive for those two record types. A rename's destination path lives in
 `move_path`, inside that same discarded value, so it never reaches Key Files either.
 
-Everything else is dropped at that boundary and never reaches a report or the narrative
-`opencode run` transcript:
+Everything else is dropped at that boundary and never reaches a report or the narration
+CLI's transcript:
 tool `stdout` and `stderr`, and Codex's free-form status text. Codex records exit codes
 only inside that free-form text, in several formats, so Iiwi does not parse it —
 the mapper stores no `exit_code` and no `stderr_empty` for a Codex command, which is why no
@@ -182,7 +182,7 @@ harnesses: **every evidence item's text is capped at 300 characters**
 (`EVIDENCE_TEXT_MAX_LENGTH` in `extraction/pipeline.py`), with a trailing `…` marking the
 cut so a reader can tell that text was removed. 300 characters identify any real command
 while refusing to carry a file, a diff, or a write-up. Nothing longer than that reaches
-the rendered Markdown, the report's provenance lists, or the narrative `opencode run`
+the rendered Markdown, the report's provenance lists, or the narration CLI
 invocation.
 
 Redaction cannot substitute for this cap, which is why the cap exists. A pasted design
@@ -197,7 +197,8 @@ such a call contributes no "Key File" entry rather than an entry made of file co
 
 ## Narrative report data
 
-The default report invokes the locally installed `opencode run` subprocess. The
+The report invokes a local narration CLI subprocess — `opencode`, `claude`, or
+`codex`, resolved as described under [Narrator](configuration.md#narrator). The
 payload is a grouped, redacted raw transcript plus a summarization prompt. It
 contains session content that the structured evidence pipeline also sees: session
 titles and absolute working directories, goals, commands, and filenames. They are
@@ -207,7 +208,7 @@ still names the operator and often a client or employer.
 
 The transcript is a temporary file that is removed after the invocation, and the
 prose returns to the same process. Use `--no-llm` to produce the deterministic
-structured report without running `opencode run` at all.
+structured report without invoking a narration CLI at all.
 
 ## Reports remain sensitive
 
@@ -250,10 +251,11 @@ are reported using session IDs and redacted error text.
 OpenCode sessions are loaded with raw `opencode export` by default. The complete
 JSON stays in subprocess stdout and Python memory; Iiwi does not persist or
 log it. Extracted evidence still passes through the local redactor before rendering
-or before it reaches the narrative `opencode run` invocation.
+or before it reaches the narration CLI invocation.
 
-`opencode run` is invoked with the redacted grouped transcript; it runs locally with
-the user's own model configuration and no API key is read. `--sanitize` asks OpenCode
-to remove session text and tool data, producing a deliberately limited narrative.
+The resolved narration CLI is invoked with the redacted grouped transcript; it runs
+locally with the user's own model configuration, and no API key is read. `--sanitize`
+asks OpenCode to remove session text and tool data, producing a deliberately limited
+narrative.
 `--dry-run` prints report content to stdout, so terminal history, CI logs, and shell
 redirection must be treated as sensitive outputs.
