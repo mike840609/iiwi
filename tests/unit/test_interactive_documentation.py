@@ -75,4 +75,4 @@ def test_readme_distinguishes_transcript_reading_from_quick_review_synthesis() -
     assert "Claude Code" in readme
     assert "Codex" in readme
     assert "Reading Claude Code or Codex history does not need their CLI tools" in readme
-    assert "Drafting uses the CLI" in readme
+    assert "but drafting does" in readme

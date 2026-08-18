@@ -55,11 +55,11 @@ A reviewed report can look like this:
 Requires Python 3.11+ and `git`.
 
 - **Reads from:** local session history from OpenCode, Claude Code, or Codex.
-- **Drafts with:** `opencode`, `claude`, or `codex` — whichever matches the harness it read.
+- **Drafts with:** the CLI matching whatever it read — `opencode`, `claude`, or `codex`.
 - **No CLI installed?** Use `--no-llm` for a simpler structured report.
 
-Reading Claude Code or Codex history does not need their CLI tools. Drafting uses the CLI
-that matches the harness, unless `narrator.provider` names a different one.
+Reading Claude Code or Codex history does not need their CLI tools, but drafting does.
+Set `narrator.provider` to draft with a different CLI than the one you read from.
 
 ```bash
 pipx install iiwi                 # or: pip install iiwi

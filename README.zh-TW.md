@@ -53,11 +53,11 @@ Iiwi 支援 OpenCode、Claude Code 與 Codex。它會找出你做過什麼、把
 需要 Python 3.11 以上與 `git`。
 
 - **讀取來源：** OpenCode、Claude Code 或 Codex 保存在本機的 session history。
-- **整理報告：** `opencode`、`claude` 或 `codex`，用哪一個取決於讀的是哪個 harness。
+- **整理報告：** 用與讀取來源相同的那個 CLI — `opencode`、`claude` 或 `codex`。
 - **都沒安裝？** 可以使用 `--no-llm` 產生較簡單的結構化報告。
 
-讀取 Claude Code 或 Codex 的紀錄不需要安裝它們的 CLI；整理報告則需要。預設會用與 harness
-相同的那一個，除非以 `narrator.provider` 另外指定。
+讀取 Claude Code 或 Codex 的紀錄不需要安裝它們的 CLI，但整理報告需要。
+想用跟讀取來源不同的 CLI 來整理，設定 `narrator.provider` 即可。
 
 ```bash
 pipx install iiwi                 # 或：pip install iiwi
