@@ -26,8 +26,7 @@ from iiwi.services.scan import ScanResult, ScanService
 from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.sessions.hierarchy import count_child_sessions_by_repository
 from iiwi.summarizers.base import RepositorySummarizer
-from iiwi.summarizers.narrator import NarrativeRunError, NarrativeRunner
-from iiwi.summarizers.opencode_run import build_summary_prompt
+from iiwi.summarizers.narrator import NarrativeRunError, NarrativeRunner, build_summary_prompt
 from iiwi.summarizers.transcript import build_grouped_transcript
 
 
