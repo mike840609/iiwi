@@ -255,6 +255,54 @@ def test_doctor_refuses_a_disabled_harness() -> None:
     assert "disabled by configuration" in result.stdout
 
 
+def test_doctor_still_prints_checks_when_no_harness_is_available(tmp_path) -> None:
+    """must-fix 3: doctor exists to diagnose exactly this state (no harness
+    available on this machine), so it must fall back to a harness and print
+    the check table instead of raising before any check runs."""
+
+    import iiwi.cli as cli
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["doctor"],
+        env={
+            "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(
+                tmp_path / "no-claude-projects"
+            ),
+            "IIWI_HARNESSES__CODEX__HOME_DIRECTORY": str(tmp_path / "no-codex-home"),
+            "IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE": "iiwi-nonexistent-opencode",
+        },
+    )
+
+    assert result.exit_code == 5  # checks ran and reported failures, not a config error
+    assert "no harness is available" not in result.stdout
+    assert "git" in result.stdout
+    assert "narrator" in result.stdout
+
+
+def test_doctor_json_still_works_when_no_harness_is_available(tmp_path) -> None:
+    import json
+
+    import iiwi.cli as cli
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["doctor", "--json"],
+        env={
+            "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(
+                tmp_path / "no-claude-projects"
+            ),
+            "IIWI_HARNESSES__CODEX__HOME_DIRECTORY": str(tmp_path / "no-codex-home"),
+            "IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE": "iiwi-nonexistent-opencode",
+        },
+    )
+
+    assert result.exit_code == 5
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert any(check["name"] == "git" for check in payload["checks"])
+
+
 def test_report_still_runs_when_the_harness_is_enabled(tmp_path) -> None:
     import iiwi.cli as cli
 

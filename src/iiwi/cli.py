@@ -598,7 +598,9 @@ def doctor(
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
-        harness = harness or _default_harness(settings)
+        # doctor exists to diagnose an unusable setup, so it falls back instead
+        # of raising here; see _doctor_default_harness.
+        harness = harness or _doctor_default_harness(settings)
         _require_enabled_harness(settings, harness)
         runner = CommandRunner(
             timeout_seconds=settings.harnesses.opencode.cli.timeout_seconds
@@ -1148,6 +1150,25 @@ def _default_harness(settings: AppSettings) -> Harness:
         for harness in _enabled_harnesses(settings)
     )
     raise ConfigurationError(f"no harness is available; checked {checked}")
+
+
+def _doctor_default_harness(settings: AppSettings) -> Harness:
+    """Pick a harness for `doctor` to check, without ever raising.
+
+    `_default_harness` raises when no harness is available — the exact state
+    `doctor` exists to diagnose. Failing before any check runs loses the git
+    check and the narrator row too, and breaks `doctor --json` for scripts, so
+    this falls back to the first enabled harness (or OpenCode, if a machine
+    somehow has every harness disabled) and lets the checks themselves report
+    what is missing.
+    """
+
+    try:
+        return _default_harness(settings)
+    except ConfigurationError:
+        pass
+    enabled = [h for h in Harness if getattr(settings.harnesses, h.name.lower()).enabled]
+    return enabled[0] if enabled else Harness.OPENCODE
 
 
 def _ask_harness(settings: AppSettings) -> Harness:
