@@ -58,6 +58,12 @@ class CodexNarrator:
             args = [self._executable, "exec", marked_prompt(prompt, title)]
             if self._model:
                 args += ["-m", self._model]
+            # `codex exec` refuses to run outside a Git repository unless told
+            # otherwise, and `workdir` below is a disposable temp dir iiwi
+            # created (not a repo) — so the check is protecting against
+            # nothing here and would otherwise make every run fail with
+            # "Not inside a trusted directory".
+            args += ["--skip-git-repo-check"]
             # `cwd=workdir` keeps `codex exec` out of the user's project: without
             # it the subprocess inherits iiwi's own cwd and gets write access to
             # the repository being reported on.

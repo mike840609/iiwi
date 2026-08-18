@@ -22,6 +22,21 @@ def test_run_uses_the_exec_subcommand_with_a_marked_prompt(
     assert args[2].endswith("Write a report.")
 
 
+def test_run_skips_the_git_repo_check(tmp_path: Path, runner_factory) -> None:
+    """must-fix: `codex exec` refuses to run outside a Git repository, and the
+    narrator's workdir is a disposable temp dir, not a repo. Without this flag
+    every real codex narration fails at startup with
+    "Not inside a trusted directory and --skip-git-repo-check was not
+    specified." while a fake-runner test like this one stays green."""
+
+    runner = runner_factory(output="ok\n")
+    narrator = CodexNarrator(runner=runner, workdir=tmp_path)
+
+    narrator.run(transcript="t", prompt="p", title="t")
+
+    assert "--skip-git-repo-check" in runner.calls[0]
+
+
 def test_run_sends_the_transcript_on_stdin(tmp_path: Path, runner_factory) -> None:
     runner = runner_factory(output="ok\n")
     narrator = CodexNarrator(runner=runner, workdir=tmp_path)

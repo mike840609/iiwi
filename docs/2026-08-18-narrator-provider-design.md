@@ -111,7 +111,7 @@ this design was accepted; none is assumed.
 | --- | --- | --- |
 | `opencode` | `opencode run <prompt> --title T --file F --print-logs [--model M]` | `--file` |
 | `claude` | `claude -p <prompt> --strict-mcp-config [--model M]` | stdin |
-| `codex` | `codex exec <prompt> [-m M]` | stdin |
+| `codex` | `codex exec <prompt> [-m M] --skip-git-repo-check` | stdin |
 
 `codex exec` documents the exact combination iiwi needs: "If not provided as an
 argument (or if `-` is used), instructions are read from stdin. If stdin is piped
@@ -122,6 +122,13 @@ argument, transcript on stdin.
 `--strict-mcp-config` is passed with no `--mcp-config`, which disables MCP
 servers for the run. `--bare` is deliberately not used: it would also disable
 OAuth and keychain reads, breaking the no-API-key contract.
+
+`codex exec` refuses to run outside a Git repository unless
+`--skip-git-repo-check` is passed, and the codex adapter's workdir is a
+disposable temp dir iiwi created, not a repo — so the flag is always passed
+and the check protects against nothing here. `claude -p` has no equivalent
+precondition: it explicitly skips its workspace-trust dialog in
+non-interactive/print mode instead of refusing to run (`claude --help`).
 
 ## Availability
 
@@ -495,6 +502,7 @@ Collected during design; recorded so implementation does not re-litigate them.
 | An unauthenticated `claude -p` exits 1, writes to stdout, leaves stderr empty | Direct run against a fresh `CLAUDE_CONFIG_DIR` |
 | `CLAUDE_CONFIG_DIR` fully isolates session storage but also isolates credentials | Direct run; JSONL landed in the temporary directory, `Not logged in` returned |
 | `codex exec` takes a prompt argument, `-m/--model`, and appends piped stdin as a `<stdin>` block | `codex exec --help` |
+| `codex exec` refuses to run outside a Git repository, so it fails at startup in the adapter's disposable temp-dir workdir; `--skip-git-repo-check` fixes it | `codex-cli 0.148.0-alpha.9`: in a non-repo temp dir, `echo "" \| codex exec "reply with OK"` exits 1 with stderr `Not inside a trusted directory and --skip-git-repo-check was not specified.`; adding `--skip-git-repo-check` to the same command exits 0 and prints the requested reply |
 | The Codex desktop install ships a complete CLI outside PATH | `~/.codex/plugins/.plugin-appserver/codex --version` reports `codex-cli 0.148.0-alpha.9`; `chrome-native-hosts-v2.json` pins `cliVersion` to `appVersion` |
 | `harnesses/` and `summarizers/` do not import each other | Grep in both directions |
 | `report`, `scan` and `doctor` take one harness; only `daily` is multi-harness | `_HARNESS_OPTION` appears at `cli.py:430`, `:485`, `:584` and nowhere else; `daily` (`cli.py:1041`) takes no harness |
