@@ -24,7 +24,7 @@ from iiwi.progress import NullProgressReporter, ProgressStage
 from iiwi.renderers.markdown import MarkdownRenderer
 from iiwi.services.report import ReportService
 from iiwi.services.scan import ScanService
-from iiwi.summarizers.opencode_run import OpenCodeRunner
+from iiwi.summarizers.narrator import NarrativeRunner
 from iiwi.summarizers.rule_based import RuleBasedSummarizer
 from tests.integration.test_scan_service import FakeSource, StaticResolver
 
@@ -1418,7 +1418,7 @@ def test_run_detail_flags_keep_session_reports_and_bypass_outcome_synthesis(
             narrator=(
                 None
                 if no_llm
-                else cast(OpenCodeRunner, StaticNarrativeRunner())
+                else cast(NarrativeRunner, StaticNarrativeRunner())
             ),
             include_subagents=not root_only,
             sanitized=sanitize,

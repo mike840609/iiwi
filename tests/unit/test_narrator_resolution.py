@@ -50,6 +50,14 @@ def test_executable_for_opencode_comes_from_the_harness_setting() -> None:
     assert cli._resolve_executable(settings, "opencode") == "/opt/bin/opencode"
 
 
+def test_executable_falls_back_only_for_opencode() -> None:
+    settings = _settings()
+    settings.harnesses.opencode.cli.executable = "/opt/bin/opencode"
+
+    assert cli._resolve_executable(settings, "opencode") == "/opt/bin/opencode"
+    assert cli._resolve_executable(settings, "claude") == "claude"
+
+
 def test_configured_executable_wins_for_every_provider() -> None:
     settings = _settings(executable="/Users/x/.codex/plugins/.plugin-appserver/codex")
 

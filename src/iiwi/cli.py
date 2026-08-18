@@ -1267,9 +1267,11 @@ def run(
         detail = detail or _ask_detail()
         # `report`'s default is the narrative review, so the wizard's default is
         # too. Answering no is what `--no-llm` does: the deterministic structured
-        # report, which is also the answer when `opencode` is not installed.
+        # report, which is also the answer when no narration provider is installed.
+        # The prompt names no specific CLI: the harness picked above decides which
+        # one `_build_report_service` actually invokes (opencode/claude/codex).
         narrative = _ask_yes(
-            "Write the narrative review with the local `opencode run`?", default=True
+            "Write the narrative review with the local AI CLI?", default=True
         )
         _validate_privacy_options(
             harness=harness,
