@@ -487,7 +487,9 @@ def test_scan_json_flag_emits_parsable_json(monkeypatch) -> None:
 
     cli = _stub_scan(monkeypatch)
 
-    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--json"])
+    result = CliRunner().invoke(
+        cli.app, ["scan", "--days", "7", "--json", "--harness", "opencode"]
+    )
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -500,7 +502,7 @@ def test_scan_emits_json_automatically_when_stdout_is_piped(monkeypatch) -> None
 
     cli = _stub_scan(monkeypatch)
 
-    result = CliRunner().invoke(cli.app, ["scan", "--days", "7"])
+    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--harness", "opencode"])
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -510,7 +512,9 @@ def test_scan_emits_json_automatically_when_stdout_is_piped(monkeypatch) -> None
 def test_scan_no_json_forces_the_human_table_when_piped(monkeypatch) -> None:
     cli = _stub_scan(monkeypatch)
 
-    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--no-json"])
+    result = CliRunner().invoke(
+        cli.app, ["scan", "--days", "7", "--no-json", "--harness", "opencode"]
+    )
 
     assert result.exit_code == 0
     assert "Dotfiles" in result.stdout
@@ -531,7 +535,7 @@ def test_doctor_json_flag_emits_machine_readable_output(monkeypatch) -> None:
         ),
     )
 
-    result = CliRunner().invoke(cli.app, ["doctor", "--json"])
+    result = CliRunner().invoke(cli.app, ["doctor", "--json", "--harness", "opencode"])
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -675,7 +679,16 @@ def test_report_records_a_history_entry_after_writing(monkeypatch, tmp_path) -> 
 
     result = CliRunner().invoke(
         cli.app,
-        ["report", "--days", "7", "--no-llm", "--output", str(tmp_path / "report.md")],
+        [
+            "report",
+            "--days",
+            "7",
+            "--no-llm",
+            "--output",
+            str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
+        ],
     )
 
     assert result.exit_code == 0

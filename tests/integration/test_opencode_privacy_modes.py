@@ -133,6 +133,8 @@ def test_sanitized_mode_uses_flag_and_db_metadata(monkeypatch) -> None:
             "--sanitize",
             "--no-llm",
             "--dry-run",
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -151,7 +153,7 @@ def test_narrative_uses_local_opencode_run(monkeypatch) -> None:
 
     result = CliRunner().invoke(
         cli.app,
-        ["report", "--period", "last-week", "--dry-run"],
+        ["report", "--period", "last-week", "--dry-run", "--harness", "opencode"],
     )
 
     assert result.exit_code == 0, result.stdout
@@ -167,7 +169,7 @@ def test_no_llm_never_invokes_opencode_run(monkeypatch) -> None:
 
     result = CliRunner().invoke(
         cli.app,
-        ["report", "--period", "last-week", "--no-llm", "--dry-run"],
+        ["report", "--period", "last-week", "--no-llm", "--dry-run", "--harness", "opencode"],
     )
 
     assert result.exit_code == 0, result.stdout

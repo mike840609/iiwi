@@ -107,7 +107,7 @@ def test_end_to_end_no_llm_never_runs_opencode(
 
     result = CliRunner().invoke(
         cli.app,
-        ["report", "--period", "last-week", "--no-llm", "--dry-run"],
+        ["report", "--period", "last-week", "--no-llm", "--dry-run", "--harness", "opencode"],
     )
 
     assert result.exit_code == 0, result.stdout
