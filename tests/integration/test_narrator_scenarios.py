@@ -90,6 +90,7 @@ def test_only_codex_with_the_cli_on_path_works_without_configuration(
 
     assert harness == cli.Harness.CODEX
     assert provider == "codex"
+    assert cli._resolve_executable(settings, provider) == "codex"
     assert isinstance(cli._build_narrator(settings, harness), CodexNarrator)
 
 
@@ -114,6 +115,10 @@ def test_codex_desktop_reads_but_needs_an_executable_setting(
     # Reading still works: availability is about the session store, not the
     # binary being on PATH.
     assert cli._default_harness(settings) == cli.Harness.CODEX
+
+    # Before that setting, the executable resolves to the bare, unusable
+    # "codex" name: nothing on this PATH can run it yet.
+    assert cli._resolve_executable(settings, "codex") == "codex"
 
     # Narration needs one setting pointing at the bundled CLI.
     monkeypatch.setenv("IIWI_NARRATOR__EXECUTABLE", str(bundled))
