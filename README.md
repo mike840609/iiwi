@@ -41,7 +41,7 @@ A reviewed report can look like this:
 ```markdown
 # Weekly engineering update
 
-## iiwi
+## My Project
 - Simplified the report workflow and made review easier to use.
 - Added Claude Code and Codex session support.
 - Fixed documentation checks in CI.
