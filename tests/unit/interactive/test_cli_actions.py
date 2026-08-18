@@ -1140,22 +1140,20 @@ def test_choose_harness_cycles_only_available_harnesses(
     assert cli_actions._choose_harness("claude-code") == "claude-code"
 
 
-def test_daily_builds_scanners_only_for_available_harnesses(
+def test_available_harnesses_filters_to_installed_harnesses_from_loaded_settings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Site 5 (Daily's scanner set) is covered end-to-end by
+    test_start_daily_builds_every_available_harness_with_one_shared_window;
+    this only pins that `_available_harnesses` sees the same availability
+    picture cli_actions' call sites do, through the real settings-loading path."""
+
     projects = tmp_path / "projects"
     projects.mkdir()
     monkeypatch.setenv("IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY", str(projects))
     monkeypatch.setenv("IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "absent"))
     monkeypatch.setattr(shutil, "which", lambda name: None)
-    built: list[str] = []
-
-    def fake_scan_service(settings, period, root_only, *, harness, sanitize, progress):
-        built.append(harness.value)
-        return object()
-
-    monkeypatch.setattr(cli, "_build_scan_service", fake_scan_service)
 
     settings = cli._load_settings()
     harnesses = [harness.value for harness in cli._available_harnesses(settings)]
