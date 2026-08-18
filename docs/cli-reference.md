@@ -121,7 +121,7 @@ the complete review, refresh, fallback, and local-state behavior.
 | `--period last-week` | Reports the previous full calendar week. `last-week` is the only accepted value. |
 | `--since ISO` | Starts the period at an exact time. |
 | `--until ISO` | Ends the period at an exact time. Requires `--since`. |
-| `--harness NAME` | Harness to read sessions from: `opencode`, `claude-code`, or `codex`; defaults to the first available one, preferring `opencode`. |
+| `--harness NAME` | Harness to read sessions from: `opencode`, `claude-code`, or `codex`; defaults to the first available one, preferring `opencode` (see [availability](configuration.md#harness-availability)). |
 | `--root-only` | Leaves out child and subagent sessions. |
 | `--sanitize / --no-sanitize` | Enables or disables OpenCode export redaction. Raw export is the default. OpenCode only. |
 | `--verbose` | Also shows export, fallback, and narrative warnings. For `scan`, also lists each repository's session titles and working folders. |

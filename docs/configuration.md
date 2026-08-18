@@ -172,6 +172,22 @@ setting.
 | `IIWI_NARRATOR__MODEL` | *(unset)* | Model passed to the narration CLI. Unset uses `harnesses.opencode.cli.model` (deprecated) when the provider is `opencode`; for `claude` or `codex` no `--model` flag is sent and the CLI's own default applies. |
 | `IIWI_NARRATOR__TIMEOUT_SECONDS` | *(unset)* | Timeout for one narration run, in seconds. Unset uses `harnesses.opencode.cli.run_timeout_seconds` (deprecated) when the provider is `opencode`; otherwise `600.0`. |
 
+### Harness availability
+
+`--harness` itself (see the [CLI reference](cli-reference.md)) defaults to
+the first **available** harness, preferring OpenCode — not to OpenCode
+unconditionally. A harness is available when Iiwi can actually read its
+sessions on this machine:
+
+| Harness | Available when |
+| --- | --- |
+| `opencode` | The `opencode` executable resolves on `PATH` — OpenCode's session store and its CLI are the same question. |
+| `claude-code` | `harnesses.claude_code.projects_directory` (default `~/.claude/projects`) exists. |
+| `codex` | `harnesses.codex.home_directory` (default `~/.codex`) exists. |
+
+The Provider table below reuses whichever harness this picked — or the one
+you passed with `--harness` — to derive the same-named narrator by default.
+
 ### Provider
 
 | `narrator.provider` | Result |

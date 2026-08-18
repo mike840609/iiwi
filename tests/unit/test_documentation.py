@@ -261,6 +261,28 @@ def test_privacy_doc_does_not_claim_opencode_run_narrates_unconditionally() -> N
     assert "no API key is read" in privacy
 
 
+def test_other_current_docs_do_not_claim_opencode_run_narrates() -> None:
+    """Anti-rot net for the fix-round-1 sweep beyond privacy.md/configuration.md.
+
+    A substring check, not an exact-sentence pin: these files legitimately keep
+    `opencode db`, `opencode export`, `opencode stats`, and `--sanitize` for the
+    OpenCode *reading* path — none of those contain the string "opencode run".
+    Only the narration-specific claim that opencode run is *the* narrator is
+    banned.
+    """
+
+    for name in (
+        "docs/cli-reference.md",
+        "docs/guides.md",
+        "docs/limitations.md",
+        "docs/evidence-first-quick-review.md",
+        "SECURITY.md",
+        "docs/assets/architecture.mmd",
+    ):
+        text = Path(name).read_text(encoding="utf-8")
+        assert "opencode run" not in text, f"{name} still claims opencode run narrates"
+
+
 def test_readmes_document_the_interactive_config_commands() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
