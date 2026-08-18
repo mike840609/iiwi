@@ -167,6 +167,27 @@ def marked_prompt(prompt: str, title: str) -> str:
     Only `opencode run` accepts `--title`; Claude Code and Codex title sessions
     from model output. Putting the marker in the prompt is the one signal every
     harness records verbatim, so `is_iiwi_authored` can see it everywhere.
+
+    Idempotent: callers already pass a title carrying the prefix (it doubles
+    as the `--title` argument for OpenCode), so a title that starts with it is
+    used verbatim instead of being prefixed again.
     """
 
-    return f"{IIWI_SESSION_TITLE_PREFIX}{title}\n\n{prompt}"
+    if not title.startswith(IIWI_SESSION_TITLE_PREFIX):
+        title = f"{IIWI_SESSION_TITLE_PREFIX}{title}"
+    return f"{title}\n\n{prompt}"
+
+
+def failure_detail(stderr: str, stdout: str, *, fallback: str) -> str:
+    """Report why a provider failed, wherever it chose to say so.
+
+    An unauthenticated `claude -p` exits non-zero with an empty stderr and the
+    reason on stdout, so preferring stderr alone turns "please log in" into a
+    generic failure.
+    """
+
+    detail = stderr.strip()
+    if detail:
+        return detail
+    first_line = stdout.strip().splitlines()[0].strip() if stdout.strip() else ""
+    return first_line or fallback

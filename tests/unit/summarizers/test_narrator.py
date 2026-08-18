@@ -3,6 +3,7 @@ from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.summarizers.narrator import (
     NarrativeRunError,
     build_summary_prompt,
+    failure_detail,
     marked_prompt,
 )
 
@@ -19,6 +20,16 @@ def test_marked_prompt_separates_the_marker_from_the_prompt() -> None:
     result = marked_prompt("Body.", "title")
 
     assert result.splitlines()[1] == ""
+
+
+def test_marked_prompt_does_not_double_prefix_an_already_marked_title() -> None:
+    already_marked = f"{IIWI_SESSION_TITLE_PREFIX}outcome synthesis"
+
+    result = marked_prompt("Body.", already_marked)
+
+    first_line = result.splitlines()[0]
+    assert first_line == already_marked
+    assert first_line.count(IIWI_SESSION_TITLE_PREFIX) == 1
 
 
 def test_summary_prompt_does_not_name_a_harness() -> None:
@@ -57,3 +68,29 @@ def test_summary_prompt_changes_evidence_instructions_for_brief_detail() -> None
 
 def test_narrative_run_error_is_an_exception() -> None:
     assert issubclass(NarrativeRunError, Exception)
+
+
+def test_failure_detail_prefers_stderr_when_present() -> None:
+    result = failure_detail(
+        "opencode: failed to connect\n",
+        "Not logged in - please run /login\n",
+        fallback="opencode run failed",
+    )
+
+    assert result == "opencode: failed to connect"
+
+
+def test_failure_detail_falls_back_to_the_first_line_of_stdout() -> None:
+    result = failure_detail(
+        "",
+        "Not logged in - please run /login\nSee https://example.com for details.\n",
+        fallback="opencode run failed",
+    )
+
+    assert result == "Not logged in - please run /login"
+
+
+def test_failure_detail_uses_the_fallback_when_both_are_empty() -> None:
+    result = failure_detail("", "", fallback="opencode run failed")
+
+    assert result == "opencode run failed"

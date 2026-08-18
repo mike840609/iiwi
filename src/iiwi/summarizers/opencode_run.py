@@ -9,6 +9,8 @@ from iiwi.summarizers.narrator import (
     CommandRunnerLike,
     NarrativeRunError,
     build_summary_prompt,
+    failure_detail,
+    marked_prompt,
 )
 
 OpenCodeRunError = NarrativeRunError
@@ -84,7 +86,7 @@ class OpenCodeRunner:
             args = [
                 self._executable,
                 "run",
-                prompt,
+                marked_prompt(prompt, title),
                 "--title",
                 title,
                 "--file",
@@ -94,11 +96,13 @@ class OpenCodeRunner:
             if self._model:
                 args += ["--model", self._model]
             result = self._runner.run(args, stdout_path=output_path)
+            narrative = ""
+            if output_path.exists():
+                narrative = output_path.read_text(encoding="utf-8").strip()
             if result.returncode != 0:
-                raise OpenCodeRunError(result.stderr.strip() or "opencode run failed")
-            if not output_path.exists():
-                raise OpenCodeRunError("opencode run produced no output")
-            narrative = output_path.read_text(encoding="utf-8").strip()
+                raise OpenCodeRunError(
+                    failure_detail(result.stderr, narrative, fallback="opencode run failed")
+                )
         except OSError as exc:
             raise OpenCodeRunError(str(exc)) from exc
         if not narrative:

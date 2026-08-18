@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from iiwi.process import CommandResult
+from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.summarizers.opencode_run import OpenCodeRunError, OpenCodeRunner
 
 
@@ -25,7 +26,7 @@ class RecordingRunner:
     ) -> CommandResult:
         self.calls.append(args)
         self.stdin_texts.append(stdin_text)
-        if stdout_path is not None and self.returncode == 0:
+        if stdout_path is not None:
             stdout_path.write_text(self.output, encoding="utf-8")
         return CommandResult(self.returncode, "", self.stderr)
 
@@ -44,7 +45,8 @@ def test_run_invokes_opencode_with_transcript_file(tmp_path: Path) -> None:
     assert len(runner.calls) == 1
     args = runner.calls[0]
     assert args[0:2] == ["opencode", "run"]
-    assert args[2] == "Write a report."
+    assert args[2].startswith(f"{IIWI_SESSION_TITLE_PREFIX}Iiwi - 2026-07-20 to 2026-07-27")
+    assert args[2].endswith("Write a report.")
     assert "--title" in args
     assert "--file" in args
     assert "--print-logs" in args
@@ -78,14 +80,6 @@ def test_run_raises_on_nonzero_exit(tmp_path: Path) -> None:
 
 def test_run_raises_when_output_is_empty(tmp_path: Path) -> None:
     runner = RecordingRunner(output="")
-    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
-
-    with pytest.raises(OpenCodeRunError, match="no output"):
-        driver.run(transcript="t", prompt="p", title="title")
-
-
-def test_run_raises_when_stdout_file_is_never_written(tmp_path: Path) -> None:
-    runner = RecordingRunner()
     driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
 
     with pytest.raises(OpenCodeRunError, match="no output"):
@@ -136,3 +130,22 @@ def test_run_translates_tempfile_io_failures(
             prompt="p",
             title="title",
         )
+
+
+def test_run_marks_the_prompt_so_the_session_is_excluded_later(tmp_path: Path) -> None:
+    runner = RecordingRunner(output="ok\n")
+    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+
+    driver.run(transcript="t", prompt="Write a report.", title="narrative 2026-08-01")
+
+    sent_prompt = runner.calls[0][2]
+    assert sent_prompt.startswith(f"{IIWI_SESSION_TITLE_PREFIX}narrative 2026-08-01")
+    assert sent_prompt.endswith("Write a report.")
+
+
+def test_run_reports_the_reason_when_it_arrives_on_stdout(tmp_path: Path) -> None:
+    runner = RecordingRunner(returncode=1, output="Not logged in - please run /login\n")
+    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(OpenCodeRunError, match="Not logged in"):
+        driver.run(transcript="t", prompt="p", title="title")
