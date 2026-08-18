@@ -3,7 +3,7 @@
 import re
 from copy import deepcopy
 
-from iiwi.models.session import AgentSession
+from iiwi.models.session import ActivityType, AgentSession
 from iiwi.models.time_range import DateRange
 
 IIWI_SESSION_TITLE_PREFIX = "iiwi-internal: "
@@ -56,14 +56,26 @@ def filter_session_to_period(
     return filtered
 
 
+def _first_user_message(session: AgentSession) -> str:
+    for activity in session.activities:
+        if activity.activity_type is ActivityType.USER_MESSAGE:
+            return activity.content
+    return ""
+
+
 def is_iiwi_authored(session: AgentSession) -> bool:
-    """Return whether iiwi's own `opencode run` created this session."""
+    """Return whether iiwi's own narration run created this session."""
 
     title = (session.title or "").strip()
-    if not title:
-        return False
     if title.startswith(IIWI_SESSION_TITLE_PREFIX):
         return True
+    # Only `opencode run` accepts `--title`; Claude Code and Codex title their
+    # sessions from model output, so the prompt is the one place a marker
+    # survives on every harness.
+    if _first_user_message(session).lstrip().startswith(IIWI_SESSION_TITLE_PREFIX):
+        return True
+    if not title:
+        return False
     # The legacy titles are strings only `opencode run` ever wrote, so a Claude
     # Code or Codex session titled the same way is not iiwi's own.
     return session.harness == "opencode" and (

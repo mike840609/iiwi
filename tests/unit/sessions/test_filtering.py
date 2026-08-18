@@ -224,3 +224,55 @@ def test_legacy_titles_on_other_harnesses_are_not_iiwi_authored(title: str) -> N
     # Code or Codex session that happens to share one is real, human work.
     session = AgentSession(harness="claude-code", session_id="s1", title=title)
     assert is_iiwi_authored(session) is False
+
+
+def _with_first_user_message(harness: str, content: str) -> AgentSession:
+    return AgentSession(
+        harness=harness,
+        session_id="s1",
+        title="Refactoring the parser",
+        activities=[
+            SessionActivity(
+                activity_id="a1",
+                activity_type=ActivityType.USER_MESSAGE,
+                content=content,
+            )
+        ],
+    )
+
+
+@pytest.mark.parametrize("harness", ["opencode", "claude-code", "codex"])
+def test_marked_prompt_marks_the_session_as_iiwi_authored(harness: str) -> None:
+    session = _with_first_user_message(
+        harness, f"{IIWI_SESSION_TITLE_PREFIX}narrative 2026-08-01\n\nWrite a report."
+    )
+
+    assert is_iiwi_authored(session) is True
+
+
+@pytest.mark.parametrize("harness", ["opencode", "claude-code", "codex"])
+def test_an_ordinary_first_message_is_not_iiwi_authored(harness: str) -> None:
+    session = _with_first_user_message(harness, "Please refactor the parser.")
+
+    assert is_iiwi_authored(session) is False
+
+
+def test_a_tool_call_before_the_user_message_does_not_hide_the_marker() -> None:
+    session = AgentSession(
+        harness="claude-code",
+        session_id="s1",
+        activities=[
+            SessionActivity(
+                activity_id="a0",
+                activity_type=ActivityType.SYSTEM,
+                content="session start",
+            ),
+            SessionActivity(
+                activity_id="a1",
+                activity_type=ActivityType.USER_MESSAGE,
+                content=f"{IIWI_SESSION_TITLE_PREFIX}outcome synthesis\n\nGroup these.",
+            ),
+        ],
+    )
+
+    assert is_iiwi_authored(session) is True
