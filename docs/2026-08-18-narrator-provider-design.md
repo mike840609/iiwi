@@ -389,9 +389,14 @@ not `opencode`.
 **Only Codex desktop, no CLI on PATH.** `~/.codex` is a directory, so the harness
 can read and reports scan normally. Narration resolves to `codex`, whose binary
 is absent: the weekly report degrades to structured output with a warning, and
-Quick Review and Daily raise. One setting fixes it —
-`narrator.executable` pointing at the CLI the desktop install ships — and it
-shares `~/.codex/auth.json`, so no separate login is needed.
+Quick Review and Daily raise. For the Weekly report, Quick Review, and `doctor`
+— which already resolve a single harness before narrating — one setting fixes
+it: `narrator.executable` pointing at the CLI the desktop install ships. Daily
+scans every enabled harness rather than one, so `narrator.executable` alone is
+ambiguous there — `_resolve_executable` applies it to whichever provider Daily
+is about to probe, which would make an unrelated provider appear installed
+too. Daily therefore also needs `narrator.provider=codex` set alongside it.
+Either way it shares `~/.codex/auth.json`, so no separate login is needed.
 
 ## Testing
 

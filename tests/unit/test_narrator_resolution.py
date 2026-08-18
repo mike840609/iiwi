@@ -139,3 +139,44 @@ def test_daily_narrator_raises_when_no_provider_is_installed(
 
     with pytest.raises(NarrativeRunError, match="opencode"):
         cli._build_daily_narrator(_settings())
+
+
+def test_daily_narrator_refuses_a_bare_executable_with_no_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C1: narrator.executable alone is provider-blind (see
+    test_configured_executable_wins_for_every_provider above), so on Daily's
+    multi-harness probe it would make every provider look "installed" and
+    hand the wrong provider's flags to whichever one is checked first. Only
+    narrator.provider disambiguates it, so Daily must refuse instead of
+    guessing."""
+
+    from iiwi.summarizers.narrator import NarrativeRunError
+
+    # Even an executable that genuinely resolves must be refused: the bug is
+    # not that the binary is missing, it is that every provider would "pass".
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/" + Path(name).name)
+
+    settings = _settings(executable="/Users/x/.codex/plugins/.plugin-appserver/codex")
+
+    with pytest.raises(NarrativeRunError, match="narrator.provider"):
+        cli._build_daily_narrator(settings)
+
+
+def test_daily_narrator_with_provider_and_executable_is_unambiguous(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Setting both together is exactly what C1 asks users to do, and must
+    keep working: this is not blocked, only the executable-alone case is."""
+
+    from iiwi.summarizers.narrators.codex import CodexNarrator
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    settings = _settings(
+        provider="codex",
+        executable="/Users/x/.codex/plugins/.plugin-appserver/codex",
+    )
+
+    narrator = cli._build_daily_narrator(settings)
+
+    assert isinstance(narrator, CodexNarrator)

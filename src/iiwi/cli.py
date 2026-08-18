@@ -436,6 +436,21 @@ def _build_daily_narrator(settings: AppSettings) -> NarrativeRunner:
     configured = settings.narrator.provider.strip()
     if configured:
         return _narrator_for_provider(settings, _validate_configured_provider(configured))
+    if settings.narrator.executable.strip():
+        # _resolve_executable applies a configured narrator.executable to
+        # every provider alike, but this path probes every enabled harness's
+        # provider to pick one: without narrator.provider too, the same
+        # executable would appear installed for all three, "win" as whichever
+        # provider is checked first, and then run with that provider's flags
+        # against a binary that is not necessarily built for them (C1). A
+        # single already-resolved harness (report/scan/doctor) has no such
+        # ambiguity, so only this multi-harness path refuses it.
+        raise NarrativeRunError(
+            "narrator.executable is set without narrator.provider; Daily "
+            "resolves the provider from whichever harness is installed, so "
+            "it cannot tell which CLI that executable belongs to. Set "
+            "narrator.provider as well."
+        )
     candidates = [
         _PROVIDER_BY_HARNESS[harness]
         for harness in _enabled_harnesses(settings)
