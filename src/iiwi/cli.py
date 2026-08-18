@@ -92,6 +92,32 @@ app = typer.Typer(
 )
 
 
+_DEPRECATED_KEYS = {
+    "harnesses.opencode.cli.model": "narrator.model",
+    "harnesses.opencode.cli.run_timeout_seconds": "narrator.timeout_seconds",
+}
+
+
+def _warn_about_deprecated_keys(settings: AppSettings) -> None:
+    """Say which key replaced a deprecated one, once, on stderr.
+
+    Not through the report's warnings: a configuration migration printed inside
+    the report body would outlive the migration in every file it was written to.
+    """
+
+    cli_settings = settings.harnesses.opencode.cli
+    in_use = []
+    if cli_settings.model:
+        in_use.append("harnesses.opencode.cli.model")
+    if "run_timeout_seconds" in cli_settings.model_fields_set:
+        in_use.append("harnesses.opencode.cli.run_timeout_seconds")
+    for key in in_use:
+        typer.echo(
+            f"Note: {key} is deprecated; use {_DEPRECATED_KEYS[key]}.",
+            err=True,
+        )
+
+
 def _load_settings() -> AppSettings:
     """Load settings, layering the settings file below the environment.
 
@@ -102,7 +128,7 @@ def _load_settings() -> AppSettings:
 
     path = config_store.config_file_path()
     try:
-        return AppSettings(_env_file=path)  # type: ignore[call-arg]
+        settings = AppSettings(_env_file=path)  # type: ignore[call-arg]
     except Exception as exc:  # Pydantic aggregates configuration failures.
         # Name the file when there is one: a parse error otherwise says what is
         # wrong without saying where the value came from.
@@ -112,6 +138,8 @@ def _load_settings() -> AppSettings:
         # DOES own — a base URL with an embedded password, an API key typed
         # into the wrong field — must not reach stdout unredacted.
         raise ConfigurationError(redact_text(f"{exc}{hint}")) from exc
+    _warn_about_deprecated_keys(settings)
+    return settings
 
 
 def _now_in_timezone(timezone: str) -> datetime:
