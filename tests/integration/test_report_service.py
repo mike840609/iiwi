@@ -143,7 +143,7 @@ def narrative_service(
         usage_days=10 if usage_provider is not None else None,
         detail=detail,
         narrative=True,
-        opencode_runner=runner,
+        narrator=runner,
         include_subagents=True,
         sanitized=False,
     )
@@ -476,7 +476,7 @@ def test_narrative_failure_falls_back_to_the_structured_report(
     assert result.report.narrative_text is None
     assert result.report.repositories
     assert any(
-        "opencode run unavailable" in warning for warning in result.warnings
+        "narration unavailable" in warning for warning in result.warnings
     )
     content = output.read_text()
     assert "## Repositories" in content

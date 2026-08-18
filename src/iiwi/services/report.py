@@ -26,11 +26,8 @@ from iiwi.services.scan import ScanResult, ScanService
 from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.sessions.hierarchy import count_child_sessions_by_repository
 from iiwi.summarizers.base import RepositorySummarizer
-from iiwi.summarizers.opencode_run import (
-    OpenCodeRunError,
-    OpenCodeRunner,
-    build_summary_prompt,
-)
+from iiwi.summarizers.narrator import NarrativeRunError, NarrativeRunner
+from iiwi.summarizers.opencode_run import build_summary_prompt
 from iiwi.summarizers.transcript import build_grouped_transcript
 
 
@@ -82,7 +79,7 @@ class ReportService:
         progress: ProgressReporter | None = None,
         initial_warnings: list[str] | None = None,
         narrative: bool = False,
-        opencode_runner: OpenCodeRunner | None = None,
+        narrator: NarrativeRunner | None = None,
         include_subagents: bool = False,
         sanitized: bool = False,
     ) -> None:
@@ -98,7 +95,7 @@ class ReportService:
         self._progress = progress if progress is not None else NullProgressReporter()
         self._initial_warnings = list(initial_warnings or [])
         self._narrative = narrative
-        self._opencode_runner = opencode_runner
+        self._narrator = narrator
         self._include_subagents = include_subagents
         self._sanitized = sanitized
 
@@ -183,10 +180,8 @@ class ReportService:
         scan: ScanResult,
         warnings: list[str],
     ) -> WorklogReport:
-        if self._opencode_runner is None:
-            raise OpenCodeRunError(
-                "no local opencode run driver configured for narrative mode"
-            )
+        if self._narrator is None:
+            raise NarrativeRunError("no narration provider configured for narrative mode")
         self._progress.start(ProgressStage.SUMMARIZING_REPOSITORIES, total=1)
         # FULL asks the model for a Usage Overview, so the real statistics must
         # reach the transcript (`--file`) before the model call; BRIEF never
@@ -205,7 +200,7 @@ class ReportService:
             usage_text=usage_text,
         )
         days = self._usage_days or max(1, (self._period.until - self._period.since).days)
-        narrative = self._opencode_runner.run(
+        narrative = self._narrator.run(
             transcript=transcript,
             prompt=build_summary_prompt(days, detail=self._detail),
             title=(
@@ -243,10 +238,8 @@ class ReportService:
         if self._narrative:
             try:
                 report = self._narrative_report(scan, warnings)
-            except OpenCodeRunError as exc:
-                warnings.append(
-                    f"opencode run unavailable; used structured fallback ({exc})"
-                )
+            except NarrativeRunError as exc:
+                warnings.append(f"narration unavailable; used structured fallback ({exc})")
                 report = self._structured_report(scan, warnings)
                 narrative_content = False
         else:

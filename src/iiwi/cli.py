@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -15,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import typer
 
 from iiwi import __version__, config_store
-from iiwi.config import AppSettings
+from iiwi.config import DEFAULT_NARRATOR_TIMEOUT_SECONDS, AppSettings
 from iiwi.errors import (
     ConfigurationError,
     HarnessSourceError,
@@ -53,6 +54,9 @@ from iiwi.security.redactor import redact_text
 from iiwi.services.doctor import run_doctor
 from iiwi.services.report import ReportService
 from iiwi.services.scan import ScanResult, ScanService
+from iiwi.summarizers.narrator import NarrativeRunError, NarrativeRunner
+from iiwi.summarizers.narrators.claude import ClaudeNarrator
+from iiwi.summarizers.narrators.codex import CodexNarrator
 from iiwi.summarizers.opencode_run import OpenCodeRunner
 from iiwi.summarizers.rule_based import RuleBasedSummarizer
 from iiwi.update import (
@@ -311,6 +315,110 @@ def _usage_provider(
     return collect, days
 
 
+_PROVIDER_BY_HARNESS = {
+    Harness.OPENCODE: "opencode",
+    Harness.CLAUDE_CODE: "claude",
+    Harness.CODEX: "codex",
+}
+_PROVIDERS = frozenset(_PROVIDER_BY_HARNESS.values())
+
+
+def _validate_configured_provider(provider: str) -> str:
+    """Validate a `narrator.provider` value the user configured, harness-free.
+
+    Kept separate from `_resolve_provider` so validating a configured string
+    never needs a harness to stand in for: `_build_daily_narrator` has no
+    single harness to offer (it scans every enabled one), and passing it a
+    placeholder just to reuse this check would be a bug wearing a parameter.
+    """
+
+    if provider not in _PROVIDERS:
+        allowed = ", ".join(sorted(_PROVIDERS))
+        raise ConfigurationError(f"unknown narrator.provider: {provider}; choose from {allowed}")
+    return provider
+
+
+def _resolve_provider(settings: AppSettings, harness: Harness) -> str:
+    """Which CLI writes the prose. Configuration always beats the harness."""
+
+    configured = settings.narrator.provider.strip()
+    if not configured:
+        return _PROVIDER_BY_HARNESS[harness]
+    return _validate_configured_provider(configured)
+
+
+def _resolve_executable(settings: AppSettings, provider: str) -> str:
+    # The OpenCode fallback below applies only to the OpenCode provider: a
+    # model name left over from an OpenCode setup would be rejected by
+    # `claude --model` or `codex -m` if it leaked into another provider.
+    configured = settings.narrator.executable.strip()
+    if configured:
+        return configured
+    if provider == "opencode":
+        return settings.harnesses.opencode.cli.executable
+    return provider
+
+
+def _resolve_model(settings: AppSettings, provider: str) -> str:
+    if settings.narrator.model:
+        return settings.narrator.model
+    if provider == "opencode":
+        return settings.harnesses.opencode.cli.model
+    return ""
+
+
+def _resolve_timeout(settings: AppSettings, provider: str) -> float:
+    if settings.narrator.timeout_seconds is not None:
+        return settings.narrator.timeout_seconds
+    if provider == "opencode":
+        return settings.harnesses.opencode.cli.run_timeout_seconds
+    return DEFAULT_NARRATOR_TIMEOUT_SECONDS
+
+
+def _narrator_for_provider(settings: AppSettings, provider: str) -> NarrativeRunner:
+    executable = _resolve_executable(settings, provider)
+    model = _resolve_model(settings, provider)
+    runner = CommandRunner(timeout_seconds=_resolve_timeout(settings, provider))
+    if provider == "claude":
+        return ClaudeNarrator(runner=runner, executable=executable, model=model)
+    if provider == "codex":
+        return CodexNarrator(runner=runner, executable=executable, model=model)
+    return OpenCodeRunner(runner=runner, executable=executable, model=model)
+
+
+def _build_narrator(settings: AppSettings, harness: Harness) -> NarrativeRunner:
+    return _narrator_for_provider(settings, _resolve_provider(settings, harness))
+
+
+def _build_daily_narrator(settings: AppSettings) -> NarrativeRunner:
+    """Daily scans every harness, so no single one names the provider.
+
+    Configuration wins; otherwise take an installed provider, preferring
+    OpenCode so an existing setup keeps the CLI it already used.
+    """
+
+    configured = settings.narrator.provider.strip()
+    if configured:
+        return _narrator_for_provider(settings, _validate_configured_provider(configured))
+    candidates = [
+        _PROVIDER_BY_HARNESS[harness]
+        for harness in _enabled_harnesses(settings)
+        if shutil.which(_resolve_executable(settings, _PROVIDER_BY_HARNESS[harness]))
+    ]
+    if "opencode" in candidates:
+        return _narrator_for_provider(settings, "opencode")
+    if candidates:
+        return _narrator_for_provider(settings, candidates[0])
+    looked_for = ", ".join(
+        _resolve_executable(settings, _PROVIDER_BY_HARNESS[harness])
+        for harness in _enabled_harnesses(settings)
+    )
+    raise NarrativeRunError(
+        f"no narration provider is installed; looked for {looked_for}. "
+        "Set narrator.provider or narrator.executable."
+    )
+
+
 def _build_report_service(
     settings: AppSettings,
     period: DateRange,
@@ -327,12 +435,7 @@ def _build_report_service(
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
 
-    cli_settings = settings.harnesses.opencode.cli
-    opencode_runner = OpenCodeRunner(
-        runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
-        executable=cli_settings.executable,
-        model=cli_settings.model,
-    )
+    narrator = _build_narrator(settings, harness)
     summarizer = RuleBasedSummarizer()
 
     usage_provider, days = _usage_provider(settings, period, harness, now)
@@ -357,7 +460,7 @@ def _build_report_service(
         detail=detail,
         progress=progress,
         narrative=not no_llm,
-        opencode_runner=opencode_runner,
+        narrator=narrator,
         include_subagents=not root_only,
         sanitized=sanitize,
         initial_warnings=initial_warnings,

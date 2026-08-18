@@ -42,7 +42,7 @@ from iiwi.models.time_range import DateRange
 from iiwi.progress import ProgressStage
 from iiwi.services.outcomes import SynthesisBudgetExceededError
 from iiwi.services.scan import ScanResult
-from iiwi.summarizers.opencode_run import OpenCodeRunError
+from iiwi.summarizers.narrator import NarrativeRunError
 from tests.progress import RecordingProgressReporter
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -172,39 +172,33 @@ def test_new_draft_uses_saved_manager_type_and_its_brief_default(
     assert draft.detail is DetailLevel.BRIEF
 
 
-def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
+def test_synthesize_builds_one_narrator_for_the_draft_harness_and_uses_the_filtered_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Construction itself (which provider, which executable/model/timeout) is
+    `cli._build_narrator`'s job, covered by tests/unit/test_narrator_resolution.py;
+    this only pins that `_synthesize` asks for the narrator of the draft's own
+    harness and hands the one narrator it builds to synthesis."""
+
     scan = _scan()
-    settings = SimpleNamespace(
-        harnesses=SimpleNamespace(
-            opencode=SimpleNamespace(
-                cli=SimpleNamespace(
-                    executable="custom-opencode",
-                    model="review-model",
-                    run_timeout_seconds=321.0,
-                )
-            )
-        ),
-        report=SimpleNamespace(quick_review_max_evidence_bytes=4321),
-    )
-    runner_timeouts: list[float] = []
-    opencode_arguments: list[dict[str, object]] = []
+    settings = SimpleNamespace(report=SimpleNamespace(quick_review_max_evidence_bytes=4321))
+    narrator_calls: list[tuple[object, cli.Harness]] = []
     synthesized_scans: list[ScanResult] = []
     evidence_budgets: list[int] = []
     forced: list[bool] = []
 
-    class FakeCommandRunner:
-        def __init__(self, *, timeout_seconds: float) -> None:
-            runner_timeouts.append(timeout_seconds)
+    class FakeNarrator:
+        pass
 
-    class FakeOpenCodeRunner:
-        def __init__(self, **kwargs: object) -> None:
-            opencode_arguments.append(kwargs)
+    fake_narrator = FakeNarrator()
+
+    def fake_build_narrator(received_settings: object, harness: cli.Harness) -> FakeNarrator:
+        narrator_calls.append((received_settings, harness))
+        return fake_narrator
 
     class FakeSynthesisService:
         def __init__(self, runner: object, *, max_evidence_bytes: int) -> None:
-            assert isinstance(runner, FakeOpenCodeRunner)
+            assert runner is fake_narrator
             evidence_budgets.append(max_evidence_bytes)
 
         def synthesize(self, received: ScanResult, *, force: bool) -> SimpleNamespace:
@@ -216,8 +210,7 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
             )
 
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
-    monkeypatch.setattr(cli_actions, "CommandRunner", FakeCommandRunner)
-    monkeypatch.setattr(cli_actions, "OpenCodeRunner", FakeOpenCodeRunner, raising=False)
+    monkeypatch.setattr(cli, "_build_narrator", fake_build_narrator)
     monkeypatch.setattr(
         cli_actions,
         "OutcomeSynthesisService",
@@ -232,10 +225,7 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
 
     review = cli_actions._synthesize(draft, scan, False)
 
-    assert runner_timeouts == [321.0]
-    assert len(opencode_arguments) == 1
-    assert opencode_arguments[0]["executable"] == "custom-opencode"
-    assert opencode_arguments[0]["model"] == "review-model"
+    assert narrator_calls == [(settings, cli.Harness.CODEX)]
     assert synthesized_scans == [scan]
     assert synthesized_scans[0] is scan
     assert evidence_budgets == [4321]
@@ -249,20 +239,9 @@ def test_synthesize_builds_one_runner_and_uses_the_filtered_scan(
 def test_synthesize_reports_progress_while_the_model_call_runs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Without this the TUI holds its last frame for the whole opencode run."""
+    """Without this the TUI holds its last frame for the whole narration call."""
 
-    settings = SimpleNamespace(
-        harnesses=SimpleNamespace(
-            opencode=SimpleNamespace(
-                cli=SimpleNamespace(
-                    executable="opencode",
-                    model=None,
-                    run_timeout_seconds=600.0,
-                )
-            )
-        ),
-        report=SimpleNamespace(quick_review_max_evidence_bytes=4321),
-    )
+    settings = SimpleNamespace(report=SimpleNamespace(quick_review_max_evidence_bytes=4321))
     recorder = RecordingProgressReporter()
     stages_during_call: list[object] = []
 
@@ -281,8 +260,7 @@ def test_synthesize_reports_progress_while_the_model_call_runs(
             return SimpleNamespace(outcomes=_review().outcomes, warnings=[])
 
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
-    monkeypatch.setattr(cli_actions, "CommandRunner", lambda **kwargs: object())
-    monkeypatch.setattr(cli_actions, "OpenCodeRunner", lambda **kwargs: object())
+    monkeypatch.setattr(cli, "_build_narrator", lambda settings, harness: object())
     monkeypatch.setattr(cli_actions, "ConsoleReporter", FakeReporter)
     monkeypatch.setattr(
         cli_actions,
@@ -298,7 +276,7 @@ def test_synthesize_reports_progress_while_the_model_call_runs(
     ]
 
 
-def test_synthesize_translates_real_opencode_failure_for_controller_recovery(
+def test_synthesize_translates_a_real_narration_failure_for_controller_recovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repository = RepositoryIdentity(
@@ -324,34 +302,23 @@ def test_synthesize_translates_real_opencode_failure_for_controller_recovery(
         resolved_sessions=[resolved],
         sessions_by_repository={"repo-a": [resolved]},
     )
-    settings = SimpleNamespace(
-        harnesses=SimpleNamespace(
-            opencode=SimpleNamespace(
-                cli=SimpleNamespace(
-                    executable="missing-opencode",
-                    model="",
-                    run_timeout_seconds=1.0,
-                )
-            )
-        ),
-        report=SimpleNamespace(quick_review_max_evidence_bytes=40000),
-    )
+    settings = SimpleNamespace(report=SimpleNamespace(quick_review_max_evidence_bytes=40000))
 
-    class FailingOpenCodeRunner:
+    class FailingNarrator:
         def run(self, *, transcript: str, prompt: str, title: str) -> str:
             del transcript, prompt, title
-            raise OpenCodeRunError("missing-opencode: executable not found")
+            raise NarrativeRunError("missing-codex: executable not found")
 
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
     monkeypatch.setattr(
-        cli_actions,
-        "OpenCodeRunner",
-        lambda **kwargs: FailingOpenCodeRunner(),
+        cli,
+        "_build_narrator",
+        lambda settings, harness: FailingNarrator(),
     )
 
     with pytest.raises(
         OutcomeSynthesisError,
-        match="missing-opencode: executable not found",
+        match="missing-codex: executable not found",
     ):
         cli_actions._synthesize(
             ReportDraft(harness="codex", period=_period()),
@@ -363,18 +330,7 @@ def test_synthesize_translates_real_opencode_failure_for_controller_recovery(
 def test_synthesize_translates_temp_io_failure_for_controller_recovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    settings = SimpleNamespace(
-        harnesses=SimpleNamespace(
-            opencode=SimpleNamespace(
-                cli=SimpleNamespace(
-                    executable="opencode",
-                    model="",
-                    run_timeout_seconds=1.0,
-                )
-            )
-        ),
-        report=SimpleNamespace(quick_review_max_evidence_bytes=40000),
-    )
+    settings = SimpleNamespace(report=SimpleNamespace(quick_review_max_evidence_bytes=40000))
 
     class BrokenSynthesisService:
         def __init__(self, runner: object, *, max_evidence_bytes: int) -> None:
@@ -385,6 +341,7 @@ def test_synthesize_translates_temp_io_failure_for_controller_recovery(
             raise OSError("cannot write synthesis transcript")
 
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(cli, "_build_narrator", lambda settings, harness: object())
     monkeypatch.setattr(
         cli_actions,
         "OutcomeSynthesisService",
@@ -690,14 +647,7 @@ def test_start_daily_builds_every_available_harness_with_one_shared_window(
             quick_review_max_evidence_bytes=40000,
         ),
         harnesses=SimpleNamespace(
-            opencode=SimpleNamespace(
-                cli=SimpleNamespace(
-                    executable="opencode",
-                    model=None,
-                    run_timeout_seconds=600.0,
-                    sanitize=True,
-                )
-            )
+            opencode=SimpleNamespace(cli=SimpleNamespace(sanitize=True)),
         ),
     )
     calls: list[tuple[object, bool, cli.Harness, bool]] = []
@@ -745,6 +695,7 @@ def test_start_daily_builds_every_available_harness_with_one_shared_window(
         ],
     )
     monkeypatch.setattr(cli, "_build_scan_service", build_scan_service)
+    monkeypatch.setattr(cli, "_build_daily_narrator", lambda received: object())
 
     draft = cli_actions._start_daily(None)
 
@@ -1071,32 +1022,17 @@ def test_synthesize_guards_the_configured_evidence_budget(
 ) -> None:
     """A real selection, so the trim and the byte count have something to say."""
 
-    settings = SimpleNamespace(
-        harnesses=SimpleNamespace(
-            opencode=SimpleNamespace(
-                cli=SimpleNamespace(
-                    executable="opencode",
-                    model=None,
-                    run_timeout_seconds=1.0,
-                )
-            )
-        ),
-        report=SimpleNamespace(quick_review_max_evidence_bytes=137),
-    )
+    settings = SimpleNamespace(report=SimpleNamespace(quick_review_max_evidence_bytes=137))
     runs: list[str] = []
 
-    class RecordingOpenCodeRunner:
+    class RecordingNarrator:
         def run(self, *, transcript: str, prompt: str, title: str) -> str:
             del prompt, title
             runs.append(transcript)
             return "{}"
 
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
-    monkeypatch.setattr(
-        cli_actions,
-        "OpenCodeRunner",
-        lambda **kwargs: RecordingOpenCodeRunner(),
-    )
+    monkeypatch.setattr(cli, "_build_narrator", lambda settings, harness: RecordingNarrator())
 
     with pytest.raises(SynthesisBudgetExceededError) as error:
         cli_actions._synthesize(

@@ -51,7 +51,7 @@ from iiwi.services.daily_scan import DailyScanCoordinator, DailyWindow
 from iiwi.services.daily_workflow import DailyWorkflowService
 from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.scan import ScanResult
-from iiwi.summarizers.opencode_run import OpenCodeRunError, OpenCodeRunner
+from iiwi.summarizers.narrator import NarrativeRunError, NarrativeRunner
 
 _ALL_DAILY_SOURCES_UNAVAILABLE_WARNING = (
     "All Daily Standup activity sources are unavailable."
@@ -203,18 +203,14 @@ def _synthesize(draft: ReportDraft, scan: ScanResult, force: bool) -> OutcomeRev
     from iiwi import cli
 
     settings = cli._load_settings()
-    cli_settings = settings.harnesses.opencode.cli
-    runner = OpenCodeRunner(
-        runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
-        executable=cli_settings.executable,
-        model=cli_settings.model,
-    )
+    harness = cli.Harness(draft.harness)
+    runner = cli._build_narrator(settings, harness)
     reporter = ConsoleReporter()
     try:
         # Synthesis extracts and redacts every selected session and then runs one
-        # `opencode run` that can take minutes, and the TUI holds the last painted
-        # frame until it returns; without this the app looks hung right after
-        # "Exporting sessions".
+        # narration-provider call that can take minutes, and the TUI holds the
+        # last painted frame until it returns; without this the app looks hung
+        # right after "Exporting sessions".
         # ponytail: one animated status line, no percentage — the work is a single
         # subprocess, so there is nothing finer to report.
         with reporter.progress() as progress:
@@ -223,7 +219,7 @@ def _synthesize(draft: ReportDraft, scan: ScanResult, force: bool) -> OutcomeRev
                 runner,
                 max_evidence_bytes=settings.report.quick_review_max_evidence_bytes,
             ).synthesize(scan, force=force)
-    except (OpenCodeRunError, OSError) as exc:
+    except (NarrativeRunError, OSError) as exc:
         raise OutcomeSynthesisError(str(exc)) from exc
     arguments: dict[str, object] = {
         "outcomes": result.outcomes,
@@ -436,10 +432,10 @@ def _exclude_repository(repository_id: str, display_name: str) -> str:
     )
 
 
-class _DailyOpenCodeRunner(OpenCodeRunner):
-    """Translate the model runner's operational error into the workflow boundary."""
+class _DailyNarrator:
+    """Translate the narration provider's operational error into the workflow boundary."""
 
-    def __init__(self, delegate: OpenCodeRunner) -> None:
+    def __init__(self, delegate: NarrativeRunner) -> None:
         self._delegate = delegate
 
     def run(
@@ -455,7 +451,7 @@ class _DailyOpenCodeRunner(OpenCodeRunner):
                 prompt=prompt,
                 title=title,
             )
-        except (OpenCodeRunError, OSError) as exc:
+        except (NarrativeRunError, OSError) as exc:
             raise OutcomeSynthesisError(str(exc)) from exc
 
 
@@ -465,14 +461,7 @@ def _start_daily(previous: DailyStandupDraft | None) -> DailyStandupDraft:
     from iiwi import cli
 
     settings = cli._load_settings()
-    cli_settings = settings.harnesses.opencode.cli
-    runner = _DailyOpenCodeRunner(
-        OpenCodeRunner(
-            runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
-            executable=cli_settings.executable,
-            model=cli_settings.model,
-        )
-    )
+    runner = _DailyNarrator(cli._build_daily_narrator(settings))
     outcome_service = OutcomeSynthesisService(
         runner,
         max_evidence_bytes=settings.report.quick_review_max_evidence_bytes,

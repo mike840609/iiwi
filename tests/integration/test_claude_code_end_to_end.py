@@ -115,12 +115,15 @@ def test_scan_reports_the_claude_code_sessions(
     assert result.exit_code == 0, result.stdout
 
 
-def test_claude_code_report_narrative_uses_local_opencode_run(
+def test_claude_code_report_narrative_uses_the_claude_provider(
     tmp_path: Path,
     monkeypatch,
     claude_code_projects: Path,
     git_only_runner,
 ) -> None:
+    """The Claude Code harness resolves to the `claude` narration provider by
+    default (no `narrator.provider` override), not `opencode run`."""
+
     output = tmp_path / "worklog.md"
 
     result = _invoke(
@@ -131,7 +134,8 @@ def test_claude_code_report_narrative_uses_local_opencode_run(
     content = output.read_text(encoding="utf-8")
     assert "# Engineering Worklog" in content
     assert "NARRATIVE_ACCEPTANCE_MARKER" in content
-    assert git_only_runner.run_calls, "opencode run was never invoked"
+    assert git_only_runner.run_calls, "claude was never invoked"
+    assert git_only_runner.run_calls[0][0] == "claude"
     transcript = git_only_runner.run_transcripts[0]
     assert "## Project:" in transcript
     assert "Add retry to the price fetcher" in transcript

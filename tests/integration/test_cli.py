@@ -356,7 +356,7 @@ def test_no_llm_builds_a_deterministic_report_service(
     )
 
     assert narrative_service._narrative is True
-    assert narrative_service._opencode_runner is not None
+    assert narrative_service._narrator is not None
 
 
 def test_days_window_uses_a_single_clock_read(
@@ -1415,7 +1415,7 @@ def test_run_detail_flags_keep_session_reports_and_bypass_outcome_synthesis(
             now_factory=lambda: now,
             detail=detail,
             narrative=not no_llm,
-            opencode_runner=(
+            narrator=(
                 None
                 if no_llm
                 else cast(OpenCodeRunner, StaticNarrativeRunner())
