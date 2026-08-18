@@ -174,6 +174,24 @@ The interactive screen is the tool's primary entry point, so sites 3 and 4 are
 what make "installing only Claude Code is enough" true in practice rather than
 only on the command line.
 
+### What is unified and what is not
+
+The six sites all ask the same question and share one answer, but they are not
+made to behave identically, and the remaining difference is deliberate.
+
+Unified: availability has one definition per harness, and the preference order
+"prefer OpenCode, else the first in `Harness` declaration order" has one
+implementation. Sites 1, 2, 3 and 6 use the preference helper; site 4 cycles the
+list; site 5 builds a scanner for every entry in it.
+
+Not unified, on purpose: `report` and Review Activity select a single harness
+because the user is choosing what to look at, while Daily uses every available
+harness because a person's day is not partitioned by which coding agent produced
+it, and reporting half of it would be under-reporting. This is the same
+distinction that separates provider rule 2 from rule 3. It is a product contract
+recorded in `docs/2026-08-13-daily-standup-design.md`, not an inconsistency left
+over from this change.
+
 "Prefer OpenCode, else the first in `Harness` declaration order" is the rule
 `_ask_harness:958` already uses; it is reused rather than replaced, so a machine
 with OpenCode installed sees no change. When nothing is available, the error
