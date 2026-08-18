@@ -2,7 +2,7 @@
 
 **Iiwi** · /ˈiː.wiː/ "ee-wee"
 
-**Turn your coding-agent sessions into clear engineering reports.**
+**Turn your AI coding work into clear engineering reports.**
 
 [![CI](https://github.com/mike840609/iiwi/actions/workflows/ci.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/ci.yml)
 [![Release](https://github.com/mike840609/iiwi/actions/workflows/release.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/release.yml)
@@ -16,25 +16,50 @@ English | [繁體中文](https://github.com/mike840609/iiwi/blob/main/README.zh-
 
 ![Iiwi — see what your agents did](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-banner.jpg)
 
-You already did the work. Iiwi helps turn it into an update.
+You already did the work. Iiwi turns the history left by your coding agents into
+an update you can review and share.
 
-Iiwi reads the sessions recorded by OpenCode, Claude Code, and Codex, finds what
-you worked on, and turns it into a draft report. Review what matters, make a few
-edits, and generate a Markdown report you can share with your team.
+Iiwi works with OpenCode, Claude Code, and Codex. It finds what you worked on,
+keeps related work together, and turns it into a Markdown report without making
+you reread old agent conversations.
 
 - **Works across projects.** Iiwi finds your coding-agent sessions wherever you worked.
 - **Keeps related work together.** Sessions are grouped by repository.
-- **You review before sharing.** Choose what matters and edit the result before generating the report.
+- **You stay in control.** Choose and edit what belongs in the final report.
 - **Protects sensitive information.** Common secret patterns are removed before reports are written.
+
+## How it works
+
+1. **Read** — Iiwi finds local AI coding history from OpenCode, Claude Code, or Codex.
+2. **Review** — Keep, edit, reorder, or remove the work that matters.
+3. **Generate** — Create a Markdown report you can share with your team.
+
+## What you get
+
+A reviewed report can look like this:
+
+```markdown
+# Weekly engineering update
+
+## My Project
+- Simplified the report workflow and made review easier to use.
+- Added Claude Code and Codex session support.
+- Fixed documentation checks in CI.
+
+## Blockers
+- None
+```
 
 ## Quick start
 
-Requires Python 3.11+ and `git`. Iiwi can read local session history from OpenCode,
-Claude Code, or Codex. OpenCode is the default; Claude Code and Codex only need
-their local session folders to be readable.
+Requires Python 3.11+ and `git`.
 
-Report drafting uses your locally installed `opencode run`. If it is unavailable,
-Iiwi can fall back to a simpler session-based report.
+- **Reads from:** local session history from OpenCode, Claude Code, or Codex.
+- **Drafts with:** your locally installed `opencode run`.
+- **No OpenCode?** Use `--no-llm` when you want a simpler structured report.
+
+Report drafting uses your locally installed `opencode run`; reading Claude Code
+or Codex history does not require their CLI tools.
 
 ```bash
 pipx install iiwi                 # or: pip install iiwi
@@ -49,27 +74,9 @@ report in the terminal without writing a file.
 
 ## The interactive menu
 
-Run `iiwi` with no arguments if you would rather use a menu than remember flags:
-
-```text
-$ iiwi
- ___ _        _
-|_ _(_)_ __ _(_)
- | || \ V  V / |
-|___|_|\_/\_/|_|                                v0.9.1
-══════════════════════════════════════════════════════
-Turn coding-agent sessions into engineering reports
-github.com/mike840609/iiwi
-
-▶ Review Activity
-  Daily Standup
-  Generate Report
-  History
-  Check Setup
-  Settings
-
-↑↓ jk │ Enter Select │ 1-6 │ ? Help │ q Quit
-```
+Run `iiwi` with no arguments if you would rather use a menu than remember flags.
+The main menu gives you Review Activity, Daily Standup, Generate Report, History,
+Check Setup, and Settings. Use `iiwi --help` when you want the full command list.
 
 **Generate Report** lets you choose the report settings, review the sessions Iiwi
 found, and then generate the report. **Review Sessions** shows the work grouped by
@@ -96,7 +103,7 @@ for recent work. **History** lists reports Iiwi has already written.
 Before a report is written, Quick Review lets you keep, edit, reorder, split, or
 add work items so the final Markdown reflects what you actually want to share.
 For the full keyboard flow, report modes, and recovery behavior, see the
-[evidence-first Quick Review guide](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md).
+[Quick Review guide](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md).
 For Daily Standup details, see the
 [Daily Standup guide](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md).
 
@@ -156,7 +163,7 @@ for the full data flow and current limits.
 |---|---|
 | [CLI reference](https://github.com/mike840609/iiwi/blob/main/docs/cli-reference.md) | Every command, option, and exit code |
 | [Daily Standup](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md) | Yesterday/Today/Blockers review, refresh, warnings, and output |
-| [Evidence-first Quick Review](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md) | Outcome review keys, report modes, recovery, and current exclusions |
+| [Quick Review guide](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md) | Outcome review keys, report modes, recovery, and current exclusions |
 | [Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md) | Settings file, environment variables, precedence |
 | [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md) | Data flow, redaction boundary, what reports still contain |
 | [Security policy](https://github.com/mike840609/iiwi/blob/main/SECURITY.md) | Threat model and how to report a vulnerability |

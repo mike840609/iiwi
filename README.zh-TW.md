@@ -2,7 +2,7 @@
 
 **Iiwi** · /ˈiː.wiː/ "ee-wee"
 
-**把 coding-agent 的工作紀錄整理成清楚的工程報告。**
+**把 AI coding 工作整理成清楚的工程報告。**
 
 [![CI](https://github.com/mike840609/iiwi/actions/workflows/ci.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/ci.yml)
 [![Release](https://github.com/mike840609/iiwi/actions/workflows/release.yml/badge.svg)](https://github.com/mike840609/iiwi/actions/workflows/release.yml)
@@ -16,24 +16,48 @@
 
 ![Iiwi — 看見你的 agent 做了什麼](https://github.com/mike840609/iiwi/raw/refs/heads/main/docs/assets/iiwi-banner.jpg)
 
-你已經把工作做完了，Iiwi 幫你把它整理成可以回報的內容。
+你已經把工作做完了，Iiwi 會把 coding agent 留下的工作紀錄整理成你可以確認、修改與分享的回報內容。
 
-Iiwi 會讀取 OpenCode、Claude Code 與 Codex 留下的工作紀錄，找出你做過什麼，整理成報告草稿。
-挑出重要內容、稍微修改後，就能產生一份可以分享給團隊的 Markdown 報告。
+Iiwi 支援 OpenCode、Claude Code 與 Codex。它會找出你做過什麼、把相關工作整理在一起，
+再產生 Markdown 報告，不用自己重新翻一遍過去的 agent 對話。
 
 - **跨專案都能用。** Iiwi 會找到你在不同專案留下的 coding-agent 工作紀錄。
 - **相關工作放在一起。** 同一個 repository 的工作會整理在一起。
-- **分享前由你確認。** 挑出重要內容並修改後，再產生最後的報告。
+- **最後內容由你決定。** 挑出重要內容並修改後，再產生最後的報告。
 - **保護敏感資訊。** 寫出報告前，會先移除常見的機密字串樣式。
+
+## 怎麼運作
+
+1. **讀取** — Iiwi 找出 OpenCode、Claude Code 或 Codex 保存在本機的 AI coding 工作紀錄。
+2. **確認** — 保留、修改、排序或移除真正重要的工作。
+3. **產生** — 建立一份可以直接分享給團隊的 Markdown 報告。
+
+## 最後會得到什麼
+
+例如，一份確認過的報告可以長這樣：
+
+```markdown
+# 每週工程更新
+
+## My Project
+- 簡化報告操作流程，讓 review 更容易完成。
+- 加入 Claude Code 與 Codex session 支援。
+- 修正 CI 中的文件檢查。
+
+## Blockers
+- None
+```
 
 ## 快速開始
 
-需要 Python 3.11 以上與 `git`。Iiwi 可以讀取 OpenCode、Claude Code 或 Codex
-保存在本機的工作紀錄。預設使用 OpenCode；Claude Code 與 Codex 只要本機的 session
-資料夾可讀取即可。
+需要 Python 3.11 以上與 `git`。
 
-報告內容會由你本機安裝的 `opencode run` 協助整理。如果無法使用，Iiwi 也可以改用較簡單的
-session-based report。
+- **讀取來源：** OpenCode、Claude Code 或 Codex 保存在本機的 session history。
+- **整理報告：** 使用你本機安裝的 `opencode run`。
+- **沒有 OpenCode？** 可以使用 `--no-llm` 產生較簡單的結構化報告。
+
+報告內容會由你本機安裝的 `opencode run` 協助整理；讀取 Claude Code 或 Codex 的紀錄
+不需要安裝它們的 CLI。
 
 ```bash
 pipx install iiwi                 # 或：pip install iiwi
@@ -47,27 +71,8 @@ iiwi report --period last-week    # 產生上週報告
 
 ## 互動選單
 
-不想記參數的話，直接執行 `iiwi`：
-
-```text
-$ iiwi
- ___ _        _
-|_ _(_)_ __ _(_)
- | || \ V  V / |
-|___|_|\_/\_/|_|                                v0.9.1
-══════════════════════════════════════════════════════
-Turn coding-agent sessions into engineering reports
-github.com/mike840609/iiwi
-
-▶ Review Activity
-  Daily Standup
-  Generate Report
-  History
-  Check Setup
-  Settings
-
-↑↓ jk │ Enter Select │ 1-6 │ ? Help │ q Quit
-```
+不想記參數的話，直接執行 `iiwi`。主選單提供 Review Activity、Daily Standup、
+Generate Report、History、Check Setup 與 Settings；想查看所有指令時可以使用 `iiwi --help`。
 
 **Generate Report** 可以調整報告設定、確認 Iiwi 找到的 sessions，再產生報告。
 **Review Sessions** 會依 repository 整理工作，讓你快速保留或排除要放進回報的內容：
@@ -92,7 +97,7 @@ Select sessions to include in the report:
 
 真正寫出報告前，Quick Review 讓你保留、修改、排序、拆分或新增工作項目，確保最後的 Markdown
 就是你想分享的內容。完整快捷鍵、報告模式與失敗時的處理方式，請見
-[evidence-first Quick Review 指南](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md)。
+[Quick Review 指南](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md)。
 Daily Standup 的完整說明請見
 [Daily Standup 指南](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md)。
 
@@ -150,6 +155,7 @@ iiwi config unset report.timezone                         # 回到預設值
 |---|---|
 | [CLI reference](https://github.com/mike840609/iiwi/blob/main/docs/cli-reference.md) | 所有指令、選項與結束代碼 |
 | [Daily Standup](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md) | Yesterday／Today／Blockers 審閱、更新、警告與輸出 |
+| [Quick Review 指南](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md) | 工作項目審閱、報告模式、失敗處理與目前限制 |
 | [Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md) | 設定檔、環境變數與優先順序 |
 | [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md) | 資料流向、去敏邊界，以及報告仍會包含什麼 |
 | [Security policy](https://github.com/mike840609/iiwi/blob/main/SECURITY.md) | 威脅模型與漏洞回報方式 |
