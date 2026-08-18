@@ -486,7 +486,10 @@ def _build_report_service(
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
 
-    narrator = _build_narrator(settings, harness)
+    # Only the narrative path reads narrator settings, so `--no-llm` — the
+    # documented way to run without an AI CLI — must not fail on a provider it
+    # never invokes.
+    narrator = None if no_llm else _build_narrator(settings, harness)
     summarizer = RuleBasedSummarizer()
 
     usage_provider, days = _usage_provider(settings, period, harness, now)

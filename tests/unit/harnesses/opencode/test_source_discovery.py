@@ -1,4 +1,7 @@
+import json
+from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -94,3 +97,56 @@ def test_root_only_excludes_child_sessions(fake_runner) -> None:
     query = fake_runner.calls[0][2]
     assert "AND parent_id IS NULL" in query
     assert query.rstrip().endswith("DESC;")
+
+
+@dataclass
+class TruncatingRunner:
+    """Reproduce OpenCode's documented pipe-buffer truncation.
+
+    The real CLI writes the whole payload when its stdout is a file, and silently
+    truncates at the OS pipe buffer — still exiting 0 — when it is a pipe. A fake
+    that ignores `stdout_path` cannot tell those apart, which is why every
+    pre-existing discovery test passed while `discover()` was losing rows.
+    """
+
+    payload: str
+    pipe_buffer: int = 65536
+    stdout_paths: list[Path | None] = field(default_factory=list)
+
+    def run(self, args: list[str], *, stdout_path: Path | None = None) -> CommandResult:
+        del args
+        self.stdout_paths.append(stdout_path)
+        if stdout_path is None:
+            return CommandResult(0, self.payload[: self.pipe_buffer], "")
+        stdout_path.write_text(self.payload, encoding="utf-8")
+        return CommandResult(0, self.payload, "")
+
+
+def test_discovery_survives_a_payload_larger_than_the_pipe_buffer() -> None:
+    rows = [
+        {
+            "id": f"s{index}",
+            "project_id": "project",
+            "parent_id": None,
+            "directory": "/repo",
+            "title": "t" * 200,
+            "time_created": 1,
+            "time_updated": 2,
+        }
+        for index in range(400)
+    ]
+    payload = json.dumps(rows)
+    # The bug only appears past the pipe buffer, so the fixture has to clear it.
+    assert len(payload) > 65536
+
+    runner = TruncatingRunner(payload=payload)
+    source = OpenCodeCliSource(runner=runner, executable="opencode")
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ),
+        until=datetime(2026, 7, 27, tzinfo=TZ),
+    )
+
+    descriptors = source.discover(period)
+
+    assert len(descriptors) == 400
+    assert runner.stdout_paths[0] is not None
