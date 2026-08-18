@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
@@ -163,7 +164,7 @@ def test_new_draft_uses_saved_manager_type_and_its_brief_default(
     now = datetime(2026, 8, 10, 12, tzinfo=TZ)
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
     monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
-    monkeypatch.setattr(cli, "_enabled_harnesses", lambda settings: [cli.Harness.CODEX])
+    monkeypatch.setattr(cli, "_default_harness", lambda settings: cli.Harness.CODEX)
 
     draft = cli_actions._new_draft()
 
@@ -514,13 +515,13 @@ def test_edit_gap_enter_clears_an_existing_value_with_the_real_prompt() -> None:
     assert "<none>" in result.stdout
 
 
-def test_choose_harness_cycles_enabled_values_without_prompting(
+def test_choose_harness_cycles_available_values_without_prompting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(cli, "_load_settings", lambda: object())
     monkeypatch.setattr(
         cli,
-        "_enabled_harnesses",
+        "_available_harnesses",
         lambda settings: [cli.Harness.OPENCODE, cli.Harness.CLAUDE_CODE, cli.Harness.CODEX],
     )
     monkeypatch.setattr(
@@ -534,11 +535,11 @@ def test_choose_harness_cycles_enabled_values_without_prompting(
     assert cli_actions._choose_harness("codex") == "opencode"
 
 
-def test_choose_harness_keeps_only_enabled_value(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_choose_harness_keeps_only_available_value(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "_load_settings", lambda: object())
     monkeypatch.setattr(
         cli,
-        "_enabled_harnesses",
+        "_available_harnesses",
         lambda settings: [cli.Harness.CODEX],
     )
 
@@ -679,7 +680,7 @@ def test_save_and_restore_round_trip_through_the_state_file(
     }
 
 
-def test_start_daily_builds_every_enabled_harness_with_one_shared_window(
+def test_start_daily_builds_every_available_harness_with_one_shared_window(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -736,7 +737,7 @@ def test_start_daily_builds_every_enabled_harness_with_one_shared_window(
     )
     monkeypatch.setattr(
         cli,
-        "_enabled_harnesses",
+        "_available_harnesses",
         lambda value: [
             cli.Harness.OPENCODE,
             cli.Harness.CLAUDE_CODE,
@@ -1109,3 +1110,54 @@ def test_synthesize_guards_the_configured_evidence_budget(
     assert error.value.estimate.fit_count == 1
     assert error.value.estimate.bytes_used > 137
     assert runs == []
+
+
+def test_new_draft_starts_on_an_available_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setenv("IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY", str(projects))
+    monkeypatch.setenv("IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "absent"))
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    draft = cli_actions._new_draft()
+
+    assert draft.harness == "claude-code"
+
+
+def test_choose_harness_cycles_only_available_harnesses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setenv("IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY", str(projects))
+    monkeypatch.setenv("IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "absent"))
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    assert cli_actions._choose_harness("claude-code") == "claude-code"
+
+
+def test_daily_builds_scanners_only_for_available_harnesses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setenv("IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY", str(projects))
+    monkeypatch.setenv("IIWI_HARNESSES__CODEX__HOME_DIRECTORY", str(tmp_path / "absent"))
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    built: list[str] = []
+
+    def fake_scan_service(settings, period, root_only, *, harness, sanitize, progress):
+        built.append(harness.value)
+        return object()
+
+    monkeypatch.setattr(cli, "_build_scan_service", fake_scan_service)
+
+    settings = cli._load_settings()
+    harnesses = [harness.value for harness in cli._available_harnesses(settings)]
+
+    assert harnesses == ["claude-code"]

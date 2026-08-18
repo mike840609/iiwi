@@ -965,3 +965,26 @@ def test_default_harness_reports_what_it_checked_when_nothing_is_available(
     assert "opencode" in message
     assert "absent-projects" in message
     assert "absent-codex" in message
+
+
+def test_report_without_a_harness_flag_uses_the_available_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setenv("IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY", str(projects))
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    seen: list[cli.Harness] = []
+
+    def fake_build(settings, period, output_path, no_llm, root_only=False, **kwargs):
+        seen.append(kwargs["harness"])
+        raise cli.NoSessionsError("stop here")
+
+    monkeypatch.setattr(cli, "_build_report_service", fake_build)
+
+    CliRunner().invoke(cli.app, ["report", "--days", "7"])
+
+    assert seen == [cli.Harness.CLAUDE_CODE]

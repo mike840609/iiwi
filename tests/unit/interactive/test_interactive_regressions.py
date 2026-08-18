@@ -368,7 +368,7 @@ def test_harness_and_period_editors_do_not_fall_back_to_typed_prompts(
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
     monkeypatch.setattr(
         cli,
-        "_enabled_harnesses",
+        "_available_harnesses",
         lambda value: [cli.Harness.OPENCODE, cli.Harness.CODEX],
     )
     monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)

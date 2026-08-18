@@ -63,8 +63,7 @@ def _new_draft() -> ReportDraft:
 
     settings = cli._load_settings()
     now = cli._now_in_timezone(settings.report.timezone)
-    enabled = cli._enabled_harnesses(settings)
-    harness = cli.Harness.OPENCODE if cli.Harness.OPENCODE in enabled else enabled[0]
+    harness = cli._default_harness(settings)
     label, period = _named_periods(now)[0]
     return ReportDraft(
         harness=harness.value,
@@ -75,19 +74,19 @@ def _new_draft() -> ReportDraft:
 
 
 def _choose_harness(current: str) -> str:
-    """Cycle to the next enabled harness without leaving the key-driven UI."""
+    """Cycle to the next available harness without leaving the key-driven UI."""
 
     from iiwi import cli
 
     settings = cli._load_settings()
-    enabled = [harness.value for harness in cli._enabled_harnesses(settings)]
-    if not enabled:
+    available = [harness.value for harness in cli._available_harnesses(settings)]
+    if not available:
         return current
     try:
-        index = enabled.index(current)
+        index = available.index(current)
     except ValueError:
-        return enabled[0]
-    return enabled[(index + 1) % len(enabled)]
+        return available[0]
+    return available[(index + 1) % len(available)]
 
 
 def _named_periods(now: datetime) -> list[tuple[str, DateRange]]:
@@ -492,7 +491,7 @@ def _start_daily(previous: DailyStandupDraft | None) -> DailyStandupDraft:
                     sanitize=cli._effective_sanitize(settings, harness, None),
                     progress=progress,
                 )
-                for harness in cli._enabled_harnesses(settings)
+                for harness in cli._available_harnesses(settings)
             }
             return DailyScanCoordinator(window=window, scanners=scanners)
 

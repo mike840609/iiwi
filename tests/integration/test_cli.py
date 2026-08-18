@@ -152,7 +152,7 @@ def test_report_refuses_overwrite_without_force(
 
     result = runner.invoke(
         cli.app,
-        ["report", "--days", "7", "--output", str(existing_report)],
+        ["report", "--days", "7", "--output", str(existing_report), "--harness", "opencode"],
     )
 
     assert result.exit_code == 7
@@ -192,6 +192,8 @@ def test_report_supports_previous_calendar_week(
             "--dry-run",
             "--output",
             str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -202,13 +204,19 @@ def test_report_supports_previous_calendar_week(
 
 
 def test_report_rejects_days_and_period_together() -> None:
-    result = runner.invoke(cli.app, ["report", "--days", "7", "--period", "last-week"])
+    result = runner.invoke(
+        cli.app,
+        ["report", "--days", "7", "--period", "last-week", "--harness", "opencode"],
+    )
 
     assert result.exit_code == 2
 
 
 def test_until_requires_since() -> None:
-    result = runner.invoke(cli.app, ["scan", "--until", "2026-07-27T00:00:00+08:00"])
+    result = runner.invoke(
+        cli.app,
+        ["scan", "--until", "2026-07-27T00:00:00+08:00", "--harness", "opencode"],
+    )
 
     assert result.exit_code == 2
 
@@ -241,6 +249,8 @@ def test_scan_rejects_an_equal_custom_range() -> None:
             "2026-07-10T00:00:00+08:00",
             "--until",
             "2026-07-10T00:00:00+08:00",
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -258,6 +268,8 @@ def test_report_rejects_a_reversed_custom_range() -> None:
             "2026-07-10T00:00:00+08:00",
             "--until",
             "2026-07-01T00:00:00+08:00",
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -394,6 +406,8 @@ def test_days_window_uses_a_single_clock_read(
             "--dry-run",
             "--output",
             str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -425,7 +439,7 @@ def test_scan_says_sessions_were_excluded_when_configuration_drops_them(
         lambda settings, period, root_only=False, *, harness, progress: StubScanService(),
     )
 
-    result = runner.invoke(cli.app, ["scan", "--days", "7"])
+    result = runner.invoke(cli.app, ["scan", "--days", "7", "--harness", "opencode"])
 
     assert result.exit_code == 4
     assert "excluded by configuration" in result.stdout
@@ -473,7 +487,15 @@ def test_report_says_sessions_were_excluded_when_configuration_drops_them(
 
     result = runner.invoke(
         cli.app,
-        ["report", "--days", "7", "--output", str(tmp_path / "report.md")],
+        [
+            "report",
+            "--days",
+            "7",
+            "--output",
+            str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
+        ],
     )
 
     assert result.exit_code == 4
@@ -516,6 +538,8 @@ def test_report_passes_root_only_to_the_report_service(
             "--dry-run",
             "--output",
             str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -556,7 +580,9 @@ def test_scan_passes_root_only_to_the_scan_service(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(cli, "_build_scan_service", build)
 
-    result = runner.invoke(cli.app, ["scan", "--days", "7", "--root-only"])
+    result = runner.invoke(
+        cli.app, ["scan", "--days", "7", "--root-only", "--harness", "opencode"]
+    )
 
     assert result.exit_code == 0
     assert captured["root_only"] is True
@@ -589,7 +615,7 @@ def test_quiet_scan_passes_a_null_progress_reporter(
 
     monkeypatch.setattr(cli, "_build_scan_service", build)
 
-    result = runner.invoke(cli.app, ["scan", "--days", "7", "--quiet"])
+    result = runner.invoke(cli.app, ["scan", "--days", "7", "--quiet", "--harness", "opencode"])
 
     assert result.exit_code == 0
     assert isinstance(captured["progress"], NullProgressReporter)
@@ -649,6 +675,8 @@ def test_dry_run_keeps_progress_out_of_stdout(
             "--dry-run",
             "--output",
             str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -700,6 +728,8 @@ def test_report_passes_the_detail_level_to_the_report_service(
             "--dry-run",
             "--output",
             str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -740,6 +770,8 @@ def test_report_defaults_to_full_detail(
             "--dry-run",
             "--output",
             str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -2069,6 +2101,10 @@ def test_run_walks_the_real_prompts_on_defaults(
     monkeypatch.setattr(cli, "_default_output_path", lambda settings, period: output_path)
     monkeypatch.setattr(cli, "_build_scan_service", build_scan)
     monkeypatch.setattr(cli, "_build_report_service", build_report)
+    # `run` has no --harness flag; Enter accepts _ask_harness's default, which
+    # is _default_harness. Fixing it here keeps the wizard's real prompt-answering
+    # flow under test without depending on this machine's installed harnesses.
+    monkeypatch.setattr(cli, "_default_harness", lambda settings: cli.Harness.OPENCODE)
 
     result = runner.invoke(cli.app, ["run"], input="\n" * 8)
 
@@ -2206,6 +2242,8 @@ def test_the_menu_runs_the_real_scan_command_over_the_last_week(
 
     monkeypatch.setattr(cli, "_build_scan_service", build)
     _as_a_terminal(monkeypatch)
+    # The menu has no --harness flag either; see test_run_walks_the_real_prompts_on_defaults.
+    monkeypatch.setattr(cli, "_default_harness", lambda settings: cli.Harness.OPENCODE)
 
     # "2" chooses the scan; the empty answer keeps the default harness.
     result = runner.invoke(cli.app, [], input="2\n\n")

@@ -73,9 +73,9 @@ class Harness(StrEnum):
 # isn't recognized as an immutable default, so it must be constructed once here
 # and shared, rather than called inline in each command's signature.
 _HARNESS_OPTION = typer.Option(
-    Harness.OPENCODE,
+    None,
     "--harness",
-    help="Coding-agent harness to read sessions from.",
+    help="Coding-agent harness to read sessions from; defaults to the first available harness.",
 )
 
 _DETAIL_OPTION = typer.Option(
@@ -458,7 +458,7 @@ def _record_history(
 
 @app.command()
 def doctor(
-    harness: Harness = _HARNESS_OPTION,
+    harness: Harness | None = _HARNESS_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     json: bool | None = typer.Option(
@@ -477,6 +477,7 @@ def doctor(
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        harness = harness or _default_harness(settings)
         _require_enabled_harness(settings, harness)
         runner = CommandRunner(
             timeout_seconds=settings.harnesses.opencode.cli.timeout_seconds
@@ -513,7 +514,7 @@ def scan(
             "Disabled by default. OpenCode only."
         ),
     ),
-    harness: Harness = _HARNESS_OPTION,
+    harness: Harness | None = _HARNESS_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     json: bool | None = typer.Option(
@@ -529,10 +530,11 @@ def scan(
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
     _validate_json_mode(json=json, quiet=quiet)
-    _validate_privacy_options(harness=harness, sanitize=sanitize)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        harness = harness or _default_harness(settings)
+        _validate_privacy_options(harness=harness, sanitize=sanitize)
         effective_sanitize = _effective_sanitize(settings, harness, sanitize)
         now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
@@ -612,7 +614,7 @@ def report(
         ),
     ),
     force: bool = typer.Option(False, "--force"),
-    harness: Harness = _HARNESS_OPTION,
+    harness: Harness | None = _HARNESS_OPTION,
     detail: DetailLevel = _DETAIL_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
@@ -620,10 +622,11 @@ def report(
     """Generate a Markdown engineering worklog."""
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
-    _validate_privacy_options(harness=harness, sanitize=sanitize)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        harness = harness or _default_harness(settings)
+        _validate_privacy_options(harness=harness, sanitize=sanitize)
         effective_sanitize = _effective_sanitize(settings, harness, sanitize)
         now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
@@ -1024,17 +1027,17 @@ def _default_harness(settings: AppSettings) -> Harness:
 
 
 def _ask_harness(settings: AppSettings) -> Harness:
-    """Offer only the harnesses that are on; Enter keeps OpenCode when it is."""
+    """Offer only the harnesses that work here; Enter keeps the default."""
 
-    enabled = _enabled_harnesses(settings)
-    default = Harness.OPENCODE if Harness.OPENCODE in enabled else enabled[0]
-    names = [h.value for h in enabled]
+    available = _available_harnesses(settings)
+    default = _default_harness(settings)
+    names = [harness.value for harness in available]
     typer.echo(f"Available harnesses: {', '.join(names)}")
     while True:
         answer = _prompt(f"Harness [{default.value}]")
         if not answer:
             return default
-        for harness in enabled:
+        for harness in available:
             if harness == answer:
                 return harness
         typer.echo(f"  choose from: {', '.join(names)}")
