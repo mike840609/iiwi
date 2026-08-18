@@ -138,13 +138,21 @@ no `codex` binary is on PATH.
 `enabled` and `available` are separate concepts. `enabled` is policy — whether an
 operator permits the harness at all. `available` is fact. `available ⊆ enabled`.
 
-A new `cli._available_harnesses(settings)` filters `_enabled_harnesses` by the
-"can read" predicate and is used in three places:
+Each "can read" predicate is defined beside the source it describes — an
+`is_available` function in `harnesses/opencode/source.py`,
+`harnesses/claude_code/source.py` and `harnesses/codex/source.py`, taking the
+same arguments the source constructor already takes. One definition per harness,
+so the predicate cannot drift away from what the source actually requires.
+
+A new `cli._available_harnesses(settings)` filters `_enabled_harnesses` through
+those predicates and is used in four places:
 
 1. The default value of `--harness` (`cli.py:72`) becomes the first available
    harness, preferring OpenCode when it is available.
 2. `_ask_harness` (`cli.py:954`) offers the same default.
-3. Daily's provider choice, which has no single harness, uses the "can narrate"
+3. Daily's scanner set (`interactive/cli_actions.py:495`), which builds one
+   scanner per harness and today uses `_enabled_harnesses`.
+4. Daily's provider choice, which has no single harness, uses the "can narrate"
    predicate.
 
 "Prefer OpenCode, else the first in `Harness` declaration order" is the rule
@@ -157,6 +165,30 @@ unavailable. Explicit always beats inferred.
 
 Because `--harness` no longer has a static default, its help text reads
 "defaults to the first available harness".
+
+### Relationship to Daily's existing availability check
+
+Daily already reports `unavailable_harnesses` (`services/daily_scan.py:83`), but
+determines it empirically: it runs every scanner and records the ones that raise
+`HarnessSourceError`. That check is kept and becomes a runtime safety net — a
+directory can disappear between the pre-check and the scan, and the OpenCode CLI
+can fail for reasons `which` cannot see. Its meaning narrows usefully, from "did
+not produce sessions" to "passed the pre-check but failed while scanning".
+
+The pre-check is what makes the two mechanisms agree, because the three sources
+do not agree today. `CodexSource.discover` raises `HarnessSourceError` when its
+home directory is missing (`harnesses/codex/source.py:56`) and the OpenCode
+source raises when its CLI call fails, but `ClaudeCodeFileSource.discover`
+returns an empty list (`harnesses/claude_code/source.py:112`). A machine with no
+`~/.claude/projects` therefore has Claude Code recorded today as a successful
+scan with zero sessions, which is the silent incomplete coverage the Daily design
+forbids.
+
+Filtering the scanner set by the pre-check fixes that without changing any
+source's error behaviour: a harness that cannot read never gets a scanner, so it
+is neither silently counted nor noisily warned about. Making
+`ClaudeCodeFileSource` raise instead was rejected — it would emit a coverage
+warning every day for anyone who has Claude Code enabled but has never used it.
 
 ## Resolution rules
 
@@ -347,10 +379,18 @@ row of the four rule tables, including a leftover
 be inherited. The four scenarios above each get an end-to-end resolution
 assertion.
 
-**Availability.** `_available_harnesses` against `tmp_path` with `shutil.which`
-monkeypatched, reusing the `codex_home` fixture (`tests/conftest.py:421`). The
-Codex-desktop case is explicit: data present, binary absent, reads succeed,
-narration fails, and the message references the documentation section.
+**Availability.** Each harness's `is_available` gets its own test against
+`tmp_path` with `shutil.which` monkeypatched, reusing the `codex_home` fixture
+(`tests/conftest.py:421`). `_available_harnesses` is then tested for the
+composition. The Codex-desktop case is explicit: data present, binary absent,
+reads succeed, narration fails, and the message references the documentation
+section.
+
+Two Daily cases pin the relationship between the pre-check and the runtime
+safety net: a harness that fails the pre-check produces no scanner at all and no
+coverage warning, while a harness that passes the pre-check and then raises
+`HarnessSourceError` is still recorded in `unavailable_harnesses` with its
+coverage warning.
 
 **Self-authored exclusion.** One case per harness: a session whose first user
 message carries the prefix is excluded; one without it is retained; the OpenCode
@@ -399,4 +439,6 @@ Collected during design; recorded so implementation does not re-litigate them.
 | `codex exec` takes a prompt argument, `-m/--model`, and appends piped stdin as a `<stdin>` block | `codex exec --help` |
 | The Codex desktop install ships a complete CLI outside PATH | `~/.codex/plugins/.plugin-appserver/codex --version` reports `codex-cli 0.148.0-alpha.9`; `chrome-native-hosts-v2.json` pins `cliVersion` to `appVersion` |
 | `harnesses/` and `summarizers/` do not import each other | Grep in both directions |
+| `report`, `scan` and `doctor` take one harness; only `daily` is multi-harness | `_HARNESS_OPTION` appears at `cli.py:430`, `:485`, `:584` and nowhere else; `daily` (`cli.py:1041`) takes no harness |
+| The three sources disagree on what "unavailable" means | Codex raises (`harnesses/codex/source.py:56`), OpenCode raises on CLI failure, Claude Code returns `[]` (`harnesses/claude_code/source.py:112`) |
 | Quick Review's JSON extraction is provider-agnostic | `_extract_json_object` (`services/outcomes.py:706`) scans for the first decodable object, ignoring fences and prose |
