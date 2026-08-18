@@ -5,6 +5,7 @@ import pytest
 
 from iiwi.harnesses.claude_code.mapper import ClaudeCodeJsonlMapper
 from iiwi.models.session import ActivityType, SessionDescriptor, UsageSemantics
+from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX, is_iiwi_authored
 
 # Derived from this file, not from the working directory, so the test passes when
 # pytest is invoked from a subdirectory.
@@ -346,3 +347,83 @@ def test_no_git_branch_key_yields_none(descriptor) -> None:
     )
 
     assert session.branch is None
+
+
+def test_iiwi_marker_survives_a_prompt_record_with_no_origin_field(
+    descriptor,
+) -> None:
+    """must-fix 2: a `claude -p` run iiwi itself launches for narration does not
+    always set `origin` on its own prompt record. Verified against real
+    `~/.claude/projects` data: 28 of 67 session files hold genuine human
+    prompts with no `origin` field at all, so gating on `origin` alone would
+    drop iiwi's own marker line and let `is_iiwi_authored` mistake iiwi's own
+    narration run for the user's work. This is a realistic raw record — no
+    `origin` key at all, exactly as `claude -p` writes it — run through the
+    real mapper and the real exclusion check end to end, not a hand-built
+    AgentSession that assumes the premise."""
+
+    records = [
+        {
+            "type": "user",
+            # No "origin" key at all: this is the exact shape the bug depends on.
+            "message": {
+                "role": "user",
+                "content": (
+                    f"{IIWI_SESSION_TITLE_PREFIX}narrative 2026-08-01 to "
+                    "2026-08-08\n\nCreate a concise software engineering "
+                    "weekly report."
+                ),
+            },
+            "uuid": "u-1",
+            "timestamp": "2026-08-08T01:00:00.000Z",
+            "cwd": "/repo/main",
+            "sessionId": "sess-1",
+        },
+        {
+            "type": "assistant",
+            "message": {
+                "model": "claude-opus-5",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "# Weekly Engineering Review"}],
+            },
+            "uuid": "a-1",
+            "timestamp": "2026-08-08T01:00:05.000Z",
+            "cwd": "/repo/main",
+            "sessionId": "sess-1",
+        },
+    ]
+
+    session = ClaudeCodeJsonlMapper().map(records, descriptor)
+
+    user_messages = [
+        activity
+        for activity in session.activities
+        if activity.activity_type == ActivityType.USER_MESSAGE
+    ]
+    assert len(user_messages) == 1
+    assert user_messages[0].content.startswith(IIWI_SESSION_TITLE_PREFIX)
+    assert is_iiwi_authored(session) is True
+
+
+def test_a_genuine_human_prompt_with_no_origin_field_is_still_dropped(
+    descriptor,
+) -> None:
+    """The general gap (`services/scan.py::_has_assistant_work_but_no_prompt`)
+    stays open on purpose: only iiwi's own marker text bypasses the `origin`
+    gate, so an ordinary human prompt written by a pre-2.1.187 Claude Code
+    build is not readmitted as a side effect of the must-fix 2 fix."""
+
+    records = [
+        {
+            "type": "user",
+            "message": {"role": "user", "content": "Add retry to the price fetcher"},
+            "uuid": "u-1",
+            "timestamp": "2026-08-08T01:00:00.000Z",
+            "cwd": "/repo/main",
+            "sessionId": "sess-1",
+        }
+    ]
+
+    session = ClaudeCodeJsonlMapper().map(records, descriptor)
+
+    assert session.activities == []
