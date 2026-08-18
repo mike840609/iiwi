@@ -83,16 +83,22 @@ class OpenCodeCliSource(HarnessSessionSource):
             f"{parent_filter}"
             "ORDER BY COALESCE(time_updated, time_created, 0) DESC;"
         )
-        result = self._runner.run(
-            [self._executable, "db", query, "--format", "json"]
-        )
-        if result.returncode != 0:
-            detail = result.stderr.strip() or "OpenCode database query failed"
-            raise HarnessSourceError(detail)
-        try:
-            payload = json.loads(result.stdout or "[]")
-        except json.JSONDecodeError as exc:
-            raise HarnessSourceError("OpenCode database returned invalid JSON") from exc
+        # The db command truncates stdout at the OS pipe buffer and still exits 0,
+        # the same way `export` does, so a busy period's rows come back as invalid
+        # JSON. Redirect to a file for the same reason `load()` does.
+        with tempfile.TemporaryDirectory() as directory:
+            sessions_path = Path(directory) / "sessions.json"
+            result = self._runner.run(
+                [self._executable, "db", query, "--format", "json"],
+                stdout_path=sessions_path,
+            )
+            if result.returncode != 0:
+                detail = result.stderr.strip() or "OpenCode database query failed"
+                raise HarnessSourceError(detail)
+            try:
+                payload = json.loads(result.stdout or "[]")
+            except json.JSONDecodeError as exc:
+                raise HarnessSourceError("OpenCode database returned invalid JSON") from exc
 
         descriptors: list[SessionDescriptor] = []
         for row in _rows_from_payload(payload):
