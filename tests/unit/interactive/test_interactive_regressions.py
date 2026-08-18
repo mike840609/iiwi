@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import os
 from collections.abc import Iterator
 from datetime import datetime
@@ -14,6 +15,7 @@ from rich.console import Console
 from iiwi import cli
 from iiwi import errors as app_errors
 from iiwi.interactive import cli_actions
+from iiwi.interactive import controller as interactive_controller
 from iiwi.interactive import input as interactive_input
 from iiwi.interactive import render as interactive_render
 from iiwi.interactive.controller import (
@@ -368,7 +370,7 @@ def test_harness_and_period_editors_do_not_fall_back_to_typed_prompts(
     monkeypatch.setattr(cli, "_load_settings", lambda: settings)
     monkeypatch.setattr(
         cli,
-        "_enabled_harnesses",
+        "_available_harnesses",
         lambda value: [cli.Harness.OPENCODE, cli.Harness.CODEX],
     )
     monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
@@ -462,6 +464,73 @@ def test_preview_supports_page_and_boundary_navigation() -> None:
     text = stream.getvalue()
     assert "line 59" in text
     assert text.count("line 0") >= 2
+
+
+def _configuration_error_actions() -> InteractiveActions:
+    """must-fix 4: `new_draft` resolves the default harness before any scan
+    runs, so a machine with no harness available makes it raise
+    ConfigurationError. "Generate a report", "Review Activity", and "Check
+    setup" all reach it outside any handler."""
+
+    def raiser() -> ReportDraft:
+        raise app_errors.ConfigurationError("no harness is available")
+
+    return dataclasses.replace(_actions(), new_draft=raiser)
+
+
+@pytest.mark.parametrize("first_key", ["1", "3", "5"])
+def test_main_menu_entries_survive_a_configuration_error(first_key: str) -> None:
+    """Scripts past the error screen's default-selected option (ENTER, not
+    just "q"/"b"): must-fix 4 also covered a second crash the naive fix would
+    have reintroduced, where the default option assumed a draft that this
+    failure never manages to create."""
+
+    console, _ = _console()
+    keys = ScriptedInput([char(first_key), KeyPress(key=Key.ENTER), char("q")])
+
+    run_interactive(
+        actions=_configuration_error_actions(),
+        input_source=keys,
+        console=console,
+    )
+
+
+def test_generate_a_report_shows_a_recoverable_error_not_a_crash() -> None:
+    state = interactive_controller._State()
+
+    interactive_controller._new_report(state, _configuration_error_actions())
+
+    assert state.screen is interactive_controller.Screen.RECOVERABLE_ERROR
+    assert state.error is not None
+    assert state.error.kind == "new-report-start"
+    assert "no harness is available" in state.error.detail
+    # No "Change harness": that option assumes state.draft is already set.
+    assert interactive_controller._error_options(state.error) == ["Back", "Main menu"]
+
+
+def test_review_activity_shows_a_recoverable_error_not_a_crash() -> None:
+    state = interactive_controller._State()
+
+    interactive_controller._begin_activity_review(state, _configuration_error_actions())
+
+    assert state.screen is interactive_controller.Screen.RECOVERABLE_ERROR
+    assert state.error is not None
+    assert state.error.kind == "activity-start"
+    assert "no harness is available" in state.error.detail
+    assert interactive_controller._error_options(state.error) == ["Back", "Main menu"]
+
+
+def test_check_setup_shows_a_recoverable_error_not_a_crash() -> None:
+    state = interactive_controller._State()
+
+    interactive_controller._main_key(
+        state, char("5"), _configuration_error_actions()
+    )
+
+    assert state.screen is interactive_controller.Screen.RECOVERABLE_ERROR
+    assert state.error is not None
+    assert state.error.kind == "doctor-result"
+    assert "no harness is available" in state.error.detail
 
 
 def test_report_output_conflicts_have_a_distinct_error_type() -> None:

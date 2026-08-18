@@ -15,6 +15,7 @@ from iiwi.models.session import (
     TokenUsage,
     UsageSemantics,
 )
+from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 
 _TOOL_INPUT_MAX_LENGTH = 200
 _TOOL_CONTENT_KEYS = ("command", "file_path", "path", "notebook_path")
@@ -62,17 +63,32 @@ def _human_text(content: object) -> str:
     return ""
 
 
-def _is_human_prompt(record: Mapping[str, Any]) -> bool:
-    """Accept only real human input.
+def _is_human_prompt(record: Mapping[str, Any], text: str) -> bool:
+    """Accept real human input, plus iiwi's own marked narration prompt.
 
     Claude Code also writes tool results, hook injections, and system reminders
     as `type: "user"` records. Treating those as user intent would put hook
     output and skill instructions into the report's goals.
+
+    A `claude -p` run iiwi itself launches for narration does not always set
+    `origin` on its own prompt record: verified against real
+    `~/.claude/projects` data, 28 of 67 session files hold genuine human
+    prompts with no `origin` field at all (see
+    `services/scan.py::_has_assistant_work_but_no_prompt` for the general,
+    still-open version of this gap). Gating on `origin` alone can therefore
+    drop iiwi's own marker line, and `is_iiwi_authored` then mistakes iiwi's
+    own narration run for the user's work in the very report it is about to
+    write. The marker is a string only iiwi's own code ever emits
+    (`marked_prompt`), so recognizing it here regardless of `origin` cannot
+    readmit hook output or system reminders — this is narrower than trusting
+    `origin`'s absence in general, which stays unfixed on purpose.
     """
 
     if record.get("isMeta"):
         return False
-    return _as_mapping(record.get("origin")).get("kind") == "human"
+    if _as_mapping(record.get("origin")).get("kind") == "human":
+        return True
+    return text.lstrip().startswith(IIWI_SESSION_TITLE_PREFIX)
 
 
 def _tool_content(tool_input: object) -> str:
@@ -227,10 +243,8 @@ class ClaudeCodeJsonlMapper:
             message = _as_mapping(record.get("message"))
 
             if record_type == "user":
-                if not _is_human_prompt(record):
-                    continue
                 text = _human_text(message.get("content"))
-                if not text:
+                if not text or not _is_human_prompt(record, text):
                     continue
                 activities.append(
                     SessionActivity(

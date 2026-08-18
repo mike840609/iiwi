@@ -1,8 +1,11 @@
+import shutil
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from iiwi.cli import app
+from iiwi.errors import ConfigurationError
 from iiwi.models.time_range import DateRange
 
 runner = CliRunner()
@@ -252,6 +255,54 @@ def test_doctor_refuses_a_disabled_harness() -> None:
     assert "disabled by configuration" in result.stdout
 
 
+def test_doctor_still_prints_checks_when_no_harness_is_available(tmp_path) -> None:
+    """must-fix 3: doctor exists to diagnose exactly this state (no harness
+    available on this machine), so it must fall back to a harness and print
+    the check table instead of raising before any check runs."""
+
+    import iiwi.cli as cli
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["doctor"],
+        env={
+            "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(
+                tmp_path / "no-claude-projects"
+            ),
+            "IIWI_HARNESSES__CODEX__HOME_DIRECTORY": str(tmp_path / "no-codex-home"),
+            "IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE": "iiwi-nonexistent-opencode",
+        },
+    )
+
+    assert result.exit_code == 5  # checks ran and reported failures, not a config error
+    assert "no harness is available" not in result.stdout
+    assert "git" in result.stdout
+    assert "narrator" in result.stdout
+
+
+def test_doctor_json_still_works_when_no_harness_is_available(tmp_path) -> None:
+    import json
+
+    import iiwi.cli as cli
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["doctor", "--json"],
+        env={
+            "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(
+                tmp_path / "no-claude-projects"
+            ),
+            "IIWI_HARNESSES__CODEX__HOME_DIRECTORY": str(tmp_path / "no-codex-home"),
+            "IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE": "iiwi-nonexistent-opencode",
+        },
+    )
+
+    assert result.exit_code == 5
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert any(check["name"] == "git" for check in payload["checks"])
+
+
 def test_report_still_runs_when_the_harness_is_enabled(tmp_path) -> None:
     import iiwi.cli as cli
 
@@ -484,7 +535,9 @@ def test_scan_json_flag_emits_parsable_json(monkeypatch) -> None:
 
     cli = _stub_scan(monkeypatch)
 
-    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--json"])
+    result = CliRunner().invoke(
+        cli.app, ["scan", "--days", "7", "--json", "--harness", "opencode"]
+    )
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -497,7 +550,7 @@ def test_scan_emits_json_automatically_when_stdout_is_piped(monkeypatch) -> None
 
     cli = _stub_scan(monkeypatch)
 
-    result = CliRunner().invoke(cli.app, ["scan", "--days", "7"])
+    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--harness", "opencode"])
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -507,7 +560,9 @@ def test_scan_emits_json_automatically_when_stdout_is_piped(monkeypatch) -> None
 def test_scan_no_json_forces_the_human_table_when_piped(monkeypatch) -> None:
     cli = _stub_scan(monkeypatch)
 
-    result = CliRunner().invoke(cli.app, ["scan", "--days", "7", "--no-json"])
+    result = CliRunner().invoke(
+        cli.app, ["scan", "--days", "7", "--no-json", "--harness", "opencode"]
+    )
 
     assert result.exit_code == 0
     assert "Dotfiles" in result.stdout
@@ -523,12 +578,12 @@ def test_doctor_json_flag_emits_machine_readable_output(monkeypatch) -> None:
     monkeypatch.setattr(
         cli,
         "run_doctor",
-        lambda settings, runner, harness: DoctorResult(
+        lambda settings, runner, harness, narrator: DoctorResult(
             checks=[DoctorCheck(name="git", ok=True, detail="git version 2.47.0")]
         ),
     )
 
-    result = CliRunner().invoke(cli.app, ["doctor", "--json"])
+    result = CliRunner().invoke(cli.app, ["doctor", "--json", "--harness", "opencode"])
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -672,7 +727,16 @@ def test_report_records_a_history_entry_after_writing(monkeypatch, tmp_path) -> 
 
     result = CliRunner().invoke(
         cli.app,
-        ["report", "--days", "7", "--no-llm", "--output", str(tmp_path / "report.md")],
+        [
+            "report",
+            "--days",
+            "7",
+            "--no-llm",
+            "--output",
+            str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
+        ],
     )
 
     assert result.exit_code == 0
@@ -870,3 +934,118 @@ def test_resolve_period_keeps_an_aware_range_unchanged() -> None:
 
     assert result.since == since
     assert result.until == until
+
+
+def test_available_harnesses_drops_the_ones_that_cannot_be_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = projects
+    settings.harnesses.codex.home_directory = tmp_path / "absent"
+
+    assert cli._available_harnesses(settings) == [cli.Harness.CLAUDE_CODE]
+
+
+def test_available_harnesses_preserves_harness_declaration_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With several harnesses available, the result must follow `Harness`
+    declaration order, not whatever order the predicates happened to run in."""
+
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/opencode")
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = projects
+    settings.harnesses.codex.home_directory = codex_home
+
+    assert cli._available_harnesses(settings) == [
+        cli.Harness.OPENCODE,
+        cli.Harness.CLAUDE_CODE,
+        cli.Harness.CODEX,
+    ]
+
+
+def test_default_harness_prefers_opencode_when_it_is_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/opencode")
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = projects
+
+    assert cli._default_harness(settings) == cli.Harness.OPENCODE
+
+
+def test_default_harness_falls_back_to_the_first_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = projects
+    settings.harnesses.codex.home_directory = tmp_path / "absent"
+
+    assert cli._default_harness(settings) == cli.Harness.CLAUDE_CODE
+
+
+def test_default_harness_reports_what_it_checked_when_nothing_is_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = tmp_path / "absent-projects"
+    settings.harnesses.codex.home_directory = tmp_path / "absent-codex"
+
+    with pytest.raises(ConfigurationError) as error:
+        cli._default_harness(settings)
+
+    message = str(error.value)
+    assert "opencode" in message
+    assert "absent-projects" in message
+    assert "absent-codex" in message
+
+
+def test_report_without_a_harness_flag_uses_the_available_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setenv("IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY", str(projects))
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    seen: list[cli.Harness] = []
+
+    def fake_build(settings, period, output_path, no_llm, root_only=False, **kwargs):
+        seen.append(kwargs["harness"])
+        raise cli.NoSessionsError("stop here")
+
+    monkeypatch.setattr(cli, "_build_report_service", fake_build)
+
+    CliRunner().invoke(cli.app, ["report", "--days", "7"])
+
+    assert seen == [cli.Harness.CLAUDE_CODE]

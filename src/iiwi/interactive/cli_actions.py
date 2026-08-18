@@ -51,7 +51,7 @@ from iiwi.services.daily_scan import DailyScanCoordinator, DailyWindow
 from iiwi.services.daily_workflow import DailyWorkflowService
 from iiwi.services.outcomes import OutcomeSynthesisService
 from iiwi.services.scan import ScanResult
-from iiwi.summarizers.opencode_run import OpenCodeRunError, OpenCodeRunner
+from iiwi.summarizers.narrator import NarrativeRunError, NarrativeRunner
 
 _ALL_DAILY_SOURCES_UNAVAILABLE_WARNING = (
     "All Daily Standup activity sources are unavailable."
@@ -63,8 +63,7 @@ def _new_draft() -> ReportDraft:
 
     settings = cli._load_settings()
     now = cli._now_in_timezone(settings.report.timezone)
-    enabled = cli._enabled_harnesses(settings)
-    harness = cli.Harness.OPENCODE if cli.Harness.OPENCODE in enabled else enabled[0]
+    harness = cli._default_harness(settings)
     label, period = _named_periods(now)[0]
     return ReportDraft(
         harness=harness.value,
@@ -75,19 +74,19 @@ def _new_draft() -> ReportDraft:
 
 
 def _choose_harness(current: str) -> str:
-    """Cycle to the next enabled harness without leaving the key-driven UI."""
+    """Cycle to the next available harness without leaving the key-driven UI."""
 
     from iiwi import cli
 
     settings = cli._load_settings()
-    enabled = [harness.value for harness in cli._enabled_harnesses(settings)]
-    if not enabled:
+    available = [harness.value for harness in cli._available_harnesses(settings)]
+    if not available:
         return current
     try:
-        index = enabled.index(current)
+        index = available.index(current)
     except ValueError:
-        return enabled[0]
-    return enabled[(index + 1) % len(enabled)]
+        return available[0]
+    return available[(index + 1) % len(available)]
 
 
 def _named_periods(now: datetime) -> list[tuple[str, DateRange]]:
@@ -204,18 +203,14 @@ def _synthesize(draft: ReportDraft, scan: ScanResult, force: bool) -> OutcomeRev
     from iiwi import cli
 
     settings = cli._load_settings()
-    cli_settings = settings.harnesses.opencode.cli
-    runner = OpenCodeRunner(
-        runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
-        executable=cli_settings.executable,
-        model=cli_settings.model,
-    )
+    harness = cli.Harness(draft.harness)
+    runner = cli._build_narrator(settings, harness)
     reporter = ConsoleReporter()
     try:
         # Synthesis extracts and redacts every selected session and then runs one
-        # `opencode run` that can take minutes, and the TUI holds the last painted
-        # frame until it returns; without this the app looks hung right after
-        # "Exporting sessions".
+        # narration-provider call that can take minutes, and the TUI holds the
+        # last painted frame until it returns; without this the app looks hung
+        # right after "Exporting sessions".
         # ponytail: one animated status line, no percentage — the work is a single
         # subprocess, so there is nothing finer to report.
         with reporter.progress() as progress:
@@ -224,7 +219,7 @@ def _synthesize(draft: ReportDraft, scan: ScanResult, force: bool) -> OutcomeRev
                 runner,
                 max_evidence_bytes=settings.report.quick_review_max_evidence_bytes,
             ).synthesize(scan, force=force)
-    except (OpenCodeRunError, OSError) as exc:
+    except (NarrativeRunError, OSError) as exc:
         raise OutcomeSynthesisError(str(exc)) from exc
     arguments: dict[str, object] = {
         "outcomes": result.outcomes,
@@ -364,7 +359,10 @@ def _doctor(harness_name: str) -> list[str]:
     runner = CommandRunner(
         timeout_seconds=settings.harnesses.opencode.cli.timeout_seconds
     )
-    result = cli.run_doctor(settings, runner=runner, harness=harness.value)
+    narrator = cli._describe_narrator(settings, harness)
+    result = cli.run_doctor(
+        settings, runner=runner, harness=harness.value, narrator=narrator
+    )
     return [
         f"{'OK' if check.ok else 'ERROR'} {check.name}: {check.detail}"
         for check in result.checks
@@ -437,10 +435,10 @@ def _exclude_repository(repository_id: str, display_name: str) -> str:
     )
 
 
-class _DailyOpenCodeRunner(OpenCodeRunner):
-    """Translate the model runner's operational error into the workflow boundary."""
+class _DailyNarrator:
+    """Translate the narration provider's operational error into the workflow boundary."""
 
-    def __init__(self, delegate: OpenCodeRunner) -> None:
+    def __init__(self, delegate: NarrativeRunner) -> None:
         self._delegate = delegate
 
     def run(
@@ -456,7 +454,7 @@ class _DailyOpenCodeRunner(OpenCodeRunner):
                 prompt=prompt,
                 title=title,
             )
-        except (OpenCodeRunError, OSError) as exc:
+        except (NarrativeRunError, OSError) as exc:
             raise OutcomeSynthesisError(str(exc)) from exc
 
 
@@ -466,14 +464,7 @@ def _start_daily(previous: DailyStandupDraft | None) -> DailyStandupDraft:
     from iiwi import cli
 
     settings = cli._load_settings()
-    cli_settings = settings.harnesses.opencode.cli
-    runner = _DailyOpenCodeRunner(
-        OpenCodeRunner(
-            runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
-            executable=cli_settings.executable,
-            model=cli_settings.model,
-        )
-    )
+    runner = _DailyNarrator(cli._build_daily_narrator(settings))
     outcome_service = OutcomeSynthesisService(
         runner,
         max_evidence_bytes=settings.report.quick_review_max_evidence_bytes,
@@ -492,7 +483,7 @@ def _start_daily(previous: DailyStandupDraft | None) -> DailyStandupDraft:
                     sanitize=cli._effective_sanitize(settings, harness, None),
                     progress=progress,
                 )
-                for harness in cli._enabled_harnesses(settings)
+                for harness in cli._available_harnesses(settings)
             }
             return DailyScanCoordinator(window=window, scanners=scanners)
 

@@ -14,7 +14,7 @@ full, including the ones that apply only to a specific harness.
   command.
 - Repository grouping uses the Git information available when the report is created.
 - Older OpenCode sessions may use a backup ID if their working folders have been deleted.
-- Sessions iiwi's own `opencode run` creates are excluded from every scan, so
+- Sessions iiwi's own narration CLI creates are excluded from every scan, so
   they are absent from outcomes, session lists, and counts — except the Usage
   section, an external `opencode stats` aggregate the scan cannot filter.
 
@@ -43,7 +43,7 @@ full, including the ones that apply only to a specific harness.
 ## Codex
 
 - A Codex report shows goals, changed files, and token usage. It does not list commands.
-  A command recorded through `exec_command` reaches the narrative `opencode run` summary
+  A command recorded through `exec_command` reaches the narration CLI's narrative summary
   and nothing else; with `--no-llm` it is not in the report at all.
 - Commands run from inside Codex's `exec` tool are not recorded even that far. `exec`
   takes a JavaScript program rather than a command, so there is no command to record.

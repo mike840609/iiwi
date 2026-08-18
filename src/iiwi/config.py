@@ -16,6 +16,25 @@ from iiwi.models.report_options import ReportType
 DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES = 40000
 
 
+DEFAULT_NARRATOR_TIMEOUT_SECONDS = 600.0
+
+
+class NarratorSettings(BaseModel):
+    """How iiwi turns a transcript into prose.
+
+    Every field's empty value means "unset", which is what lets the provider be
+    derived from the selected harness instead of configured up front.
+    """
+
+    provider: str = ""
+    executable: str = ""
+    model: str = ""
+    # `None` rather than the default value: the resolution order has to tell an
+    # unset timeout from one a user deliberately set to the same number, and
+    # `gt=0` cannot express "absent".
+    timeout_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+
+
 class OpenCodeCliSettings(BaseModel):
     """OpenCode executable invocation settings."""
 
@@ -24,7 +43,13 @@ class OpenCodeCliSettings(BaseModel):
     # conversion at run time, and a zero or negative timeout would fire
     # immediately or never.
     timeout_seconds: float = Field(default=30.0, gt=0, allow_inf_nan=False)
+    # Deprecated: superseded by narrator.timeout_seconds. Kept as a plain field
+    # (not Field(deprecated=...)) because pydantic 2.13 fires a
+    # DeprecationWarning on every attribute *read*, and a later task reads this
+    # as a fallback on every run; cli._load_settings prints the migration note
+    # on stderr instead.
     run_timeout_seconds: float = Field(default=600.0, gt=0, allow_inf_nan=False)
+    # Deprecated: superseded by narrator.model. See run_timeout_seconds above.
     model: str = ""
     sanitize: bool = False
 
@@ -126,3 +151,4 @@ class AppSettings(BaseSettings):
 
     harnesses: HarnessSettings = Field(default_factory=HarnessSettings)
     report: ReportSettings = Field(default_factory=ReportSettings)
+    narrator: NarratorSettings = Field(default_factory=NarratorSettings)

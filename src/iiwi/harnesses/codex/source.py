@@ -27,6 +27,12 @@ def describe_discovery(home_directory: Path) -> str:
     return database.name if database is not None else "directory scan"
 
 
+def is_available(home_directory: Path) -> bool:
+    """Whether this harness's sessions can be read on this machine."""
+
+    return home_directory.is_dir()
+
+
 def _iter_records(text: str) -> list[Mapping[str, Any]]:
     records: list[Mapping[str, Any]] = []
     for line in text.splitlines():

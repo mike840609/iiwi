@@ -1,7 +1,9 @@
 """Environment diagnostics."""
 
 import os
+import shutil
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from iiwi.config import AppSettings
@@ -29,6 +31,15 @@ class DoctorResult:
         return all(check.ok for check in self.checks)
 
 
+@dataclass(frozen=True)
+class NarratorDescription:
+    """Which CLI narrates, and whether that came from config or the harness."""
+
+    provider: str
+    executable: str
+    source: str
+
+
 def _check(runner: Runner, name: str, args: list[str]) -> DoctorCheck:
     try:
         result = runner.run(args)
@@ -38,13 +49,40 @@ def _check(runner: Runner, name: str, args: list[str]) -> DoctorCheck:
     return DoctorCheck(name=name, ok=result.returncode == 0, detail=detail)
 
 
+def _narrator_check(
+    narrator: NarratorDescription,
+    *,
+    codex_home: Path | None = None,
+) -> DoctorCheck:
+    """Name the resolved narrator and say whether it was configured or derived."""
+
+    resolved = shutil.which(narrator.executable)
+    if resolved is not None:
+        return DoctorCheck(
+            name="narrator",
+            ok=True,
+            detail=f"{narrator.provider} (from {narrator.source}) -> {resolved}",
+        )
+    detail = (
+        f"{narrator.executable} not found (from {narrator.source}); "
+        "set narrator.provider or narrator.executable"
+    )
+    # A Codex desktop install ships its CLI outside PATH, under a private
+    # directory that a future release can relocate. Point at the docs instead
+    # of hardcoding a path that would break silently.
+    if narrator.provider == "codex" and codex_home is not None and codex_home.is_dir():
+        detail += "; see the Codex desktop section of docs/configuration.md"
+    return DoctorCheck(name="narrator", ok=False, detail=detail)
+
+
 def run_doctor(
     settings: AppSettings,
     *,
     runner: Runner,
+    narrator: NarratorDescription,
     harness: str = "opencode",
 ) -> DoctorResult:
-    """Validate the selected harness and Git without exposing env values."""
+    """Validate the selected harness, the resolved narrator, and Git."""
 
     checks: list[DoctorCheck] = []
     if harness == "claude-code":
@@ -74,5 +112,8 @@ def run_doctor(
         executable = settings.harnesses.opencode.cli.executable
         checks.append(_check(runner, "opencode version", [executable, "--version"]))
         checks.append(_check(runner, "opencode database", [executable, "db", "path"]))
+    checks.append(
+        _narrator_check(narrator, codex_home=settings.harnesses.codex.home_directory)
+    )
     checks.append(_check(runner, "git", ["git", "--version"]))
     return DoctorResult(checks=checks)

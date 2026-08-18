@@ -17,7 +17,7 @@ flowchart TD
 
     subgraph Report["Report pipeline"]
         TR["build_grouped_transcript<br/>redacted, full context"]
-        RUN["opencode run<br/>local CLI narrative"]
+        RUN["narration CLI<br/>opencode / claude / codex"]
         RN["render_narrative"]
         EX["Extraction<br/>evidence + 300-char cap"]
         RB["RuleBasedSummarizer"]

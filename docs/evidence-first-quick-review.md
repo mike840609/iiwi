@@ -10,7 +10,7 @@ Run `iiwi`, choose **Generate Report**, and open **Review sessions**. Select the
 sessions that belong in the update, then press `g` to generate outcome candidates.
 Iiwi synthesizes only that selection.
 
-Quick Review never sees the sessions iiwi's own `opencode run` leaves behind;
+Quick Review never sees the sessions iiwi's own narration CLI leaves behind;
 they are dropped during the scan, so they are absent from outcomes, session
 lists, and counts — except the Usage section, an external `opencode stats`
 aggregate the scan cannot filter.

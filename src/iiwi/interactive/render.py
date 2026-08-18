@@ -100,7 +100,7 @@ _SETUP_HELP = {
     "Advanced settings": "Show or hide less common report options.",
     "Detail": "Full keeps every section. Brief drops files, sessions and usage.",
     "Subagents": "Include sessions spawned as subagents, or only the ones you started.",
-    "Narrative": "Write the prose review with the local opencode run, or emit structure only.",
+    "Narrative": "Write the prose review with the resolved narration CLI, or emit structure only.",
     "Sanitize": "Ask OpenCode to redact session content on export.",
     "Generate report": "Scan the period and produce the report.",
 }
@@ -111,11 +111,13 @@ _SETTINGS_HELP = {
     "harnesses.opencode.source": "Source identifier; only cli is implemented.",
     "harnesses.opencode.cli.executable": "The opencode executable name or path.",
     "harnesses.opencode.cli.timeout_seconds": "Timeout for opencode commands.",
-    "harnesses.opencode.cli.run_timeout_seconds": (
-        "How long one opencode run may take before falling back."
-    ),
-    "harnesses.opencode.cli.model": "Model passed to opencode run; empty uses opencode's default.",
+    "harnesses.opencode.cli.run_timeout_seconds": "Deprecated; use narrator.timeout_seconds.",
+    "harnesses.opencode.cli.model": "Deprecated; use narrator.model.",
     "harnesses.opencode.cli.sanitize": "Ask opencode export to redact session content.",
+    "narrator.provider": "Which CLI writes the prose; empty follows the harness.",
+    "narrator.executable": "Path to the narration CLI; empty uses the provider's name.",
+    "narrator.model": "Model passed to the narration CLI; empty uses its default.",
+    "narrator.timeout_seconds": "Timeout for one narration run.",
     "harnesses.claude_code.enabled": "False forbids reading ~/.claude/projects.",
     "harnesses.claude_code.projects_directory": (
         "Directory holding Claude Code session transcripts."

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -15,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import typer
 
 from iiwi import __version__, config_store
-from iiwi.config import AppSettings
+from iiwi.config import DEFAULT_NARRATOR_TIMEOUT_SECONDS, AppSettings
 from iiwi.errors import (
     ConfigurationError,
     HarnessSourceError,
@@ -24,8 +25,11 @@ from iiwi.errors import (
 )
 from iiwi.harnesses.base import HarnessSessionSource
 from iiwi.harnesses.claude_code.source import ClaudeCodeFileSource
+from iiwi.harnesses.claude_code.source import is_available as claude_code_is_available
 from iiwi.harnesses.codex.source import CodexSource
+from iiwi.harnesses.codex.source import is_available as codex_is_available
 from iiwi.harnesses.opencode.source import OpenCodeCliSource
+from iiwi.harnesses.opencode.source import is_available as opencode_is_available
 from iiwi.harnesses.opencode.stats import collect_usage_stats, usage_days
 from iiwi.history import (
     HistoryEntry,
@@ -47,9 +51,12 @@ from iiwi.renderers.markdown import DetailLevel, MarkdownRenderer
 from iiwi.renderers.usage import render_activity_usage
 from iiwi.repositories.resolver import RepositoryResolver
 from iiwi.security.redactor import redact_text
-from iiwi.services.doctor import run_doctor
+from iiwi.services.doctor import NarratorDescription, run_doctor
 from iiwi.services.report import ReportService
 from iiwi.services.scan import ScanResult, ScanService
+from iiwi.summarizers.narrator import NarrativeRunError, NarrativeRunner
+from iiwi.summarizers.narrators.claude import ClaudeNarrator
+from iiwi.summarizers.narrators.codex import CodexNarrator
 from iiwi.summarizers.opencode_run import OpenCodeRunner
 from iiwi.summarizers.rule_based import RuleBasedSummarizer
 from iiwi.update import (
@@ -70,9 +77,9 @@ class Harness(StrEnum):
 # isn't recognized as an immutable default, so it must be constructed once here
 # and shared, rather than called inline in each command's signature.
 _HARNESS_OPTION = typer.Option(
-    Harness.OPENCODE,
+    None,
     "--harness",
-    help="Coding-agent harness to read sessions from.",
+    help="Coding-agent harness to read sessions from; defaults to the first available harness.",
 )
 
 _DETAIL_OPTION = typer.Option(
@@ -92,6 +99,45 @@ app = typer.Typer(
 )
 
 
+_DEPRECATED_KEYS = {
+    "harnesses.opencode.cli.model": "narrator.model",
+    "harnesses.opencode.cli.run_timeout_seconds": "narrator.timeout_seconds",
+}
+
+# Module-level, not per-call: the interactive layer calls _load_settings on
+# nearly every keypress (_choose_harness alone reloads it once per harness
+# cycle), so without a process-wide guard a user with one deprecated key set
+# gets this notice painted over the TUI on almost every action instead of
+# exactly once.
+_deprecation_notice_emitted = False
+
+
+def _warn_about_deprecated_keys(settings: AppSettings) -> None:
+    """Say which key replaced a deprecated one, once per process, on stderr.
+
+    Not through the report's warnings: a configuration migration printed inside
+    the report body would outlive the migration in every file it was written to.
+    """
+
+    global _deprecation_notice_emitted
+    if _deprecation_notice_emitted:
+        return
+    cli_settings = settings.harnesses.opencode.cli
+    in_use = []
+    if cli_settings.model:
+        in_use.append("harnesses.opencode.cli.model")
+    if "run_timeout_seconds" in cli_settings.model_fields_set:
+        in_use.append("harnesses.opencode.cli.run_timeout_seconds")
+    if not in_use:
+        return
+    for key in in_use:
+        typer.echo(
+            f"Note: {key} is deprecated; use {_DEPRECATED_KEYS[key]}.",
+            err=True,
+        )
+    _deprecation_notice_emitted = True
+
+
 def _load_settings() -> AppSettings:
     """Load settings, layering the settings file below the environment.
 
@@ -102,7 +148,7 @@ def _load_settings() -> AppSettings:
 
     path = config_store.config_file_path()
     try:
-        return AppSettings(_env_file=path)  # type: ignore[call-arg]
+        settings = AppSettings(_env_file=path)  # type: ignore[call-arg]
     except Exception as exc:  # Pydantic aggregates configuration failures.
         # Name the file when there is one: a parse error otherwise says what is
         # wrong without saying where the value came from.
@@ -112,6 +158,8 @@ def _load_settings() -> AppSettings:
         # DOES own — a base URL with an embedded password, an API key typed
         # into the wrong field — must not reach stdout unredacted.
         raise ConfigurationError(redact_text(f"{exc}{hint}")) from exc
+    _warn_about_deprecated_keys(settings)
+    return settings
 
 
 def _now_in_timezone(timezone: str) -> datetime:
@@ -280,6 +328,148 @@ def _usage_provider(
     return collect, days
 
 
+_PROVIDER_BY_HARNESS = {
+    Harness.OPENCODE: "opencode",
+    Harness.CLAUDE_CODE: "claude",
+    Harness.CODEX: "codex",
+}
+_PROVIDERS = frozenset(_PROVIDER_BY_HARNESS.values())
+
+
+def _validate_configured_provider(provider: str) -> str:
+    """Validate a `narrator.provider` value the user configured, harness-free.
+
+    Kept separate from `_resolve_provider` so validating a configured string
+    never needs a harness to stand in for: `_build_daily_narrator` has no
+    single harness to offer (it scans every enabled one), and passing it a
+    placeholder just to reuse this check would be a bug wearing a parameter.
+    """
+
+    if provider not in _PROVIDERS:
+        allowed = ", ".join(sorted(_PROVIDERS))
+        raise ConfigurationError(f"unknown narrator.provider: {provider}; choose from {allowed}")
+    return provider
+
+
+def _resolve_provider(settings: AppSettings, harness: Harness) -> str:
+    """Which CLI writes the prose. Configuration always beats the harness."""
+
+    configured = settings.narrator.provider.strip()
+    if not configured:
+        return _PROVIDER_BY_HARNESS[harness]
+    return _validate_configured_provider(configured)
+
+
+def _resolve_executable(settings: AppSettings, provider: str) -> str:
+    # The OpenCode fallback below applies only to the OpenCode provider: a
+    # model name left over from an OpenCode setup would be rejected by
+    # `claude --model` or `codex -m` if it leaked into another provider.
+    configured = settings.narrator.executable.strip()
+    if configured:
+        return configured
+    if provider == "opencode":
+        return settings.harnesses.opencode.cli.executable
+    return provider
+
+
+def _describe_narrator(settings: AppSettings, harness: Harness) -> NarratorDescription:
+    """Name the resolved narrator for `doctor`, and where that choice came from.
+
+    Sharing `_resolve_provider`/`_resolve_executable` with the narration path
+    is what makes "scan Codex, narrate with Claude" visible: doctor reports
+    exactly what a report run would pick.
+    """
+
+    provider = _resolve_provider(settings, harness)
+    configured = settings.narrator.provider.strip()
+    source = "narrator.provider" if configured else f"--harness {harness.value}"
+    return NarratorDescription(
+        provider=provider,
+        executable=_resolve_executable(settings, provider),
+        source=source,
+    )
+
+
+def _resolve_model(settings: AppSettings, provider: str) -> str:
+    if settings.narrator.model:
+        return settings.narrator.model
+    if provider == "opencode":
+        return settings.harnesses.opencode.cli.model
+    return ""
+
+
+def _resolve_timeout(settings: AppSettings, provider: str) -> float:
+    if settings.narrator.timeout_seconds is not None:
+        return settings.narrator.timeout_seconds
+    if provider == "opencode":
+        return settings.harnesses.opencode.cli.run_timeout_seconds
+    return DEFAULT_NARRATOR_TIMEOUT_SECONDS
+
+
+def _narrator_for_provider(settings: AppSettings, provider: str) -> NarrativeRunner:
+    executable = _resolve_executable(settings, provider)
+    model = _resolve_model(settings, provider)
+    runner = CommandRunner(timeout_seconds=_resolve_timeout(settings, provider))
+    if provider == "claude":
+        return ClaudeNarrator(runner=runner, executable=executable, model=model)
+    if provider == "codex":
+        return CodexNarrator(
+            runner=runner,
+            executable=executable,
+            model=model,
+            codex_home=settings.harnesses.codex.home_directory,
+        )
+    return OpenCodeRunner(runner=runner, executable=executable, model=model)
+
+
+def _build_narrator(settings: AppSettings, harness: Harness) -> NarrativeRunner:
+    return _narrator_for_provider(settings, _resolve_provider(settings, harness))
+
+
+def _build_daily_narrator(settings: AppSettings) -> NarrativeRunner:
+    """Daily scans every harness, so no single one names the provider.
+
+    Configuration wins; otherwise take an installed provider, preferring
+    OpenCode so an existing setup keeps the CLI it already used.
+    """
+
+    configured = settings.narrator.provider.strip()
+    if configured:
+        return _narrator_for_provider(settings, _validate_configured_provider(configured))
+    if settings.narrator.executable.strip():
+        # _resolve_executable applies a configured narrator.executable to
+        # every provider alike, but this path probes every enabled harness's
+        # provider to pick one: without narrator.provider too, the same
+        # executable would appear installed for all three, "win" as whichever
+        # provider is checked first, and then run with that provider's flags
+        # against a binary that is not necessarily built for them (C1). A
+        # single already-resolved harness (report/scan/doctor) has no such
+        # ambiguity, so only this multi-harness path refuses it.
+        raise NarrativeRunError(
+            "narrator.executable is set without narrator.provider; Daily "
+            "resolves the provider from whichever harness is installed, so "
+            "it cannot tell which CLI that executable belongs to. Set "
+            "narrator.provider as well."
+        )
+    candidates = [
+        _PROVIDER_BY_HARNESS[harness]
+        for harness in _enabled_harnesses(settings)
+        if shutil.which(_resolve_executable(settings, _PROVIDER_BY_HARNESS[harness]))
+    ]
+    if "opencode" in candidates:
+        return _narrator_for_provider(settings, "opencode")
+    if candidates:
+        return _narrator_for_provider(settings, candidates[0])
+    looked_for = ", ".join(
+        _resolve_executable(settings, _PROVIDER_BY_HARNESS[harness])
+        for harness in _enabled_harnesses(settings)
+    )
+    raise NarrativeRunError(
+        f"no narration provider is installed; looked for {looked_for}. "
+        "Set narrator.provider or narrator.executable."
+    )
+
+
 def _build_report_service(
     settings: AppSettings,
     period: DateRange,
@@ -296,12 +486,7 @@ def _build_report_service(
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
 
-    cli_settings = settings.harnesses.opencode.cli
-    opencode_runner = OpenCodeRunner(
-        runner=CommandRunner(timeout_seconds=cli_settings.run_timeout_seconds),
-        executable=cli_settings.executable,
-        model=cli_settings.model,
-    )
+    narrator = _build_narrator(settings, harness)
     summarizer = RuleBasedSummarizer()
 
     usage_provider, days = _usage_provider(settings, period, harness, now)
@@ -326,7 +511,7 @@ def _build_report_service(
         detail=detail,
         progress=progress,
         narrative=not no_llm,
-        opencode_runner=opencode_runner,
+        narrator=narrator,
         include_subagents=not root_only,
         sanitized=sanitize,
         initial_warnings=initial_warnings,
@@ -427,7 +612,7 @@ def _record_history(
 
 @app.command()
 def doctor(
-    harness: Harness = _HARNESS_OPTION,
+    harness: Harness | None = _HARNESS_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     json: bool | None = typer.Option(
@@ -446,11 +631,17 @@ def doctor(
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        # doctor exists to diagnose an unusable setup, so it falls back instead
+        # of raising here; see _doctor_default_harness.
+        harness = harness or _doctor_default_harness(settings)
         _require_enabled_harness(settings, harness)
         runner = CommandRunner(
             timeout_seconds=settings.harnesses.opencode.cli.timeout_seconds
         )
-        result = run_doctor(settings, runner=runner, harness=harness.value)
+        narrator = _describe_narrator(settings, harness)
+        result = run_doctor(
+            settings, runner=runner, harness=harness.value, narrator=narrator
+        )
     except ConfigurationError as exc:
         _handle_expected_error(exc, code=3)
         return
@@ -482,7 +673,7 @@ def scan(
             "Disabled by default. OpenCode only."
         ),
     ),
-    harness: Harness = _HARNESS_OPTION,
+    harness: Harness | None = _HARNESS_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     json: bool | None = typer.Option(
@@ -498,10 +689,11 @@ def scan(
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
     _validate_json_mode(json=json, quiet=quiet)
-    _validate_privacy_options(harness=harness, sanitize=sanitize)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        harness = harness or _default_harness(settings)
+        _validate_privacy_options(harness=harness, sanitize=sanitize)
         effective_sanitize = _effective_sanitize(settings, harness, sanitize)
         now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
@@ -581,7 +773,7 @@ def report(
         ),
     ),
     force: bool = typer.Option(False, "--force"),
-    harness: Harness = _HARNESS_OPTION,
+    harness: Harness | None = _HARNESS_OPTION,
     detail: DetailLevel = _DETAIL_OPTION,
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
@@ -589,10 +781,11 @@ def report(
     """Generate a Markdown engineering worklog."""
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
-    _validate_privacy_options(harness=harness, sanitize=sanitize)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
     try:
         settings = _load_settings()
+        harness = harness or _default_harness(settings)
+        _validate_privacy_options(harness=harness, sanitize=sanitize)
         effective_sanitize = _effective_sanitize(settings, harness, sanitize)
         now = _now_in_timezone(settings.report.timezone)
         selected_period = _resolve_period(
@@ -951,18 +1144,78 @@ def _enabled_harnesses(settings: AppSettings) -> list[Harness]:
     return enabled
 
 
-def _ask_harness(settings: AppSettings) -> Harness:
-    """Offer only the harnesses that are on; Enter keeps OpenCode when it is."""
+def _harness_is_available(settings: AppSettings, harness: Harness) -> bool:
+    if harness is Harness.CLAUDE_CODE:
+        return claude_code_is_available(settings.harnesses.claude_code.projects_directory)
+    if harness is Harness.CODEX:
+        return codex_is_available(settings.harnesses.codex.home_directory)
+    return opencode_is_available(settings.harnesses.opencode.cli.executable)
 
-    enabled = _enabled_harnesses(settings)
-    default = Harness.OPENCODE if Harness.OPENCODE in enabled else enabled[0]
-    names = [h.value for h in enabled]
+
+def _harness_availability_detail(settings: AppSettings, harness: Harness) -> str:
+    if harness is Harness.CLAUDE_CODE:
+        return str(settings.harnesses.claude_code.projects_directory)
+    if harness is Harness.CODEX:
+        return str(settings.harnesses.codex.home_directory)
+    return settings.harnesses.opencode.cli.executable
+
+
+def _available_harnesses(settings: AppSettings) -> list[Harness]:
+    """The enabled harnesses whose sessions this machine can actually read."""
+
+    return [
+        harness
+        for harness in _enabled_harnesses(settings)
+        if _harness_is_available(settings, harness)
+    ]
+
+
+def _default_harness(settings: AppSettings) -> Harness:
+    """Pick a harness that works, preferring OpenCode so existing setups do not move."""
+
+    available = _available_harnesses(settings)
+    if Harness.OPENCODE in available:
+        return Harness.OPENCODE
+    if available:
+        return available[0]
+    checked = ", ".join(
+        f"{harness.value} ({_harness_availability_detail(settings, harness)})"
+        for harness in _enabled_harnesses(settings)
+    )
+    raise ConfigurationError(f"no harness is available; checked {checked}")
+
+
+def _doctor_default_harness(settings: AppSettings) -> Harness:
+    """Pick a harness for `doctor` to check, without ever raising.
+
+    `_default_harness` raises when no harness is available — the exact state
+    `doctor` exists to diagnose. Failing before any check runs loses the git
+    check and the narrator row too, and breaks `doctor --json` for scripts, so
+    this falls back to the first enabled harness (or OpenCode, if a machine
+    somehow has every harness disabled) and lets the checks themselves report
+    what is missing.
+    """
+
+    try:
+        return _default_harness(settings)
+    except ConfigurationError:
+        pass
+    enabled = [h for h in Harness if getattr(settings.harnesses, h.name.lower()).enabled]
+    return enabled[0] if enabled else Harness.OPENCODE
+
+
+def _ask_harness(settings: AppSettings) -> Harness:
+    """Offer only the harnesses that work here; Enter keeps the default."""
+
+    available = _available_harnesses(settings)
+    default = _default_harness(settings)
+    names = [harness.value for harness in available]
     typer.echo(f"Available harnesses: {', '.join(names)}")
     while True:
         answer = _prompt(f"Harness [{default.value}]")
         if not answer:
             return default
-        for harness in enabled:
+        for harness in available:
             if harness == answer:
                 return harness
         typer.echo(f"  choose from: {', '.join(names)}")
@@ -1089,9 +1342,11 @@ def run(
         detail = detail or _ask_detail()
         # `report`'s default is the narrative review, so the wizard's default is
         # too. Answering no is what `--no-llm` does: the deterministic structured
-        # report, which is also the answer when `opencode` is not installed.
+        # report, which is also the answer when no narration provider is installed.
+        # The prompt names no specific CLI: the harness picked above decides which
+        # one `_build_report_service` actually invokes (opencode/claude/codex).
         narrative = _ask_yes(
-            "Write the narrative review with the local `opencode run`?", default=True
+            "Write the narrative review with the local AI CLI?", default=True
         )
         _validate_privacy_options(
             harness=harness,

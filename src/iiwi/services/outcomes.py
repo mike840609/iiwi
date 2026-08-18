@@ -31,7 +31,7 @@ from iiwi.models.repository import ResolvedSession
 from iiwi.security.redactor import redact_text, redact_value
 from iiwi.services.scan import ScanResult
 from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
-from iiwi.summarizers.opencode_run import OpenCodeRunner
+from iiwi.summarizers.narrator import NarrativeRunner
 from iiwi.summarizers.outcome_prompt import build_outcome_prompt
 
 
@@ -290,7 +290,7 @@ class OutcomeSynthesisService:
 
     def __init__(
         self,
-        runner: OpenCodeRunner,
+        runner: NarrativeRunner,
         *,
         max_evidence_bytes: int = DEFAULT_QUICK_REVIEW_MAX_EVIDENCE_BYTES,
     ) -> None:

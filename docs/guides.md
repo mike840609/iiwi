@@ -59,18 +59,20 @@ repository, it stays linked to that repository.
 
 ## Narrative report
 
-`report` defaults to a narrative weekly review written by the locally installed
-`opencode run`. Iiwi builds a grouped, redacted raw transcript from the
-session content and hands it to `opencode run` with a summarization prompt; the
-prose comes back and is wrapped under the standard report header. No network
-request, API key, or other service is involved — the same `opencode` binary you
-already use writes the report.
+`report` defaults to a narrative weekly review written by a local narration
+CLI — `opencode`, `claude`, or `codex`, resolved from the harness you read
+sessions from unless `narrator.provider` overrides it (see
+[Narrator](configuration.md#narrator)). Iiwi builds a grouped, redacted raw
+transcript from the session content and hands it to that CLI with a
+summarization prompt; the prose comes back and is wrapped under the standard
+report header. No network request, API key, or other service is involved — a
+CLI you already have installed writes the report.
 
 ```bash
 iiwi report --period last-week
 ```
 
-If `opencode run` is missing, times out, or produces no output, Iiwi
+If the narration CLI is missing, times out, or produces no output, Iiwi
 falls back to the deterministic structured report and records a warning. Use
 `--no-llm` to always take the structured path:
 
@@ -110,7 +112,7 @@ output path after a successful report.
 
 ## OpenCode privacy modes
 
-`iiwi report --days 7` runs the local `opencode run` narrative over a
+`iiwi report --days 7` runs the resolved local narration CLI over a
 raw OpenCode export transcript. Add `--sanitize` to ask OpenCode to redact the
 export; the narrative still runs, but the transcript loses most work details.
 Add `--no-llm` to produce the deterministic structured report instead.

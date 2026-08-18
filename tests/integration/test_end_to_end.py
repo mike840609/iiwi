@@ -35,6 +35,8 @@ def test_end_to_end_weekly_worklog(
             "--no-llm",
             "--output",
             str(output),
+            "--harness",
+            "opencode",
         ],
     )
 
@@ -76,7 +78,7 @@ def test_end_to_end_narrative_report_uses_local_opencode_run(
 
     result = CliRunner().invoke(
         cli.app,
-        ["report", "--period", "last-week", "--dry-run"],
+        ["report", "--period", "last-week", "--dry-run", "--harness", "opencode"],
     )
 
     assert result.exit_code == 0, result.stdout
@@ -105,7 +107,7 @@ def test_end_to_end_no_llm_never_runs_opencode(
 
     result = CliRunner().invoke(
         cli.app,
-        ["report", "--period", "last-week", "--no-llm", "--dry-run"],
+        ["report", "--period", "last-week", "--no-llm", "--dry-run", "--harness", "opencode"],
     )
 
     assert result.exit_code == 0, result.stdout

@@ -6,8 +6,21 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from iiwi import cli
 from iiwi.process import CommandResult
 from tests.codex_state_db import seconds, write_database
+
+
+@pytest.fixture(autouse=True)
+def _reset_deprecation_notice_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_warn_about_deprecated_keys`'s once-per-process guard is a module-level
+    flag (must-fix 5), so without a reset here, whichever test in the whole
+    suite happens to trip it first would silently suppress the notice for
+    every later test that also sets a deprecated key — in any file, not just
+    tests/unit/test_cli_deprecation.py.
+    """
+
+    monkeypatch.setattr(cli, "_deprecation_notice_emitted", False)
 
 
 @pytest.fixture(autouse=True)
@@ -238,19 +251,48 @@ def mocked_opencode() -> AcceptanceCommandRunner:
 @dataclass
 class GitOnlyCommandRunner:
     """Answer git queries for the Claude Code and Codex acceptance runs, and fake
-    `opencode run` so the narrative path can be exercised without OpenCode installed.
+    the resolved narration provider's CLI so the narrative path can be exercised
+    without any coding-agent CLI installed.
+
+    Claude Code and Codex sessions resolve to the `claude` and `codex`
+    narration providers respectively (the harness picks the provider unless
+    `narrator.provider` overrides it), so this fakes `claude -p` and
+    `codex exec` — which pass the transcript through stdin — alongside
+    `opencode run`, which pass it through `--file`.
     """
 
     remotes: dict[str, str] = field(default_factory=dict)
     narrative_marker: str = "NARRATIVE_ACCEPTANCE_MARKER"
     run_calls: list[list[str]] = field(default_factory=list)
     run_transcripts: list[str] = field(default_factory=list)
+    # Only populated by the claude/codex branch below: the working directory
+    # each narration subprocess launch was given, so acceptance tests can pin
+    # that it is a temp dir rather than iiwi's own cwd (must-fix 1).
+    run_subprocess_cwds: list[Path | None] = field(default_factory=list)
 
-    def run(self, args: list[str], *, stdout_path: Path | None = None) -> CommandResult:
+    def run(
+        self,
+        args: list[str],
+        *,
+        stdout_path: Path | None = None,
+        stdin_text: str | None = None,
+        cwd: Path | None = None,
+    ) -> CommandResult:
         if args[:2] == ["opencode", "run"]:
             self.run_calls.append(args)
             transcript_path = Path(args[args.index("--file") + 1])
             self.run_transcripts.append(transcript_path.read_text(encoding="utf-8"))
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    f"# Weekly Engineering Review\n\n{self.narrative_marker}\n",
+                    encoding="utf-8",
+                )
+            return CommandResult(0, "", "")
+        if args[:1] == ["claude"] or args[:2] == ["codex", "exec"]:
+            self.run_calls.append(args)
+            self.run_subprocess_cwds.append(cwd)
+            if stdin_text is not None:
+                self.run_transcripts.append(stdin_text)
             if stdout_path is not None:
                 stdout_path.write_text(
                     f"# Weekly Engineering Review\n\n{self.narrative_marker}\n",

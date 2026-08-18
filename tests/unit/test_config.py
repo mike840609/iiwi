@@ -6,7 +6,7 @@ from typer.testing import CliRunner
 
 from iiwi import config_store
 from iiwi.cli import app
-from iiwi.config import AppSettings, OpenCodeCliSettings, ReportSettings
+from iiwi.config import AppSettings, NarratorSettings, OpenCodeCliSettings, ReportSettings
 from iiwi.models.report_options import ReportType
 
 
@@ -276,3 +276,42 @@ def test_quick_review_evidence_budget_accepts_a_budget_one_session_fits_in(
     settings = ReportSettings(quick_review_max_evidence_bytes=value)
 
     assert settings.quick_review_max_evidence_bytes == value
+
+
+def test_narrator_defaults_are_all_unset() -> None:
+    settings = NarratorSettings()
+
+    assert settings.provider == ""
+    assert settings.executable == ""
+    assert settings.model == ""
+    assert settings.timeout_seconds is None
+
+
+def test_narrator_timeout_rejects_non_positive_values() -> None:
+    with pytest.raises(ValidationError):
+        NarratorSettings(timeout_seconds=0)
+
+
+def test_narrator_timeout_accepts_a_real_value() -> None:
+    assert NarratorSettings(timeout_seconds=42.0).timeout_seconds == 42.0
+
+
+def test_narrator_settings_hang_off_the_app_settings(monkeypatch) -> None:
+    monkeypatch.setenv("IIWI_NARRATOR__PROVIDER", "claude")
+    monkeypatch.setenv("IIWI_NARRATOR__MODEL", "opus")
+
+    settings = AppSettings()
+
+    assert settings.narrator.provider == "claude"
+    assert settings.narrator.model == "opus"
+
+
+def test_narrator_keys_are_settable_through_the_config_store() -> None:
+    from iiwi.config_store import setting_keys
+
+    keys = {setting.key for setting in setting_keys()}
+
+    assert "narrator.provider" in keys
+    assert "narrator.executable" in keys
+    assert "narrator.model" in keys
+    assert "narrator.timeout_seconds" in keys

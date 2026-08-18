@@ -55,11 +55,11 @@ A reviewed report can look like this:
 Requires Python 3.11+ and `git`.
 
 - **Reads from:** local session history from OpenCode, Claude Code, or Codex.
-- **Drafts with:** your locally installed `opencode run`.
-- **No OpenCode?** Use `--no-llm` when you want a simpler structured report.
+- **Drafts with:** the CLI matching whatever it read — `opencode`, `claude`, or `codex`.
+- **No CLI installed?** Use `--no-llm` for a simpler structured report.
 
-Report drafting uses your locally installed `opencode run`; reading Claude Code
-or Codex history does not require their CLI tools.
+Reading Claude Code or Codex history does not need their CLI tools, but drafting does.
+Set `narrator.provider` to draft with a different CLI than the one you read from.
 
 ```bash
 pipx install iiwi                 # or: pip install iiwi
@@ -122,8 +122,8 @@ iiwi run                          # use the step-by-step wizard
 | Flag | What it does |
 |---|---|
 | `--harness claude-code` / `--harness codex` | Read sessions from Claude Code or Codex instead of OpenCode |
-| `--no-llm` | Create a structured report without using OpenCode for the narrative |
-| `--sanitize` | Use stronger redaction when privacy matters more than report detail |
+| `--no-llm` | Create a structured report without calling a CLI for the narrative |
+| `--sanitize` | Stronger redaction (OpenCode only); removes most work evidence |
 | `--dry-run` | Print the report instead of writing a file |
 | `--json` | Return redacted machine-readable output for supported commands |
 
@@ -148,9 +148,9 @@ Every setting and its environment-variable name is in the
 ## Privacy
 
 Session reading, redaction, and report generation stay on your machine. Iiwi
-passes the redacted session text to your locally installed `opencode run`; no API
-key is required. `iiwi update` is the command that checks the network for a newer
-release on PyPI.
+passes the redacted session text to a CLI you already have installed — `opencode`,
+`claude`, or `codex` — and no API key is required. `iiwi update` is the command
+that checks the network for a newer release on PyPI.
 
 Reports can still contain private goals, filenames, commands, and full working
 paths, so review a report before sharing it. See

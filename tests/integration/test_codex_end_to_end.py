@@ -130,21 +130,30 @@ def test_scan_reports_the_codex_sessions(
     assert result.exit_code == 0, result.stdout
 
 
-def test_codex_report_narrative_uses_local_opencode_run(
+def test_codex_report_narrative_uses_the_codex_provider(
     tmp_path: Path, monkeypatch, codex_home: Path, git_only_runner
 ) -> None:
+    """The Codex harness resolves to the `codex` narration provider by default
+    (no `narrator.provider` override), not `opencode run`."""
+
     output = tmp_path / "worklog.md"
 
     result = _invoke(monkeypatch, codex_home, git_only_runner, output, narrative=True)
 
     assert result.exit_code == 0, result.stdout
     content = output.read_text(encoding="utf-8")
-    # The narrative body came from opencode run, wrapped under the report header.
+    # The narrative body came from `codex exec`, wrapped under the report header.
     assert "# Engineering Worklog" in content
     assert "NARRATIVE_ACCEPTANCE_MARKER" in content
-    # opencode run was actually invoked (not the structured fallback).
-    assert git_only_runner.run_calls, "opencode run was never invoked"
-    # Full session context reached opencode run via the grouped transcript.
+    # `codex exec` was actually invoked (not the structured fallback).
+    assert git_only_runner.run_calls, "codex exec was never invoked"
+    assert git_only_runner.run_calls[0][:2] == ["codex", "exec"]
+    # must-fix 1: `codex exec` must not inherit iiwi's own cwd, or it would get
+    # write access to whatever repository iiwi's own process happens to be in.
+    launch_cwd = git_only_runner.run_subprocess_cwds[0]
+    assert launch_cwd is not None
+    assert launch_cwd != Path.cwd()
+    # Full session context reached `codex exec` via the grouped transcript.
     transcript = git_only_runner.run_transcripts[0]
     assert "## Project:" in transcript
     assert "Add retry to the price fetcher" in transcript

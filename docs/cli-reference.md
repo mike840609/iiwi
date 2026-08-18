@@ -121,7 +121,7 @@ the complete review, refresh, fallback, and local-state behavior.
 | `--period last-week` | Reports the previous full calendar week. `last-week` is the only accepted value. |
 | `--since ISO` | Starts the period at an exact time. |
 | `--until ISO` | Ends the period at an exact time. Requires `--since`. |
-| `--harness NAME` | Harness to read sessions from: `opencode` (default), `claude-code`, or `codex`. |
+| `--harness NAME` | Harness to read sessions from: `opencode`, `claude-code`, or `codex`; defaults to the first available one, preferring `opencode` (see [availability](configuration.md#harness-availability)). |
 | `--root-only` | Leaves out child and subagent sessions. |
 | `--sanitize / --no-sanitize` | Enables or disables OpenCode export redaction. Raw export is the default. OpenCode only. |
 | `--verbose` | Also shows export, fallback, and narrative warnings. For `scan`, also lists each repository's session titles and working folders. |
@@ -186,7 +186,7 @@ stderr so stdout contains only Markdown.
 | `--output PATH` | Writes to this file instead of the default folder. |
 | `--force` | Replaces the output file if it already exists. |
 | `--dry-run` | Prints the Markdown instead of writing a file. |
-| `--no-llm` | Skips the local `opencode run` narrative and emits the deterministic structured report. |
+| `--no-llm` | Skips the local narration CLI and emits the deterministic structured report. |
 | `--detail LEVEL` | How much detail the report contains: `full` (default) or `brief`. |
 
 `--detail brief` produces a short report for a status update: it keeps the

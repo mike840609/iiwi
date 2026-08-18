@@ -78,6 +78,7 @@ from iiwi.models.time_range import DateRange
 from iiwi.renderers.markdown import DetailLevel
 from iiwi.services.outcomes import SynthesisBudgetExceededError
 from iiwi.services.scan import ScanResult
+from iiwi.summarizers.narrator import NarrativeRunError
 
 _ADVANCED_ROW = "Advanced settings"
 _SESSION_FALLBACK_NOTICE = "Outcome synthesis unavailable; generated the session-based report."
@@ -331,7 +332,24 @@ def _clear_outcome_review(state: _State) -> None:
 
 
 def _new_report(state: _State, actions: InteractiveActions) -> None:
-    state.draft = actions.new_draft()
+    try:
+        draft = actions.new_draft()
+    except IiwiError as exc:
+        # new_draft resolves the default harness before any scan runs, so
+        # ConfigurationError (e.g. no harness available) reaches here on an
+        # unusable config. Every other menu entry shows that as a recoverable
+        # error rather than letting it escape _dispatch and kill the app.
+        # Not "report-start": _error_back_screen routes any kind starting
+        # with "report" to REPORT_SETUP, which asserts state.draft is not
+        # None on render — exactly the state this failure leaves it in.
+        state.error = _ErrorState(
+            kind="new-report-start",
+            title="Could not start report",
+            detail=str(exc),
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    state.draft = draft
     state.setup_cursor = 0
     state.setup_advanced = False
     state.selection = None
@@ -405,7 +423,21 @@ def _load_activity(
 def _begin_activity_review(state: _State, actions: InteractiveActions) -> None:
     """Open the unified activity review with configured defaults."""
 
-    _load_activity(state, actions, actions.new_draft())
+    try:
+        draft = actions.new_draft()
+    except IiwiError as exc:
+        # new_draft resolves the default harness before any scan runs, so
+        # ConfigurationError (e.g. no harness available) reaches here on an
+        # unusable config. Every other menu entry shows that as a recoverable
+        # error rather than letting it escape _dispatch and kill the app.
+        state.error = _ErrorState(
+            kind="activity-start",
+            title="Could not start Review Activity",
+            detail=str(exc),
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
+    _load_activity(state, actions, draft)
 
 
 def _review(state: _State, actions: InteractiveActions) -> None:
@@ -490,8 +522,8 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
         state.history_offset = 0
         state.screen = Screen.HISTORY
     elif state.main_cursor == 4:
-        draft = actions.new_draft()
         try:
+            draft = actions.new_draft()
             lines = actions.doctor(draft.harness)
         except IiwiError as exc:
             detail = f"ERROR: {exc}"
@@ -984,11 +1016,16 @@ def _begin_daily_review(state: _State, actions: InteractiveActions) -> None:
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
-    except IiwiError as exc:
+    except (IiwiError, NarrativeRunError) as exc:
         # start_daily reads settings, the enabled harnesses and the clock before
         # it ever scans, so ConfigurationError reaches here on an unusable
-        # config. Every other menu entry shows that as a recoverable error
-        # rather than letting it escape _dispatch and kill the app.
+        # config. NarrativeRunError reaches here too: Daily builds its
+        # narrator from whichever harness is installed (see
+        # cli._build_daily_narrator), and that provider-selection step can
+        # fail before any scan starts. NarrativeRunError subclasses Exception,
+        # not IiwiError, so it must be listed explicitly. Every other menu
+        # entry shows failures like this as a recoverable error rather than
+        # letting them escape _dispatch and kill the app.
         state.error = _ErrorState(
             kind="daily-start",
             title="Could not start Daily Standup",
@@ -1480,6 +1517,11 @@ def _outcome_review_key(
 def _error_options(error: _ErrorState) -> list[str]:
     if error.kind in {"doctor-result"}:
         return ["Main menu"]
+    if error.kind in {"new-report-start", "activity-start"}:
+        # No "Change harness"/"Change period": both of those assume
+        # state.draft is already set, but these two kinds fire when building
+        # the draft itself is what failed, so state.draft is still None.
+        return ["Back", "Main menu"]
     if error.kind == "report-path":
         return ["Back"]
     if error.kind == "history-path":

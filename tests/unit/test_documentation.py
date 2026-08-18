@@ -162,13 +162,37 @@ def test_readmes_document_privacy_controls() -> None:
         assert "--allow-remote-llm" not in text
 
 
-def test_readmes_document_the_local_opencode_narrative() -> None:
+def test_readmes_document_the_resolved_narration_cli() -> None:
+    """The narrator is no longer hardcoded to opencode; the READMEs must say so."""
+
     readme = Path("README.md").read_text(encoding="utf-8")
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
 
-    assert "opencode run" in readme
+    for text in (readme, readme_zh_tw):
+        assert "narrator.provider" in text
     assert "OPENAPI" not in readme
-    assert "opencode run" in readme_zh_tw
+    # The old claim was that narration always runs a local `opencode run`,
+    # regardless of harness. That is what this change makes false.
+    assert "the narrative still comes from your local `opencode run`" not in readme
+    assert "the narrative still comes from your local `opencode run`" not in readme_zh_tw
+
+
+def test_readmes_document_the_local_narration_clis() -> None:
+    """Both READMEs must name every CLI that can write the narrative.
+
+    Replaces an earlier test that asserted `opencode run` specifically; narration
+    is no longer OpenCode-only. The OPENAPI guard is carried over from it — that
+    typo reached the README once.
+    """
+
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    for text in (readme, readme_zh_tw):
+        assert "`opencode`" in text
+        assert "`claude`" in text
+        assert "`codex`" in text
+        assert "OPENAPI" not in text
 
 
 def test_configuration_documents_opencode_sanitize_setting() -> None:
@@ -177,11 +201,31 @@ def test_configuration_documents_opencode_sanitize_setting() -> None:
     assert "IIWI_HARNESSES__OPENCODE__CLI__SANITIZE" in configuration
 
 
-def test_configuration_documents_opencode_run_settings() -> None:
+def test_configuration_documents_narrator_settings() -> None:
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "`narrator.provider`" in configuration
+    assert "`narrator.executable`" in configuration
+    assert "`narrator.model`" in configuration
+    assert "`narrator.timeout_seconds`" in configuration
+    assert "IIWI_NARRATOR__PROVIDER" in configuration
+
+
+def test_configuration_still_documents_the_deprecated_opencode_run_settings() -> None:
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
 
     assert "IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS" in configuration
     assert "IIWI_HARNESSES__OPENCODE__CLI__MODEL" in configuration
+    assert "deprecated" in configuration.casefold()
+
+
+def test_configuration_documents_the_codex_desktop_cli_location() -> None:
+    """The doctor message points here, so the section must exist."""
+
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "Codex desktop" in configuration
+    assert ".plugin-appserver" in configuration
 
 
 def test_configuration_documents_quick_review_report_type_exactly() -> None:
@@ -197,7 +241,46 @@ def test_privacy_doc_warns_about_raw_export_and_dry_run() -> None:
 
     assert "raw" in privacy
     assert "--dry-run" in privacy
-    assert "opencode run" in privacy
+    assert "narration cli" in privacy
+
+
+def test_privacy_doc_does_not_claim_opencode_run_narrates_unconditionally() -> None:
+    """Narration is provider-dependent; pin that this doc stopped overclaiming.
+
+    Every prior mention of `opencode run` as *the* narrator was made false by
+    provider resolution (opencode/claude/codex) landing underneath report
+    narration. The substantive guarantees — local subprocess, no API key,
+    redaction before invocation, `--no-llm` skips it — must survive; only the
+    hardcoded tool name should be gone.
+    """
+
+    privacy = Path("docs/privacy.md").read_text(encoding="utf-8")
+
+    assert "opencode run" not in privacy
+    assert "narration CLI" in privacy
+    assert "no API key is read" in privacy
+
+
+def test_other_current_docs_do_not_claim_opencode_run_narrates() -> None:
+    """Anti-rot net for the fix-round-1 sweep beyond privacy.md/configuration.md.
+
+    A substring check, not an exact-sentence pin: these files legitimately keep
+    `opencode db`, `opencode export`, `opencode stats`, and `--sanitize` for the
+    OpenCode *reading* path — none of those contain the string "opencode run".
+    Only the narration-specific claim that opencode run is *the* narrator is
+    banned.
+    """
+
+    for name in (
+        "docs/cli-reference.md",
+        "docs/guides.md",
+        "docs/limitations.md",
+        "docs/evidence-first-quick-review.md",
+        "SECURITY.md",
+        "docs/assets/architecture.mmd",
+    ):
+        text = Path(name).read_text(encoding="utf-8")
+        assert "opencode run" not in text, f"{name} still claims opencode run narrates"
 
 
 def test_readmes_document_the_interactive_config_commands() -> None:

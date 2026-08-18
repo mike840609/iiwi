@@ -4,10 +4,10 @@ Iiwi turns coding-agent session transcripts into engineering reports,
 so its threat model is about transcript data — what is read, what is written,
 and what leaves the machine. The guiding principle is:
 
-> **Nothing leaves your machine.** The narrative review is written by your
-> locally installed `opencode run` — no network request, no API key. The one
-> exception is `update`, which fetches the version index from PyPI only when
-> you run it.
+> **Nothing leaves your machine.** The narrative review is written by a
+> locally installed narration CLI (`opencode`, `claude`, or `codex`) — no
+> network request, no API key. The one exception is `update`, which fetches
+> the version index from PyPI only when you run it.
 
 ## Reporting a vulnerability
 
@@ -26,8 +26,10 @@ business days.
   (`sk-...`, API-key shapes, credentials) **before** any report, narrative
   call, or JSON output is produced. The interactive session preview redacts
   the same way.
-- **Narrative**: the prose review is produced by your locally installed
-  `opencode run` from the redacted, grouped transcript. No cloud call.
+- **Narrative**: the prose review is produced by a locally installed
+  narration CLI — `opencode`, `claude`, or `codex`, resolved from the harness
+  unless `narrator.provider` overrides it — from the redacted, grouped
+  transcript. No cloud call.
 - **Writes**: the report file is written atomically with owner-only
   permissions. The report history log (`~/.local/share/iiwi/` or the
   platform data dir) is append-only and holds only metadata — no transcript

@@ -16,6 +16,7 @@ from iiwi.interactive.controller import InteractiveActions
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import Screen
 from iiwi.models.daily import DailyStandupDraft
+from iiwi.summarizers.narrator import NarrativeRunError
 
 from .test_daily_review_controller import ActionLog, _actions, _draft, _state
 
@@ -90,6 +91,35 @@ def test_configuration_error_from_start_daily_is_recoverable_not_fatal() -> None
     assert state.error is not None
     assert state.error.kind == "daily-start"
     assert "no harness is enabled" in state.error.detail
+
+
+def test_narrative_run_error_from_start_daily_is_recoverable_not_fatal() -> None:
+    """start_daily builds the daily narrator from whichever harness is
+
+    installed (cli._build_daily_narrator), which raises NarrativeRunError
+    when no provider CLI is on PATH, or when narrator.executable is set
+    without narrator.provider. NarrativeRunError subclasses Exception, not
+    IiwiError, so it needs its own except arm here; without it this escapes
+    _begin_daily_review, then run_interactive's direct call to it at startup
+    (before the main loop's try/except exists), and takes the whole
+    interactive app down with a traceback instead of showing this screen.
+    """
+
+    log = ActionLog()
+    actions = _replace_daily_actions(
+        _actions(log),
+        start_daily=lambda previous: (_ for _ in ()).throw(
+            NarrativeRunError("no narration provider is installed; looked for codex")
+        ),
+    )
+    state = _state()
+
+    controller._begin_daily_review(state, actions)
+
+    assert state.screen is Screen.RECOVERABLE_ERROR
+    assert state.error is not None
+    assert state.error.kind == "daily-start"
+    assert "no narration provider is installed" in state.error.detail
 
 
 def test_daily_source_retry_passes_current_daily_draft() -> None:
