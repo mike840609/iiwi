@@ -1,7 +1,10 @@
 import ast
 from pathlib import Path
 
-HARNESSES = Path("src/iiwi/harnesses")
+# Resolved from this file, not from the working directory, so the test passes
+# when pytest is invoked from a subdirectory instead of the repo root.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+HARNESSES = _REPO_ROOT / "src" / "iiwi" / "harnesses"
 FORBIDDEN = "iiwi.summarizers"
 
 
