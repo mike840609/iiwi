@@ -27,6 +27,7 @@ class CommandRunner:
         args: list[str],
         *,
         stdout_path: Path | None = None,
+        stdin_text: str | None = None,
     ) -> CommandResult:
         """Run a command, reporting timeouts and launch failures as failed results.
 
@@ -37,6 +38,9 @@ class CommandRunner:
         piped. Some binaries (OpenCode's export command) write only what fits in
         the OS pipe buffer when their stdout is a pipe, then exit cleanly with a
         truncated payload; a regular file avoids the truncation.
+
+        When `stdin_text` is given, it is written to the child's stdin and closed,
+        so a provider that reads its transcript from a pipe sees EOF.
         """
 
         out_file = None
@@ -49,6 +53,7 @@ class CommandRunner:
                     args,
                     check=False,
                     capture_output=True,
+                    input=stdin_text,
                     text=True,
                     timeout=self._timeout_seconds,
                     env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
@@ -61,6 +66,7 @@ class CommandRunner:
                 bytes_completed = subprocess.run(
                     args,
                     check=False,
+                    input=None if stdin_text is None else stdin_text.encode("utf-8"),
                     stdout=out_file,
                     stderr=subprocess.PIPE,
                     timeout=self._timeout_seconds,
