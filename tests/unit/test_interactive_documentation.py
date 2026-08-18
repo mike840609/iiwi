@@ -1,17 +1,15 @@
 from pathlib import Path
 
 
-def test_readmes_show_key_driven_bare_command_menu() -> None:
+def test_readmes_show_interactive_review_example() -> None:
     for path in (Path("README.md"), Path("README.zh-TW.md")):
         text = path.read_text(encoding="utf-8")
-        assert "↑↓ jk │ Enter Select" in text
-        assert "▶ Review Activity" in text
-        assert "Generate Report" in text
-        assert "═" in text
+        assert "Review Sessions" in text
+        assert "Select sessions to include in the report" in text
         assert "████" in text
-        assert "History" in text
-        assert "Daily Standup" in text
-        assert "review sessions" in text.casefold()
+        assert "Space Toggle" in text
+        assert "p Preview" in text
+        assert "g Generate" in text
 
 
 def test_cli_reference_documents_repository_and_session_selection() -> None:
