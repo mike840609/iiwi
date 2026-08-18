@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from iiwi.cli import app
+from iiwi.errors import ConfigurationError
 from iiwi.models.time_range import DateRange
 
 runner = CliRunner()
@@ -870,3 +872,70 @@ def test_resolve_period_keeps_an_aware_range_unchanged() -> None:
 
     assert result.since == since
     assert result.until == until
+
+
+def test_available_harnesses_drops_the_ones_that_cannot_be_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = projects
+    settings.harnesses.codex.home_directory = tmp_path / "absent"
+
+    assert cli._available_harnesses(settings) == [cli.Harness.CLAUDE_CODE]
+
+
+def test_default_harness_prefers_opencode_when_it_is_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/local/bin/opencode")
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = projects
+
+    assert cli._default_harness(settings) == cli.Harness.OPENCODE
+
+
+def test_default_harness_falls_back_to_the_first_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = projects
+    settings.harnesses.codex.home_directory = tmp_path / "absent"
+
+    assert cli._default_harness(settings) == cli.Harness.CLAUDE_CODE
+
+
+def test_default_harness_reports_what_it_checked_when_nothing_is_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import iiwi.cli as cli
+
+    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = tmp_path / "absent-projects"
+    settings.harnesses.codex.home_directory = tmp_path / "absent-codex"
+
+    with pytest.raises(ConfigurationError) as error:
+        cli._default_harness(settings)
+
+    message = str(error.value)
+    assert "opencode" in message
+    assert "absent-projects" in message
+    assert "absent-codex" in message

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil  # noqa: F401 -- unused directly; exposes `cli.shutil` so tests can patch it
 import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -24,8 +25,11 @@ from iiwi.errors import (
 )
 from iiwi.harnesses.base import HarnessSessionSource
 from iiwi.harnesses.claude_code.source import ClaudeCodeFileSource
+from iiwi.harnesses.claude_code.source import is_available as claude_code_is_available
 from iiwi.harnesses.codex.source import CodexSource
+from iiwi.harnesses.codex.source import is_available as codex_is_available
 from iiwi.harnesses.opencode.source import OpenCodeCliSource
+from iiwi.harnesses.opencode.source import is_available as opencode_is_available
 from iiwi.harnesses.opencode.stats import collect_usage_stats, usage_days
 from iiwi.history import (
     HistoryEntry,
@@ -977,6 +981,47 @@ def _enabled_harnesses(settings: AppSettings) -> list[Harness]:
     if not enabled:
         raise ConfigurationError("every harness is disabled by configuration")
     return enabled
+
+
+def _harness_is_available(settings: AppSettings, harness: Harness) -> bool:
+    if harness is Harness.CLAUDE_CODE:
+        return claude_code_is_available(settings.harnesses.claude_code.projects_directory)
+    if harness is Harness.CODEX:
+        return codex_is_available(settings.harnesses.codex.home_directory)
+    return opencode_is_available(settings.harnesses.opencode.cli.executable)
+
+
+def _harness_availability_detail(settings: AppSettings, harness: Harness) -> str:
+    if harness is Harness.CLAUDE_CODE:
+        return str(settings.harnesses.claude_code.projects_directory)
+    if harness is Harness.CODEX:
+        return str(settings.harnesses.codex.home_directory)
+    return settings.harnesses.opencode.cli.executable
+
+
+def _available_harnesses(settings: AppSettings) -> list[Harness]:
+    """The enabled harnesses whose sessions this machine can actually read."""
+
+    return [
+        harness
+        for harness in _enabled_harnesses(settings)
+        if _harness_is_available(settings, harness)
+    ]
+
+
+def _default_harness(settings: AppSettings) -> Harness:
+    """Pick a harness that works, preferring OpenCode so existing setups do not move."""
+
+    available = _available_harnesses(settings)
+    if Harness.OPENCODE in available:
+        return Harness.OPENCODE
+    if available:
+        return available[0]
+    checked = ", ".join(
+        f"{harness.value} ({_harness_availability_detail(settings, harness)})"
+        for harness in _enabled_harnesses(settings)
+    )
+    raise ConfigurationError(f"no harness is available; checked {checked}")
 
 
 def _ask_harness(settings: AppSettings) -> Harness:

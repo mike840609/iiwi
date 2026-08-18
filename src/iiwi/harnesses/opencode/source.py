@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,16 @@ class Runner(Protocol):
         *,
         stdout_path: Path | None = None,
     ) -> CommandResult: ...
+
+
+def is_available(executable: str) -> bool:
+    """Whether this harness's sessions can be read on this machine.
+
+    OpenCode's source is the CLI itself, so the binary resolving is the same
+    question as the session store existing.
+    """
+
+    return shutil.which(executable) is not None
 
 
 def _from_millis(value: object) -> datetime | None:

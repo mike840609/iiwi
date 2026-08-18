@@ -31,6 +31,12 @@ def _parse_timestamp(value: object) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
+def is_available(projects_directory: Path) -> bool:
+    """Whether this harness's sessions can be read on this machine."""
+
+    return projects_directory.is_dir()
+
+
 def _iter_records(text: str) -> list[Mapping[str, Any]]:
     records: list[Mapping[str, Any]] = []
     for line in text.splitlines():
