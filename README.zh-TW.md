@@ -39,7 +39,7 @@ Iiwi 支援 OpenCode、Claude Code 與 Codex。它會找出你做過什麼、把
 ```markdown
 # 每週工程更新
 
-## iiwi
+## My Project
 - 簡化報告操作流程，讓 review 更容易完成。
 - 加入 Claude Code 與 Codex session 支援。
 - 修正 CI 中的文件檢查。
