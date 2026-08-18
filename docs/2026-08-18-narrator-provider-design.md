@@ -144,16 +144,35 @@ Each "can read" predicate is defined beside the source it describes — an
 same arguments the source constructor already takes. One definition per harness,
 so the predicate cannot drift away from what the source actually requires.
 
-A new `cli._available_harnesses(settings)` filters `_enabled_harnesses` through
-those predicates and is used in four places:
+Choosing a default harness is currently implemented four separate times, and all
+four consult `enabled` only. That is why a machine without OpenCode hits the
+problem everywhere, not just in `report`: the interactive Review Activity screen
+opens on OpenCode too, and the user has to cycle off it by hand.
 
-1. The default value of `--harness` (`cli.py:72`) becomes the first available
-   harness, preferring OpenCode when it is available.
-2. `_ask_harness` (`cli.py:954`) offers the same default.
-3. Daily's scanner set (`interactive/cli_actions.py:495`), which builds one
-   scanner per harness and today uses `_enabled_harnesses`.
-4. Daily's provider choice, which has no single harness, uses the "can narrate"
-   predicate.
+`cli.py:958` and `interactive/cli_actions.py:67` are the same expression written
+twice —
+`Harness.OPENCODE if Harness.OPENCODE in enabled else enabled[0]`. This work
+collapses them into one helper, since both sites are being changed anyway.
+
+A new `cli._available_harnesses(settings)` filters `_enabled_harnesses` through
+those predicates. Every site that picks or offers a harness uses it:
+
+| # | Site | Today |
+| --- | --- | --- |
+| 1 | `--harness` default (`cli.py:73`) | Hardcoded `Harness.OPENCODE` |
+| 2 | `_ask_harness` default (`cli.py:958`) | Prefer OpenCode, else `enabled[0]` |
+| 3 | `_new_draft` initial harness (`interactive/cli_actions.py:67`) | Duplicate of 2 |
+| 4 | `_choose_harness` cycle list (`interactive/cli_actions.py:83`) | Cycles `enabled` |
+| 5 | Daily's scanner set (`interactive/cli_actions.py:495`) | Builds one scanner per `enabled` harness |
+| 6 | Daily's provider choice | Did not exist |
+
+Site 4 cycles through available harnesses rather than enabled ones: offering a
+harness whose sessions cannot be read is a dead end in a key-driven UI. Site 6
+is the only one that uses the "can narrate" predicate; the rest use "can read".
+
+The interactive screen is the tool's primary entry point, so sites 3 and 4 are
+what make "installing only Claude Code is enough" true in practice rather than
+only on the command line.
 
 "Prefer OpenCode, else the first in `Harness` declaration order" is the rule
 `_ask_harness:958` already uses; it is reused rather than replaced, so a machine
@@ -392,6 +411,11 @@ coverage warning, while a harness that passes the pre-check and then raises
 `HarnessSourceError` is still recorded in `unavailable_harnesses` with its
 coverage warning.
 
+All six harness-selection sites get a case on a machine where OpenCode is
+unavailable and Claude Code is: the `--harness` default, `_ask_harness`,
+`_new_draft`'s initial harness, `_choose_harness`'s cycle list, Daily's scanner
+set and Daily's provider all resolve to Claude Code without configuration.
+
 **Self-authored exclusion.** One case per harness: a session whose first user
 message carries the prefix is excluded; one without it is retained; the OpenCode
 legacy-title path still matches.
@@ -440,5 +464,6 @@ Collected during design; recorded so implementation does not re-litigate them.
 | The Codex desktop install ships a complete CLI outside PATH | `~/.codex/plugins/.plugin-appserver/codex --version` reports `codex-cli 0.148.0-alpha.9`; `chrome-native-hosts-v2.json` pins `cliVersion` to `appVersion` |
 | `harnesses/` and `summarizers/` do not import each other | Grep in both directions |
 | `report`, `scan` and `doctor` take one harness; only `daily` is multi-harness | `_HARNESS_OPTION` appears at `cli.py:430`, `:485`, `:584` and nowhere else; `daily` (`cli.py:1041`) takes no harness |
+| Default-harness selection is implemented four times, none consulting availability | `cli.py:73`, `cli.py:958`, `interactive/cli_actions.py:67`, `interactive/cli_actions.py:83` |
 | The three sources disagree on what "unavailable" means | Codex raises (`harnesses/codex/source.py:56`), OpenCode raises on CLI failure, Claude Code returns `[]` (`harnesses/claude_code/source.py:112`) |
 | Quick Review's JSON extraction is provider-agnostic | `_extract_json_object` (`services/outcomes.py:706`) scans for the first decodable object, ignoring fences and prose |
