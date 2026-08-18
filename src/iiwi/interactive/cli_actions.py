@@ -17,6 +17,7 @@ from iiwi import config_store
 from iiwi.config import AppSettings
 from iiwi.daily_state import load_daily_draft, save_daily_draft
 from iiwi.errors import (
+    ConfigurationError,
     DailySourceUnavailableError,
     IiwiError,
     OutcomeSynthesisError,
@@ -204,7 +205,15 @@ def _synthesize(draft: ReportDraft, scan: ScanResult, force: bool) -> OutcomeRev
 
     settings = cli._load_settings()
     harness = cli.Harness(draft.harness)
-    runner = cli._build_narrator(settings, harness)
+    try:
+        runner = cli._build_narrator(settings, harness)
+    except ConfigurationError as exc:
+        # An unusable narrator.provider has to reach the recoverable-error screen
+        # like every other Quick Review failure instead of killing the TUI.
+        # Caught here rather than by widening the synthesis handler below: that
+        # one must not swallow SynthesisBudgetExceededError, which is also an
+        # IiwiError and which the controller renders on its own screen.
+        raise OutcomeSynthesisError(str(exc)) from exc
     reporter = ConsoleReporter()
     try:
         # Synthesis extracts and redacts every selected session and then runs one

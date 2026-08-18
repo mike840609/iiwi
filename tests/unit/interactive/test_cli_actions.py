@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import shutil
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -1095,3 +1095,26 @@ def test_available_harnesses_filters_to_installed_harnesses_from_loaded_settings
     harnesses = [harness.value for harness in cli._available_harnesses(settings)]
 
     assert harnesses == ["claude-code"]
+
+
+def test_synthesize_turns_an_unusable_provider_into_a_recoverable_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invalid narrator.provider must not kill the TUI (#158).
+
+    `claude-code` is the realistic typo: it is the harness name used all over the
+    docs, while the valid provider is `claude`.
+    """
+
+    monkeypatch.setenv("IIWI_NARRATOR__PROVIDER", "claude-code")
+
+    draft = ReportDraft(
+        harness="opencode",
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=UTC),
+            until=datetime(2026, 7, 27, tzinfo=UTC),
+        ),
+    )
+
+    with pytest.raises(OutcomeSynthesisError, match="claude-code"):
+        cli_actions._synthesize(draft, object(), False)
