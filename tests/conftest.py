@@ -265,6 +265,10 @@ class GitOnlyCommandRunner:
     narrative_marker: str = "NARRATIVE_ACCEPTANCE_MARKER"
     run_calls: list[list[str]] = field(default_factory=list)
     run_transcripts: list[str] = field(default_factory=list)
+    # Only populated by the claude/codex branch below: the working directory
+    # each narration subprocess launch was given, so acceptance tests can pin
+    # that it is a temp dir rather than iiwi's own cwd (must-fix 1).
+    run_subprocess_cwds: list[Path | None] = field(default_factory=list)
 
     def run(
         self,
@@ -272,6 +276,7 @@ class GitOnlyCommandRunner:
         *,
         stdout_path: Path | None = None,
         stdin_text: str | None = None,
+        cwd: Path | None = None,
     ) -> CommandResult:
         if args[:2] == ["opencode", "run"]:
             self.run_calls.append(args)
@@ -285,6 +290,7 @@ class GitOnlyCommandRunner:
             return CommandResult(0, "", "")
         if args[:1] == ["claude"] or args[:2] == ["codex", "exec"]:
             self.run_calls.append(args)
+            self.run_subprocess_cwds.append(cwd)
             if stdin_text is not None:
                 self.run_transcripts.append(stdin_text)
             if stdout_path is not None:

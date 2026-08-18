@@ -10,6 +10,7 @@ from iiwi.summarizers.narrator import (
     build_summary_prompt,
     failure_detail,
     marked_prompt,
+    narrator_failure_message,
     run_with_workdir,
 )
 
@@ -84,13 +85,22 @@ class OpenCodeRunner:
             ]
             if self._model:
                 args += ["--model", self._model]
+            # No cwd is passed here, unlike the Claude and Codex adapters: an
+            # OpenCode user must see no behaviour change from this branch, and
+            # `opencode run` already worked correctly inheriting iiwi's cwd
+            # before narration became provider-agnostic. Changing it now would
+            # break that promise for the one provider iiwi has always shipped.
             result = self._runner.run(args, stdout_path=output_path)
             narrative = ""
             if output_path.exists():
                 narrative = output_path.read_text(encoding="utf-8").strip()
             if result.returncode != 0:
                 raise OpenCodeRunError(
-                    failure_detail(result.stderr, narrative, fallback="opencode run failed")
+                    narrator_failure_message(
+                        "opencode",
+                        self._executable,
+                        failure_detail(result.stderr, narrative, fallback="opencode run failed"),
+                    )
                 )
         except OSError as exc:
             raise OpenCodeRunError(str(exc)) from exc

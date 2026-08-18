@@ -84,3 +84,33 @@ def test_run_raises_when_the_output_is_empty(tmp_path: Path, runner_factory) -> 
 
     with pytest.raises(NarrativeRunError, match="no output"):
         narrator.run(transcript="t", prompt="p", title="t")
+
+
+def test_run_launches_claude_in_the_given_workdir_not_iiwis_cwd(
+    tmp_path: Path, runner_factory
+) -> None:
+    """must-fix 1: without an explicit cwd, `claude -p` would inherit iiwi's
+    own cwd and load the user's project CLAUDE.md, .claude/settings*.json,
+    and run project hooks as a side effect of generating a report."""
+
+    runner = runner_factory(output="ok\n")
+    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+
+    narrator.run(transcript="t", prompt="p", title="t")
+
+    assert runner.cwds == [tmp_path]
+
+
+def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
+    tmp_path: Path, runner_factory
+) -> None:
+    runner = runner_factory(returncode=1, stderr="boom")
+    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError) as error:
+        narrator.run(transcript="t", prompt="p", title="t")
+
+    message = str(error.value)
+    assert "claude narration failed (boom)" in message
+    assert "narrator.provider" in message
+    assert "narrator.executable" in message

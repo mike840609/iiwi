@@ -413,7 +413,12 @@ def _narrator_for_provider(settings: AppSettings, provider: str) -> NarrativeRun
     if provider == "claude":
         return ClaudeNarrator(runner=runner, executable=executable, model=model)
     if provider == "codex":
-        return CodexNarrator(runner=runner, executable=executable, model=model)
+        return CodexNarrator(
+            runner=runner,
+            executable=executable,
+            model=model,
+            codex_home=settings.harnesses.codex.home_directory,
+        )
     return OpenCodeRunner(runner=runner, executable=executable, model=model)
 
 

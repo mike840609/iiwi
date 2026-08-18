@@ -466,8 +466,19 @@ binary path into iiwi.
 `claude -p` still loads the user's global `~/.claude/CLAUDE.md`. A global
 instruction such as "always answer in one sentence" would visibly distort
 reports. `--bare` would prevent it but also disables OAuth, which is not
-acceptable. The project-level file is already excluded because runs happen inside
-`secure_temporary_directory()`. This is documented rather than worked around.
+acceptable. This is documented rather than worked around.
+
+The project-level file, and project hooks, are excluded because
+`CommandRunner.run` launches the child with `cwd` set to the
+`secure_temporary_directory()` workdir, not because the transcript happens to
+be staged there: a subprocess's working directory is independent of any file
+path passed on its command line, so a temporary transcript file alone does not
+stop `claude -p` or `codex exec` from resolving `CLAUDE.md`,
+`.claude/settings*.json`, and Stop/PreToolUse hooks from wherever the parent
+process's cwd points — which, without an explicit `cwd`, is the user's project
+directory. `OpenCodeRunner` is the one exception: it deliberately keeps
+inheriting iiwi's cwd unchanged, since an existing OpenCode setup must see no
+behaviour change from this design.
 
 ## Verified facts
 

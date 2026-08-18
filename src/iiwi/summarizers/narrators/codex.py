@@ -9,6 +9,7 @@ from iiwi.summarizers.narrator import (
     NarrativeRunError,
     failure_detail,
     marked_prompt,
+    narrator_failure_message,
     run_with_workdir,
 )
 
@@ -23,11 +24,16 @@ class CodexNarrator:
         executable: str = "codex",
         model: str = "",
         workdir: Path | None = None,
+        codex_home: Path | None = None,
     ) -> None:
         self._runner = runner
         self._executable = executable
         self._model = model
         self._workdir = workdir
+        # Only used to decide whether a not-found failure should point at the
+        # Codex desktop docs (see narrator_failure_message); never read to
+        # locate the executable itself.
+        self._codex_home = codex_home
 
     def run(self, *, transcript: str, prompt: str, title: str) -> str:
         return run_with_workdir(
@@ -52,7 +58,12 @@ class CodexNarrator:
             args = [self._executable, "exec", marked_prompt(prompt, title)]
             if self._model:
                 args += ["-m", self._model]
-            result = self._runner.run(args, stdout_path=output_path, stdin_text=transcript)
+            # `cwd=workdir` keeps `codex exec` out of the user's project: without
+            # it the subprocess inherits iiwi's own cwd and gets write access to
+            # the repository being reported on.
+            result = self._runner.run(
+                args, stdout_path=output_path, stdin_text=transcript, cwd=workdir
+            )
             narrative = ""
             if output_path.exists():
                 narrative = output_path.read_text(encoding="utf-8").strip()
@@ -60,7 +71,12 @@ class CodexNarrator:
             raise NarrativeRunError(str(exc)) from exc
         if result.returncode != 0:
             raise NarrativeRunError(
-                failure_detail(result.stderr, narrative, fallback="codex exec failed")
+                narrator_failure_message(
+                    "codex",
+                    self._executable,
+                    failure_detail(result.stderr, narrative, fallback="codex exec failed"),
+                    codex_home=self._codex_home,
+                )
             )
         if not narrative:
             raise NarrativeRunError("codex exec produced no output")

@@ -138,4 +138,9 @@ def test_claude_code_report_narrative_uses_the_claude_provider(
     assert git_only_runner.run_calls[0][0] == "claude"
     transcript = git_only_runner.run_transcripts[0]
     assert "## Project:" in transcript
+    # must-fix 1: `claude -p` must not inherit iiwi's own cwd, or it would load
+    # this process's CLAUDE.md/.claude/settings and run its project hooks.
+    launch_cwd = git_only_runner.run_subprocess_cwds[0]
+    assert launch_cwd is not None
+    assert launch_cwd != Path.cwd()
     assert "Add retry to the price fetcher" in transcript

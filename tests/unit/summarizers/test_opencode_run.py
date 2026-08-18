@@ -78,6 +78,34 @@ def test_run_raises_on_nonzero_exit(tmp_path: Path) -> None:
         driver.run(transcript="t", prompt="p", title="title")
 
 
+def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
+    tmp_path: Path,
+) -> None:
+    runner = RecordingRunner(returncode=1, stderr="boom")
+    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(OpenCodeRunError) as error:
+        driver.run(transcript="t", prompt="p", title="title")
+
+    message = str(error.value)
+    assert "opencode narration failed (boom)" in message
+    assert "narrator.provider" in message
+    assert "narrator.executable" in message
+
+
+def test_run_does_not_pass_a_cwd(tmp_path: Path) -> None:
+    """The one deliberate asymmetry from must-fix 1: an OpenCode user must see
+    no behaviour change, so `opencode run` keeps inheriting iiwi's own cwd."""
+
+    runner = RecordingRunner(output="ok\n")
+    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+
+    driver.run(transcript="t", prompt="p", title="title")
+
+    # RecordingRunner.run has no `cwd` parameter at all: passing one here
+    # would raise TypeError, which is the enforcement mechanism for this test.
+
+
 def test_run_raises_when_output_is_empty(tmp_path: Path) -> None:
     runner = RecordingRunner(output="")
     driver = OpenCodeRunner(runner=runner, workdir=tmp_path)

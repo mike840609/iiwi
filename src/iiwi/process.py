@@ -28,6 +28,7 @@ class CommandRunner:
         *,
         stdout_path: Path | None = None,
         stdin_text: str | None = None,
+        cwd: Path | None = None,
     ) -> CommandResult:
         """Run a command, reporting timeouts and launch failures as failed results.
 
@@ -41,6 +42,12 @@ class CommandRunner:
 
         When `stdin_text` is given, it is written to the child's stdin and closed,
         so a provider that reads its transcript from a pipe sees EOF.
+
+        When `cwd` is given, the child is launched there instead of inheriting
+        this process's working directory. A coding-agent CLI resolves its own
+        project config (CLAUDE.md, project hooks, MCP servers) from its working
+        directory, so narration callers that must not touch the user's project
+        pass a temporary directory here.
         """
 
         out_file = None
@@ -57,6 +64,7 @@ class CommandRunner:
                     text=True,
                     timeout=self._timeout_seconds,
                     env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+                    cwd=cwd,
                 )
                 returncode = text_completed.returncode
                 captured_stdout = text_completed.stdout
@@ -71,6 +79,7 @@ class CommandRunner:
                     stderr=subprocess.PIPE,
                     timeout=self._timeout_seconds,
                     env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+                    cwd=cwd,
                 )
                 returncode = bytes_completed.returncode
                 captured_stdout = stdout_path.read_bytes().decode(

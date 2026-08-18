@@ -148,6 +148,11 @@ def test_codex_report_narrative_uses_the_codex_provider(
     # `codex exec` was actually invoked (not the structured fallback).
     assert git_only_runner.run_calls, "codex exec was never invoked"
     assert git_only_runner.run_calls[0][:2] == ["codex", "exec"]
+    # must-fix 1: `codex exec` must not inherit iiwi's own cwd, or it would get
+    # write access to whatever repository iiwi's own process happens to be in.
+    launch_cwd = git_only_runner.run_subprocess_cwds[0]
+    assert launch_cwd is not None
+    assert launch_cwd != Path.cwd()
     # Full session context reached `codex exec` via the grouped transcript.
     transcript = git_only_runner.run_transcripts[0]
     assert "## Project:" in transcript

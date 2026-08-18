@@ -81,3 +81,61 @@ def test_run_raises_when_the_output_is_empty(tmp_path: Path, runner_factory) -> 
 
     with pytest.raises(NarrativeRunError, match="no output"):
         narrator.run(transcript="t", prompt="p", title="t")
+
+
+def test_run_launches_codex_exec_in_the_given_workdir_not_iiwis_cwd(
+    tmp_path: Path, runner_factory
+) -> None:
+    """must-fix 1: without an explicit cwd, `codex exec` would inherit iiwi's
+    own cwd and get write access to whatever repository iiwi is running in."""
+
+    runner = runner_factory(output="ok\n")
+    narrator = CodexNarrator(runner=runner, workdir=tmp_path)
+
+    narrator.run(transcript="t", prompt="p", title="t")
+
+    assert runner.cwds == [tmp_path]
+
+
+def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
+    tmp_path: Path, runner_factory
+) -> None:
+    runner = runner_factory(returncode=1, stderr="boom")
+    narrator = CodexNarrator(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError) as error:
+        narrator.run(transcript="t", prompt="p", title="t")
+
+    message = str(error.value)
+    assert "codex narration failed (boom)" in message
+    assert "narrator.provider" in message
+    assert "narrator.executable" in message
+
+
+def test_run_failure_points_at_the_codex_desktop_docs_when_the_binary_is_missing(
+    tmp_path: Path, runner_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "iiwi.summarizers.narrator.shutil.which", lambda executable: None
+    )
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    runner = runner_factory(returncode=127, stderr="[Errno 2] No such file or directory: 'codex'")
+    narrator = CodexNarrator(runner=runner, workdir=workdir, codex_home=codex_home)
+
+    with pytest.raises(NarrativeRunError, match="docs/configuration.md"):
+        narrator.run(transcript="t", prompt="p", title="t")
+
+
+def test_run_failure_omits_the_desktop_docs_when_codex_home_is_absent(
+    tmp_path: Path, runner_factory
+) -> None:
+    runner = runner_factory(returncode=127, stderr="[Errno 2] No such file or directory: 'codex'")
+    narrator = CodexNarrator(runner=runner, workdir=tmp_path, codex_home=None)
+
+    with pytest.raises(NarrativeRunError) as error:
+        narrator.run(transcript="t", prompt="p", title="t")
+
+    assert "docs/configuration.md" not in str(error.value)

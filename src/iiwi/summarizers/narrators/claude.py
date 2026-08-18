@@ -9,6 +9,7 @@ from iiwi.summarizers.narrator import (
     NarrativeRunError,
     failure_detail,
     marked_prompt,
+    narrator_failure_message,
     run_with_workdir,
 )
 
@@ -58,7 +59,13 @@ class ClaudeNarrator:
             ]
             if self._model:
                 args += ["--model", self._model]
-            result = self._runner.run(args, stdout_path=output_path, stdin_text=transcript)
+            # `cwd=workdir` keeps `claude -p` out of the user's project: without
+            # it the subprocess inherits iiwi's own cwd, loads the project's
+            # CLAUDE.md and .claude/settings*.json, and can run Stop/PreToolUse
+            # hooks as a side effect of generating a report.
+            result = self._runner.run(
+                args, stdout_path=output_path, stdin_text=transcript, cwd=workdir
+            )
             narrative = ""
             if output_path.exists():
                 narrative = output_path.read_text(encoding="utf-8").strip()
@@ -66,7 +73,11 @@ class ClaudeNarrator:
             raise NarrativeRunError(str(exc)) from exc
         if result.returncode != 0:
             raise NarrativeRunError(
-                failure_detail(result.stderr, narrative, fallback="claude -p failed")
+                narrator_failure_message(
+                    "claude",
+                    self._executable,
+                    failure_detail(result.stderr, narrative, fallback="claude -p failed"),
+                )
             )
         if not narrative:
             raise NarrativeRunError("claude -p produced no output")

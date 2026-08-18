@@ -7,6 +7,7 @@ prompt and a grouped transcript go to a subprocess; the prose comes back.
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
@@ -149,6 +150,7 @@ class CommandRunnerLike(Protocol):
         *,
         stdout_path: Path | None = ...,
         stdin_text: str | None = ...,
+        cwd: Path | None = ...,
     ) -> CommandResult: ...
 
 
@@ -193,6 +195,42 @@ def failure_detail(stderr: str, stdout: str, *, fallback: str) -> str:
         return detail
     first_line = stdout.strip().splitlines()[0].strip() if stdout.strip() else ""
     return first_line or fallback
+
+
+def narrator_failure_message(
+    provider: str,
+    executable: str,
+    detail: str,
+    *,
+    codex_home: Path | None = None,
+) -> str:
+    """Name the resolved provider and where to fix it, on top of the raw detail.
+
+    `failure_detail` returns a bare string (the CLI's own stderr/stdout line, or
+    an OSError repr like "[Errno 2] No such file or directory: 'codex'") with no
+    mention of which provider ran or which setting controls it. Every adapter
+    raises `NarrativeRunError` with exactly one such string, and both the
+    weekly report's narration-unavailable warning and Quick Review's error
+    just interpolate that exception, so building the full message here — the
+    one place that already has the provider and the resolved executable — is
+    what reaches both call sites without threading settings through them.
+    """
+
+    message = (
+        f"{provider} narration failed ({detail}); set narrator.provider or "
+        f"narrator.executable (currently {executable!r})"
+    )
+    # A Codex desktop install ships its CLI outside PATH, under a private
+    # directory a future release can relocate, so this points at the docs
+    # instead of guessing the path.
+    if (
+        provider == "codex"
+        and codex_home is not None
+        and codex_home.is_dir()
+        and shutil.which(executable) is None
+    ):
+        message += "; see the Codex desktop section of docs/configuration.md"
+    return message
 
 
 def run_with_workdir(workdir: Path | None, execute: Callable[[Path], str]) -> str:

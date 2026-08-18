@@ -112,3 +112,42 @@ def test_run_without_stdin_text_is_unchanged() -> None:
 
     assert result.returncode == 0
     assert result.stdout.strip() == "no stdin needed"
+
+
+def test_run_launches_the_child_in_the_given_cwd(tmp_path: Path) -> None:
+    runner = CommandRunner(timeout_seconds=5)
+
+    result = runner.run(
+        [sys.executable, "-c", "import os; print(os.getcwd())"],
+        cwd=tmp_path,
+    )
+
+    assert result.returncode == 0
+    assert Path(result.stdout.strip()).samefile(tmp_path)
+
+
+def test_run_launches_the_child_in_the_given_cwd_when_redirecting_stdout(
+    tmp_path: Path,
+) -> None:
+    runner = CommandRunner(timeout_seconds=5)
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    destination = tmp_path / "out.txt"
+
+    result = runner.run(
+        [sys.executable, "-c", "import os; print(os.getcwd())"],
+        stdout_path=destination,
+        cwd=workdir,
+    )
+
+    assert result.returncode == 0
+    assert Path(result.stdout.strip()).samefile(workdir)
+
+
+def test_run_without_cwd_inherits_the_parent_process_cwd() -> None:
+    runner = CommandRunner(timeout_seconds=5)
+
+    result = runner.run([sys.executable, "-c", "import os; print(os.getcwd())"])
+
+    assert result.returncode == 0
+    assert Path(result.stdout.strip()).samefile(Path.cwd())
