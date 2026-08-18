@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from iiwi.security.secure_files import secure_temporary_directory
 from iiwi.summarizers.narrator import (
     CommandRunnerLike,
     NarrativeRunError,
     failure_detail,
     marked_prompt,
+    run_with_workdir,
 )
 
 
@@ -30,17 +30,12 @@ class CodexNarrator:
         self._workdir = workdir
 
     def run(self, *, transcript: str, prompt: str, title: str) -> str:
-        if self._workdir is not None:
-            return self._run_in_workdir(
-                self._workdir, transcript=transcript, prompt=prompt, title=title
-            )
-        try:
-            with secure_temporary_directory() as workdir:
-                return self._run_in_workdir(
-                    workdir, transcript=transcript, prompt=prompt, title=title
-                )
-        except OSError as exc:
-            raise NarrativeRunError(str(exc)) from exc
+        return run_with_workdir(
+            self._workdir,
+            lambda workdir: self._run_in_workdir(
+                workdir, transcript=transcript, prompt=prompt, title=title
+            ),
+        )
 
     def _run_in_workdir(
         self,

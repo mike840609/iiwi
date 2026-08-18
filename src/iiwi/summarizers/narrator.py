@@ -7,11 +7,13 @@ prompt and a grouped transcript go to a subprocess; the prose comes back.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
 from iiwi.models.report_options import DetailLevel
 from iiwi.process import CommandResult
+from iiwi.security.secure_files import secure_temporary_directory
 from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 
 _TEMPLATE = """Create a concise software engineering weekly report from the attached
@@ -191,3 +193,22 @@ def failure_detail(stderr: str, stdout: str, *, fallback: str) -> str:
         return detail
     first_line = stdout.strip().splitlines()[0].strip() if stdout.strip() else ""
     return first_line or fallback
+
+
+def run_with_workdir(workdir: Path | None, execute: Callable[[Path], str]) -> str:
+    """Run `execute` in `workdir`, or in a fresh temporary one when absent.
+
+    Every adapter needs the same workdir selection: an explicit workdir (how
+    tests pin a directory to inspect) is used as-is, while the normal path
+    gets a secure_temporary_directory() that is cleaned up on exit. OSError
+    from creating or removing that directory becomes a NarrativeRunError so
+    callers only need to catch one exception type.
+    """
+
+    if workdir is not None:
+        return execute(workdir)
+    try:
+        with secure_temporary_directory() as temporary_workdir:
+            return execute(temporary_workdir)
+    except OSError as exc:
+        raise NarrativeRunError(str(exc)) from exc

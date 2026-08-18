@@ -1,3 +1,8 @@
+import tempfile
+from pathlib import Path
+
+import pytest
+
 from iiwi.models.report_options import DetailLevel
 from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.summarizers.narrator import (
@@ -5,6 +10,7 @@ from iiwi.summarizers.narrator import (
     build_summary_prompt,
     failure_detail,
     marked_prompt,
+    run_with_workdir,
 )
 
 
@@ -94,3 +100,55 @@ def test_failure_detail_uses_the_fallback_when_both_are_empty() -> None:
     result = failure_detail("", "", fallback="opencode run failed")
 
     assert result == "opencode run failed"
+
+
+def test_run_with_workdir_uses_an_explicit_workdir_as_given(tmp_path: Path) -> None:
+    received: list[Path] = []
+
+    def execute(workdir: Path) -> str:
+        received.append(workdir)
+        return "ok"
+
+    result = run_with_workdir(tmp_path, execute)
+
+    assert received == [tmp_path]
+    assert result == "ok"
+    assert tmp_path.exists()
+
+
+def test_run_with_workdir_creates_a_temporary_directory_and_cleans_it_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created: list[Path] = []
+
+    def mkdtemp(*, prefix: str) -> str:
+        path = tmp_path / f"{prefix}0"
+        path.mkdir()
+        created.append(path)
+        return str(path)
+
+    monkeypatch.setattr(tempfile, "mkdtemp", mkdtemp)
+    existed_during_execute: list[bool] = []
+
+    def execute(workdir: Path) -> str:
+        existed_during_execute.append(workdir.exists())
+        return "ok"
+
+    result = run_with_workdir(None, execute)
+
+    assert result == "ok"
+    assert existed_during_execute == [True]
+    assert created[0].exists() is False
+
+
+def test_run_with_workdir_translates_tempdir_creation_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def mkdtemp(*, prefix: str) -> str:
+        del prefix
+        raise OSError("no temp space")
+
+    monkeypatch.setattr(tempfile, "mkdtemp", mkdtemp)
+
+    with pytest.raises(NarrativeRunError, match="no temp space"):
+        run_with_workdir(None, lambda workdir: "unreached")

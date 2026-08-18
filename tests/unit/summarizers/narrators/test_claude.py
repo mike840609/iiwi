@@ -57,6 +57,19 @@ def test_run_appends_the_model_flag_when_configured(tmp_path: Path, runner_facto
     assert args[args.index("--model") + 1] == "opus"
 
 
+def test_run_honours_a_custom_executable_path(tmp_path: Path, runner_factory) -> None:
+    runner = runner_factory(output="ok\n")
+    narrator = ClaudeNarrator(
+        runner=runner,
+        executable="/Users/someone/.claude/local/claude",
+        workdir=tmp_path,
+    )
+
+    narrator.run(transcript="t", prompt="p", title="t")
+
+    assert runner.calls[0][0] == "/Users/someone/.claude/local/claude"
+
+
 def test_run_reports_a_login_failure_from_stdout(tmp_path: Path, runner_factory) -> None:
     runner = runner_factory(returncode=1, output="Not logged in - please run /login\n")
     narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
