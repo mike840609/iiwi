@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import pytest
@@ -882,12 +883,37 @@ def test_available_harnesses_drops_the_ones_that_cannot_be_read(
 
     projects = tmp_path / "projects"
     projects.mkdir()
-    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
     settings = cli.AppSettings()
     settings.harnesses.claude_code.projects_directory = projects
     settings.harnesses.codex.home_directory = tmp_path / "absent"
 
     assert cli._available_harnesses(settings) == [cli.Harness.CLAUDE_CODE]
+
+
+def test_available_harnesses_preserves_harness_declaration_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With several harnesses available, the result must follow `Harness`
+    declaration order, not whatever order the predicates happened to run in."""
+
+    import iiwi.cli as cli
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/opencode")
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.projects_directory = projects
+    settings.harnesses.codex.home_directory = codex_home
+
+    assert cli._available_harnesses(settings) == [
+        cli.Harness.OPENCODE,
+        cli.Harness.CLAUDE_CODE,
+        cli.Harness.CODEX,
+    ]
 
 
 def test_default_harness_prefers_opencode_when_it_is_available(
@@ -898,7 +924,7 @@ def test_default_harness_prefers_opencode_when_it_is_available(
 
     projects = tmp_path / "projects"
     projects.mkdir()
-    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/local/bin/opencode")
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/opencode")
     settings = cli.AppSettings()
     settings.harnesses.claude_code.projects_directory = projects
 
@@ -913,7 +939,7 @@ def test_default_harness_falls_back_to_the_first_available(
 
     projects = tmp_path / "projects"
     projects.mkdir()
-    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
     settings = cli.AppSettings()
     settings.harnesses.claude_code.projects_directory = projects
     settings.harnesses.codex.home_directory = tmp_path / "absent"
@@ -927,7 +953,7 @@ def test_default_harness_reports_what_it_checked_when_nothing_is_available(
 ) -> None:
     import iiwi.cli as cli
 
-    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
     settings = cli.AppSettings()
     settings.harnesses.claude_code.projects_directory = tmp_path / "absent-projects"
     settings.harnesses.codex.home_directory = tmp_path / "absent-codex"

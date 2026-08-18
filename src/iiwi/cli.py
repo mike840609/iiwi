@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil  # noqa: F401 -- unused directly; exposes `cli.shutil` so tests can patch it
 import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta
