@@ -104,25 +104,38 @@ _DEPRECATED_KEYS = {
     "harnesses.opencode.cli.run_timeout_seconds": "narrator.timeout_seconds",
 }
 
+# Module-level, not per-call: the interactive layer calls _load_settings on
+# nearly every keypress (_choose_harness alone reloads it once per harness
+# cycle), so without a process-wide guard a user with one deprecated key set
+# gets this notice painted over the TUI on almost every action instead of
+# exactly once.
+_deprecation_notice_emitted = False
+
 
 def _warn_about_deprecated_keys(settings: AppSettings) -> None:
-    """Say which key replaced a deprecated one, once, on stderr.
+    """Say which key replaced a deprecated one, once per process, on stderr.
 
     Not through the report's warnings: a configuration migration printed inside
     the report body would outlive the migration in every file it was written to.
     """
 
+    global _deprecation_notice_emitted
+    if _deprecation_notice_emitted:
+        return
     cli_settings = settings.harnesses.opencode.cli
     in_use = []
     if cli_settings.model:
         in_use.append("harnesses.opencode.cli.model")
     if "run_timeout_seconds" in cli_settings.model_fields_set:
         in_use.append("harnesses.opencode.cli.run_timeout_seconds")
+    if not in_use:
+        return
     for key in in_use:
         typer.echo(
             f"Note: {key} is deprecated; use {_DEPRECATED_KEYS[key]}.",
             err=True,
         )
+    _deprecation_notice_emitted = True
 
 
 def _load_settings() -> AppSettings:

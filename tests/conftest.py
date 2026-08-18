@@ -6,8 +6,21 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from iiwi import cli
 from iiwi.process import CommandResult
 from tests.codex_state_db import seconds, write_database
+
+
+@pytest.fixture(autouse=True)
+def _reset_deprecation_notice_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_warn_about_deprecated_keys`'s once-per-process guard is a module-level
+    flag (must-fix 5), so without a reset here, whichever test in the whole
+    suite happens to trip it first would silently suppress the notice for
+    every later test that also sets a deprecated key — in any file, not just
+    tests/unit/test_cli_deprecation.py.
+    """
+
+    monkeypatch.setattr(cli, "_deprecation_notice_emitted", False)
 
 
 @pytest.fixture(autouse=True)
