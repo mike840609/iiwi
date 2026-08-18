@@ -1,9 +1,11 @@
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
+from iiwi import cli
 from iiwi.cli import app
 from iiwi.errors import ConfigurationError
 from iiwi.models.time_range import DateRange
@@ -1049,3 +1051,35 @@ def test_report_without_a_harness_flag_uses_the_available_one(
     CliRunner().invoke(cli.app, ["report", "--days", "7"])
 
     assert seen == [cli.Harness.CLAUDE_CODE]
+
+
+def _report_service_with_provider(provider: str, *, no_llm: bool, tmp_path: Path):
+    settings = cli.AppSettings()
+    settings.narrator.provider = provider
+    return cli._build_report_service(
+        settings,
+        DateRange(
+            since=datetime(2026, 7, 20, tzinfo=UTC),
+            until=datetime(2026, 7, 27, tzinfo=UTC),
+        ),
+        tmp_path / "report.md",
+        no_llm,
+        now=datetime(2026, 7, 27, tzinfo=UTC),
+        harness=cli.Harness.OPENCODE,
+    )
+
+
+def test_no_llm_does_not_validate_the_narrator_provider(tmp_path: Path) -> None:
+    """`--no-llm` is the escape hatch for machines with no AI CLI.
+
+    It must not fail on a narrator setting the run never reads (#159).
+    """
+
+    service = _report_service_with_provider("gemini", no_llm=True, tmp_path=tmp_path)
+
+    assert service is not None
+
+
+def test_the_narrative_path_still_rejects_an_unknown_provider(tmp_path: Path) -> None:
+    with pytest.raises(ConfigurationError, match="gemini"):
+        _report_service_with_provider("gemini", no_llm=False, tmp_path=tmp_path)
