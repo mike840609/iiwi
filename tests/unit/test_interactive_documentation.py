@@ -74,4 +74,5 @@ def test_readme_distinguishes_transcript_reading_from_quick_review_synthesis() -
     assert "Claude Code / Codex (no CLI" not in readme
     assert "Claude Code" in readme
     assert "Codex" in readme
-    assert "Report drafting uses your locally installed `opencode run`" in readme
+    assert "Reading Claude Code or Codex history does not need their CLI tools" in readme
+    assert "Drafting uses the CLI" in readme

@@ -53,11 +53,11 @@ Iiwi 支援 OpenCode、Claude Code 與 Codex。它會找出你做過什麼、把
 需要 Python 3.11 以上與 `git`。
 
 - **讀取來源：** OpenCode、Claude Code 或 Codex 保存在本機的 session history。
-- **整理報告：** 使用你本機安裝的 `opencode run`。
-- **沒有 OpenCode？** 可以使用 `--no-llm` 產生較簡單的結構化報告。
+- **整理報告：** `opencode`、`claude` 或 `codex`，用哪一個取決於讀的是哪個 harness。
+- **都沒安裝？** 可以使用 `--no-llm` 產生較簡單的結構化報告。
 
-報告內容會由你本機安裝的 `opencode run` 協助整理；讀取 Claude Code 或 Codex 的紀錄
-不需要安裝它們的 CLI。
+讀取 Claude Code 或 Codex 的紀錄不需要安裝它們的 CLI；整理報告則需要。預設會用與 harness
+相同的那一個，除非以 `narrator.provider` 另外指定。
 
 ```bash
 pipx install iiwi                 # 或：pip install iiwi
@@ -116,8 +116,8 @@ iiwi run                          # 使用逐步引導模式
 | 參數 | 作用 |
 |---|---|
 | `--harness claude-code` / `--harness codex` | 改讀 Claude Code 或 Codex 的 sessions |
-| `--no-llm` | 不使用 OpenCode 撰寫敘事內容，改產生結構化報告 |
-| `--sanitize` | 使用更強的去敏，適合隱私優先於報告細節時 |
+| `--no-llm` | 不呼叫任何 CLI 撰寫敘事，改產生結構化報告 |
+| `--sanitize` | 更強的去敏（僅 OpenCode），會移除大部分工作 evidence |
 | `--dry-run` | 印出報告，不寫入檔案 |
 | `--json` | 對支援的指令輸出去敏後的機器可讀格式 |
 
@@ -140,8 +140,9 @@ iiwi config unset report.timezone                         # 回到預設值
 
 ## 隱私
 
-讀取 sessions、去敏與產生報告都在你的電腦上完成。Iiwi 會把去敏後的 session 內容交給本機安裝的
-`opencode run`，不需要 API key。`iiwi update` 會連線到 PyPI 檢查是否有新版。
+讀取 sessions、去敏與產生報告都在你的電腦上完成。Iiwi 會把去敏後的 session 內容交給你本機
+已安裝的 CLI（`opencode`、`claude` 或 `codex`），不需要 API key。`iiwi update` 會連線到
+PyPI 檢查是否有新版。
 
 報告仍可能包含私人目標、檔名、指令與完整工作路徑，因此分享前請先確認內容。完整資料流向與目前限制
 請見

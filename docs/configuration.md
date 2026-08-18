@@ -157,6 +157,62 @@ export IIWI_HARNESSES__CODEX__HOME_DIRECTORY="$HOME/.codex"
 iiwi doctor --harness codex
 ```
 
+## Narrator
+
+Which CLI writes the prose review, and how it's invoked, resolve from four
+`narrator.*` settings plus the harness in use. A fallback to
+`harnesses.opencode.cli.*` applies only when the resolved provider is
+`opencode` — a `claude` or `codex` provider never falls back to an OpenCode
+setting.
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `IIWI_NARRATOR__PROVIDER` | *(unset)* | Which CLI narrates: `opencode`, `claude`, or `codex`. Unset derives it from the harness; any other value is a configuration error. |
+| `IIWI_NARRATOR__EXECUTABLE` | *(unset)* | Path to the narration CLI. Unset uses the provider's own name (`claude`, `codex`), or `harnesses.opencode.cli.executable` when the provider is `opencode`. |
+| `IIWI_NARRATOR__MODEL` | *(unset)* | Model passed to the narration CLI. Unset uses `harnesses.opencode.cli.model` (deprecated) when the provider is `opencode`; for `claude` or `codex` no `--model` flag is sent and the CLI's own default applies. |
+| `IIWI_NARRATOR__TIMEOUT_SECONDS` | *(unset)* | Timeout for one narration run, in seconds. Unset uses `harnesses.opencode.cli.run_timeout_seconds` (deprecated) when the provider is `opencode`; otherwise `600.0`. |
+
+### Provider
+
+| `narrator.provider` | Result |
+| --- | --- |
+| Set | Use it (`opencode`, `claude`, or `codex`; anything else is a configuration error). |
+| Unset, one harness selected (`--harness opencode` / `claude-code` / `codex`) | The same-named provider as that harness. No substitution when its binary is missing — the command fails rather than silently switching CLIs. |
+| Unset, `iiwi daily` (scans every harness) | Among enabled harnesses whose provider binary is installed: prefer OpenCode, else the first one in declaration order (OpenCode, Claude Code, Codex). |
+
+### Executable, model, and timeout
+
+Once the provider is resolved, these three settings follow one rule: the
+setting itself wins if set; otherwise a fallback to the matching
+`harnesses.opencode.cli.*` setting applies only when the resolved provider is
+`opencode`.
+
+| Setting | Set | Unset, provider is `opencode` | Unset, otherwise |
+| --- | --- | --- | --- |
+| `narrator.executable` | Use it | `harnesses.opencode.cli.executable` | `claude` / `codex` (the provider's own command name) |
+| `narrator.model` | Use it | `harnesses.opencode.cli.model` (deprecated) | No `--model` flag; the CLI's own default applies |
+| `narrator.timeout_seconds` | Use it | `harnesses.opencode.cli.run_timeout_seconds` (deprecated) | `600.0` |
+
+Example: narrate with Claude Code's CLI regardless of which harness read the sessions:
+
+```bash
+iiwi config set narrator.provider claude
+iiwi report --harness codex --period last-week
+```
+
+### Codex desktop
+
+The Codex desktop application ships a complete CLI that is not linked onto
+`PATH`. Point the narrator at it:
+
+    iiwi config set narrator.provider codex
+    iiwi config set narrator.executable ~/.codex/plugins/.plugin-appserver/codex
+
+It shares `~/.codex/auth.json` with the desktop application, so no separate
+login is needed. The location is internal to the Codex install and can move
+between releases; if narration stops working after an update, check this path
+first.
+
 ## Report settings
 
 | Environment variable | Default | Purpose |
@@ -165,7 +221,7 @@ iiwi doctor --harness codex
 | `IIWI_REPORT__OUTPUT_DIRECTORY` | `reports` | Default Markdown output directory. |
 | `IIWI_REPORT__EXCLUDE_REPOSITORIES` | `""` | Comma-separated repository ids to permanently leave out of every scan and report. |
 | `IIWI_REPORT__QUICK_REVIEW_REPORT_TYPE` | `manager` | Default Quick Review audience: `manager` or `engineering`. Manager defaults to Brief; Engineering defaults to Full unless Detail was explicitly changed. |
-| `IIWI_REPORT__QUICK_REVIEW_MAX_EVIDENCE_BYTES` | `40000` | Largest evidence payload one Quick Review synthesis run may send to `opencode run`. |
+| `IIWI_REPORT__QUICK_REVIEW_MAX_EVIDENCE_BYTES` | `40000` | Largest evidence payload one Quick Review synthesis run may send to the narration CLI. |
 
 The `--output` CLI option overrides the configured output directory for one invocation.
 
@@ -190,7 +246,7 @@ Changing the Report row during Quick Review also saves this default for the next
 interactive report.
 
 `report.quick_review_max_evidence_bytes` bounds the evidence Quick Review sends to
-one `opencode run`. Past roughly this size the model stops returning the strict
+one narration run. Past roughly this size the model stops returning the strict
 JSON synthesis needs — a full week of sessions used to return nothing at all, and
 Quick Review always fell back to the session-based report. Synthesis sends the
 most recent sessions that fit; the sessions beyond the budget become ungrouped
@@ -213,19 +269,23 @@ so a budget set too high degrades the review rather than breaking it.
 
 ## OpenCode run settings
 
-The default narrative report runs the locally installed `opencode run`. These
-settings control that invocation. An empty `MODEL` uses opencode's default model.
+These settings control the `opencode` executable used for OpenCode session
+export, `opencode stats`, and — when the resolved narrator provider is
+`opencode` — report narration. `RUN_TIMEOUT_SECONDS` and `MODEL` are
+**deprecated**: they still work as the OpenCode-only fallback that
+`narrator.timeout_seconds` and `narrator.model` (see [Narrator](#narrator))
+use when left unset, but a new setup should set those keys directly instead.
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE` | `opencode` | The `opencode` executable used for export, stats, and the narrative report. |
-| `IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS` | `600.0` | How long a single `opencode run` may take before Iiwi falls back to the structured report. |
-| `IIWI_HARNESSES__OPENCODE__CLI__MODEL` | `""` | Optional model passed as `--model` to `opencode run`. Empty means opencode's default. |
+| `IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE` | `opencode` | The `opencode` executable used for export, stats, and — when the narrator resolves to OpenCode — narration. |
+| `IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS` | `600.0` | Deprecated; use `narrator.timeout_seconds`. Still read as the OpenCode-only fallback when that setting is unset. |
+| `IIWI_HARNESSES__OPENCODE__CLI__MODEL` | `""` | Deprecated; use `narrator.model`. Still read as the OpenCode-only fallback when that setting is unset. |
 
 To pin a specific model for report narratives:
 
 ```bash
-export IIWI_HARNESSES__OPENCODE__CLI__MODEL="gpt-5.3"
+export IIWI_NARRATOR__MODEL="gpt-5.3"
 iiwi report --period last-week
 ```
 
@@ -240,8 +300,7 @@ iiwi report --period last-week --no-llm
 For each setting, Iiwi takes the environment variable, then the settings file,
 then the default. CLI period and output options apply to the current invocation only
 and override the settings that back them. Environment settings provide defaults for
-harness execution, timezone, output directory, and the narrative `opencode run`
-invocation.
+harness execution, timezone, output directory, and the narrator invocation.
 
 ## OpenCode export privacy
 

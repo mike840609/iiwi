@@ -162,13 +162,37 @@ def test_readmes_document_privacy_controls() -> None:
         assert "--allow-remote-llm" not in text
 
 
-def test_readmes_document_the_local_opencode_narrative() -> None:
+def test_readmes_document_the_resolved_narration_cli() -> None:
+    """The narrator is no longer hardcoded to opencode; the READMEs must say so."""
+
     readme = Path("README.md").read_text(encoding="utf-8")
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
 
-    assert "opencode run" in readme
+    for text in (readme, readme_zh_tw):
+        assert "narrator.provider" in text
     assert "OPENAPI" not in readme
-    assert "opencode run" in readme_zh_tw
+    # The old claim was that narration always runs a local `opencode run`,
+    # regardless of harness. That is what this change makes false.
+    assert "the narrative still comes from your local `opencode run`" not in readme
+    assert "the narrative still comes from your local `opencode run`" not in readme_zh_tw
+
+
+def test_readmes_document_the_local_narration_clis() -> None:
+    """Both READMEs must name every CLI that can write the narrative.
+
+    Replaces an earlier test that asserted `opencode run` specifically; narration
+    is no longer OpenCode-only. The OPENAPI guard is carried over from it — that
+    typo reached the README once.
+    """
+
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+
+    for text in (readme, readme_zh_tw):
+        assert "`opencode`" in text
+        assert "`claude`" in text
+        assert "`codex`" in text
+        assert "OPENAPI" not in text
 
 
 def test_configuration_documents_opencode_sanitize_setting() -> None:
@@ -177,11 +201,31 @@ def test_configuration_documents_opencode_sanitize_setting() -> None:
     assert "IIWI_HARNESSES__OPENCODE__CLI__SANITIZE" in configuration
 
 
-def test_configuration_documents_opencode_run_settings() -> None:
+def test_configuration_documents_narrator_settings() -> None:
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "`narrator.provider`" in configuration
+    assert "`narrator.executable`" in configuration
+    assert "`narrator.model`" in configuration
+    assert "`narrator.timeout_seconds`" in configuration
+    assert "IIWI_NARRATOR__PROVIDER" in configuration
+
+
+def test_configuration_still_documents_the_deprecated_opencode_run_settings() -> None:
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
 
     assert "IIWI_HARNESSES__OPENCODE__CLI__RUN_TIMEOUT_SECONDS" in configuration
     assert "IIWI_HARNESSES__OPENCODE__CLI__MODEL" in configuration
+    assert "deprecated" in configuration.casefold()
+
+
+def test_configuration_documents_the_codex_desktop_cli_location() -> None:
+    """The doctor message points here, so the section must exist."""
+
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "Codex desktop" in configuration
+    assert ".plugin-appserver" in configuration
 
 
 def test_configuration_documents_quick_review_report_type_exactly() -> None:
