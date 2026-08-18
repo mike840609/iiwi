@@ -29,27 +29,27 @@ edits, and generate a Markdown report you can share with your team.
 
 ## Quick start
 
-Needs Python 3.11+ and `git`. Plus one transcript source: OpenCode (the default,
-needs an `opencode` executable) or a readable Claude Code / Codex transcript store
-at `~/.claude/projects` or `~/.codex` (their CLIs are not needed for reading).
-Quick Review outcome synthesis still uses your local `opencode run` for every
-transcript source; if it is unavailable, the recovery screen offers Retry and an
-explicit session-based report fallback.
+Requires Python 3.11+ and `git`. Iiwi can read local session history from OpenCode,
+Claude Code, or Codex. OpenCode is the default; Claude Code and Codex only need
+their local session folders to be readable.
+
+Report drafting uses your locally installed `opencode run`. If it is unavailable,
+Iiwi can fall back to a simpler session-based report.
 
 ```bash
 pipx install iiwi                 # or: pip install iiwi
 
-iiwi doctor                       # is the harness ready?
+iiwi doctor                       # check your setup
 iiwi daily                        # review yesterday, today, and blockers
-iiwi report --period last-week    # write the report
+iiwi report --period last-week    # write last week's report
 ```
 
-The report lands under `reports/`.
-Pass `--dry-run` to print the report to the terminal instead of writing a file.
+Reports are written under `reports/` by default. Add `--dry-run` to preview a
+report in the terminal without writing a file.
 
 ## The interactive menu
 
-Run `iiwi` with no arguments if you would rather not remember flags:
+Run `iiwi` with no arguments if you would rather use a menu than remember flags:
 
 ```text
 $ iiwi
@@ -66,16 +66,14 @@ github.com/mike840609/iiwi
   Generate Report
   History
   Check Setup
-  Settings                       # full-screen editor, every choice listed
+  Settings
 
 ↑↓ jk │ Enter Select │ 1-6 │ ? Help │ q Quit
 ```
 
-Choosing **Generate a report** shows every setting at once instead of asking one
-question at a time — `↑↓` moves, `←→` changes a value, and a line under the list
-explains the setting you are on. Press `g` to generate, or `r` to open
-**Review sessions** first, which weighs each repository by how much of the period
-it actually accounts for:
+**Generate Report** lets you choose the report settings, review the sessions Iiwi
+found, and then generate the report. **Review Sessions** shows the work grouped by
+repository so you can quickly keep or exclude what belongs in the update:
 
 ```text
 Review Sessions   6 / 6 selected │ 252 / 252 msgs
@@ -92,61 +90,38 @@ Select sessions to include in the report:
 ↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ e Exclude │ a All │ g Generate │ / Search │ ? Help │ b Back
 ```
 
-Choosing **History** lists every report the tool has written, newest first.
-`↑↓` moves; Enter shows the row's full output path.
+**Daily Standup**, or `iiwi daily`, opens a Yesterday / Today / Blockers review
+for recent work. **History** lists reports Iiwi has already written.
 
-Choosing **Daily Standup**, or running `iiwi daily`, scans every enabled harness
-from yesterday's local midnight through now and opens a three-section Quick
-Review for Yesterday, Today, and Blockers. Preview and Generate use the same
-reviewed Markdown, written as `daily-standup-YYYY-MM-DD.md`. See the
-[Daily Standup guide](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md)
-for source warnings, suggested Today work, and same-day review persistence.
-
-`Space` toggles a repository or a single session, `p` previews a transcript
-(redacted), and `e` excludes a repository from every future scan. Your selection
-is remembered per period. Press `g` to synthesize the selected sessions into
-Quick Review instead of writing the session-based report immediately.
-
-Quick Review keeps the evidence traceable while you decide what belongs in the
-update. The first five candidates are selected; additional work stays under
-**More candidates**, and extraction failures stay visible under **Ungrouped
-candidates**. User-added outcomes, optional Blockers, and optional Next week text
-are included in the same in-memory draft.
-
-```text
-Space Include/exclude │ e Edit │ J/K Reorder │ v Evidence │ s Split │ a Add
-p Preview │ g Generate │ b Back
-```
-
-`p Preview` renders the current draft without writing a file. `g Generate` writes
-that reviewed draft. If synthesis fails, retry it or explicitly use the labeled
-session-based report fallback. See the
-[evidence-first Quick Review guide](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md)
-for the full flow and the Manager/Engineering and Brief/Full responsibilities.
+Before a report is written, Quick Review lets you keep, edit, reorder, split, or
+add work items so the final Markdown reflects what you actually want to share.
+For the full keyboard flow, report modes, and recovery behavior, see the
+[evidence-first Quick Review guide](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md).
+For Daily Standup details, see the
+[Daily Standup guide](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md).
 
 ## Commands
 
 ```bash
-iiwi doctor                       # is the harness ready?
+iiwi doctor                       # check your setup
 iiwi daily                        # review yesterday, today, and blockers
-iiwi scan --period last-week      # preview how sessions group
-iiwi report --period last-week    # write the report
-iiwi history                      # reports already written
+iiwi scan --period last-week      # preview the sessions Iiwi found
+iiwi report --period last-week    # write last week's report
+iiwi history                      # list reports already written
 iiwi update                       # check PyPI for a newer release
-iiwi run                          # the same questions, one at a time
+iiwi run                          # use the step-by-step wizard
 ```
 
 | Flag | What it does |
 |---|---|
-| `--harness claude-code` / `--harness codex` | Read another harness's sessions — the narrative still comes from your local `opencode run` |
-| `--no-llm` | Deterministic structured report; works whether or not OpenCode is installed |
-| `--sanitize` | OpenCode's stronger redaction, which intentionally removes most work evidence |
+| `--harness claude-code` / `--harness codex` | Read sessions from Claude Code or Codex instead of OpenCode |
+| `--no-llm` | Create a structured report without using OpenCode for the narrative |
+| `--sanitize` | Use stronger redaction when privacy matters more than report detail |
 | `--dry-run` | Print the report instead of writing a file |
-| `--json` | Redacted machine-readable output for `scan`, `doctor`, `history`, and `update` (the default when stdout is piped) |
+| `--json` | Return redacted machine-readable output for supported commands |
 
-`iiwi --help` lists everything, and `run` is the linear wizard if you prefer being
-asked. In scripts, name a subcommand directly — with no terminal to prompt at, the
-menu exits with status 3 rather than reading stdin.
+`iiwi --help` lists every command and option. Use `iiwi run` if you prefer a
+step-by-step wizard; for scripts, call the subcommand you need directly.
 
 ## Configuration
 
@@ -165,13 +140,13 @@ Every setting and its environment-variable name is in the
 
 ## Privacy
 
-Everything happens on your machine: sessions are read from disk, common secret
-patterns are redacted, and the redacted transcript is handed to your locally
-installed `opencode run`. No API key, and `update` is the only command that touches
-the network.
+Session reading, redaction, and report generation stay on your machine. Iiwi
+passes the redacted session text to your locally installed `opencode run`; no API
+key is required. `iiwi update` is the command that checks the network for a newer
+release on PyPI.
 
-Reports may still contain private goals, filenames, commands, and full working
-paths — always review one before sharing it. See
+Reports can still contain private goals, filenames, commands, and full working
+paths, so review a report before sharing it. See
 [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md)
 for the full data flow and current limits.
 
