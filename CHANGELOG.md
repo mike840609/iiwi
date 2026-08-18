@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Narration is provider-agnostic: it can now run through `claude -p` or
+  `codex exec` in addition to `opencode run`, chosen from the selected
+  harness (Claude Code narrates with `claude`, Codex narrates with `codex`,
+  OpenCode narrates with `opencode`) unless `narrator.provider` overrides it.
+  **This changes existing behaviour for `--harness claude-code` and
+  `--harness codex`: a report generated with either now narrates with its own
+  CLI instead of always shelling out to `opencode run`.** A `claude -p` or
+  `codex exec` narration subprocess launches in its own temporary working
+  directory rather than iiwi's, so it does not load the project's
+  `CLAUDE.md`, `.claude/settings*.json`, or run project hooks as a side
+  effect of generating a report; `opencode run` is unchanged and keeps
+  inheriting iiwi's own working directory.
+- `--harness`, left unspecified, now defaults to the first harness this
+  machine can actually read, preferring OpenCode when it is available, rather
+  than always defaulting to OpenCode regardless of whether it is installed.
+- Two settings are deprecated in favor of narrator-level equivalents that
+  apply to every provider, not only OpenCode: `harnesses.opencode.cli.model`
+  is replaced by `narrator.model`, and
+  `harnesses.opencode.cli.run_timeout_seconds` is replaced by
+  `narrator.timeout_seconds`. The old keys keep working and print a one-time
+  note on stderr pointing at the replacement.
+
 ## 0.14.0 - 2026-08-17
 
 - **`q` means back one level, on every screen except the main menu.** It used
