@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import iiwi.services.scan as scan_module
+from iiwi.cache import CachingSessionSource, SessionCache, adapter_version
 from iiwi.errors import HarnessSourceError, SessionParseError
 from iiwi.metrics import MetricStage, PerformanceMetrics
 from iiwi.models.repository import RepositoryIdentity, RepositoryIdentityType
@@ -912,3 +913,108 @@ def test_an_unexpected_load_error_still_surfaces(
     with pytest.raises(RuntimeError, match="mapper blew up"):
         run_scan(BrokenSource())
 
+
+# --- the session cache, seen from a whole scan --------------------------------
+
+
+class StampedSource:
+    """A source whose descriptors carry update times, so they can be cached."""
+
+    def __init__(self, updated: dict[str, datetime]) -> None:
+        self.updated = dict(updated)
+        self.load_calls: list[str] = []
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return [
+            SessionDescriptor(harness="opencode", session_id=session_id, updated_at=stamp)
+            for session_id, stamp in self.updated.items()
+        ]
+
+    def load(self, target: SessionDescriptor) -> AgentSession:
+        self.load_calls.append(target.session_id)
+        return probe_session(target.session_id)
+
+
+def cached_scan(source: StampedSource, path, **kwargs) -> ScanResult:
+    return run_scan(
+        CachingSessionSource(
+            source=source,
+            cache=SessionCache(path=path, adapter_version=adapter_version(sanitized=False)),
+            **kwargs,
+        )
+    )
+
+
+def test_a_cached_scan_produces_the_same_result_as_an_uncached_one(tmp_path) -> None:
+    """The acceptance criterion: the cache changes the clock, not the report."""
+
+    stamp = datetime(2026, 7, 22, tzinfo=TZ)
+    uncached = run_scan(StampedSource({"s1": stamp, "s2": stamp, "s3": stamp}))
+    source = StampedSource({"s1": stamp, "s2": stamp, "s3": stamp})
+    cached_scan(source, tmp_path / "c.db")
+
+    warm = cached_scan(source, tmp_path / "c.db")
+
+    assert warm == uncached
+
+
+def test_a_warm_scan_exports_nothing(tmp_path) -> None:
+    stamp = datetime(2026, 7, 22, tzinfo=TZ)
+    source = StampedSource({"s1": stamp, "s2": stamp, "s3": stamp})
+    cached_scan(source, tmp_path / "c.db")
+    source.load_calls.clear()
+
+    result = cached_scan(source, tmp_path / "c.db")
+
+    assert source.load_calls == []
+    assert result.loaded_session_count == 3
+
+
+def test_a_broken_cache_warns_through_the_scan_result(tmp_path) -> None:
+    """A cache problem is worth saying out loud, and worth saying only once."""
+
+    path = tmp_path / "c.db"
+    path.write_bytes(b"not a database")
+    stamp = datetime(2026, 7, 22, tzinfo=TZ)
+    source = StampedSource({"s1": stamp, "s2": stamp})
+
+    result = cached_scan(source, path)
+
+    assert result.loaded_session_count == 2
+    assert [w for w in result.warnings if "session cache" in w]
+    assert len([w for w in result.warnings if "session cache" in w]) == 1
+
+
+def test_cache_counters_reach_the_performance_summary(tmp_path) -> None:
+    stamp = datetime(2026, 7, 22, tzinfo=TZ)
+    source = StampedSource({"s1": stamp, "s2": stamp})
+    cached_scan(source, tmp_path / "c.db")
+    metrics = PerformanceMetrics()
+
+    cached_scan(source, tmp_path / "c.db", metrics=metrics)
+
+    assert metrics.counts["cache_hits"] == 2
+
+
+def test_a_cached_scan_still_loads_concurrently(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Caching sits inside the thread pool, so a cold scan keeps its parallelism."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    barrier = BarrierSource(["s1", "s2", "s3", "s4"], parties=4)
+    for target in barrier.descriptors:
+        target.updated_at = datetime(2026, 7, 22, tzinfo=TZ)
+
+    result = run_scan(
+        CachingSessionSource(
+            source=barrier,
+            cache=SessionCache(
+                path=tmp_path / "c.db",
+                adapter_version=adapter_version(sanitized=False),
+            ),
+        )
+    )
+
+    assert barrier.max_in_flight == 4
+    assert result.loaded_session_count == 4

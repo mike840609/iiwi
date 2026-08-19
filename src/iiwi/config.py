@@ -85,6 +85,16 @@ class CodexSettings(BaseModel):
     home_directory: Path = Field(default_factory=lambda: Path.home() / ".codex")
 
 
+class CacheSettings(BaseModel):
+    """The on-disk store of already-exported sessions."""
+
+    # On by default because it is where the waiting goes: a second report over
+    # the same week re-exports sessions that stopped changing days ago. It is
+    # switchable because a hit is served from a file holding the user's
+    # unredacted conversations, and that is their call to make, not iiwi's.
+    enabled: bool = True
+
+
 class HarnessSettings(BaseModel):
     """Configured coding-agent harnesses."""
 
@@ -152,3 +162,4 @@ class AppSettings(BaseSettings):
     harnesses: HarnessSettings = Field(default_factory=HarnessSettings)
     report: ReportSettings = Field(default_factory=ReportSettings)
     narrator: NarratorSettings = Field(default_factory=NarratorSettings)
+    cache: CacheSettings = Field(default_factory=CacheSettings)

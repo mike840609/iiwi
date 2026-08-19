@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Sessions that have not changed are no longer re-exported. Each normalized
+  session is kept in a small SQLite database and reused while the harness's own
+  update timestamp still matches, so a repeat report over the same week costs
+  almost nothing: on a real 228-session OpenCode week, a second scan went from
+  133.8s to 1.0s. The cache is invalidated by that timestamp and by the iiwi
+  version — an upgrade re-exports everything once rather than serving payloads
+  an older mapper built — and a session whose harness reports no update time is
+  never cached at all, since there would be no way to notice it had changed.
+  Every failure path (missing directory, unreadable file, locked or corrupt
+  database) falls back to exporting normally and adds one warning, so the cache
+  can slow a report down but never fail one or change what it says.
+  `--verbose` reports hits, misses, and stale entries.
+- The session cache stores session content as iiwi normalized it, unredacted,
+  in the platform cache directory (`~/Library/Caches/iiwi/sessions.db` on
+  macOS, `$XDG_CACHE_HOME/iiwi` on Linux) at mode `0600` inside a `0700`
+  directory. This is a new place that content rests, so it is switchable:
+  `IIWI_CACHE__ENABLED=false` exports everything every run and writes nothing.
+  Sanitized and raw payloads are kept under separate keys and never served
+  across that boundary. See `docs/privacy.md`.
 - Sessions are now exported concurrently, up to four at a time, instead of one
   after another. On a real 228-session OpenCode week this cut the scan from
   294s to 108s; the file-backed harnesses (Claude Code, Codex) gain less

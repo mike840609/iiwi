@@ -135,6 +135,9 @@ def test_build_scan_service_selects_the_claude_code_source(tmp_path) -> None:
     tz = ZoneInfo("Asia/Taipei")
     settings = AppSettings()
     settings.harnesses.claude_code.projects_directory = tmp_path
+    # The cache wraps whatever source is selected, and this test is about the
+    # selection, not the wrapping; the wrapper has its own test.
+    settings.cache.enabled = False
     period = DateRange(
         since=datetime(2026, 7, 20, tzinfo=tz),
         until=datetime(2026, 7, 27, tzinfo=tz),
@@ -147,6 +150,36 @@ def test_build_scan_service_selects_the_claude_code_source(tmp_path) -> None:
     )
 
     assert isinstance(service._source, ClaudeCodeFileSource)
+
+
+def test_build_scan_service_caches_sessions_by_default(tmp_path) -> None:
+    """The cache is on unless the user turns it off, wrapping the real source."""
+
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import iiwi.cli as cli
+    from iiwi.cache import CachingSessionSource
+    from iiwi.config import AppSettings
+    from iiwi.harnesses.claude_code.source import ClaudeCodeFileSource
+    from iiwi.models.time_range import DateRange
+
+    tz = ZoneInfo("Asia/Taipei")
+    settings = AppSettings()
+    settings.harnesses.claude_code.projects_directory = tmp_path
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=tz),
+        until=datetime(2026, 7, 27, tzinfo=tz),
+    )
+
+    service = cli._build_scan_service(
+        settings,
+        period,
+        harness=cli.Harness.CLAUDE_CODE,
+    )
+
+    assert isinstance(service._source, CachingSessionSource)
+    assert isinstance(service._source._source, ClaudeCodeFileSource)
 
 
 def test_build_scan_service_drops_sessions_from_a_configured_excluded_repository(

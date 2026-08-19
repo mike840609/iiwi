@@ -16,6 +16,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import typer
 
 from iiwi import __version__, config_store
+from iiwi.cache import (
+    CachingSessionSource,
+    SessionCache,
+    adapter_version,
+    cache_file_path,
+)
 from iiwi.config import (
     DEFAULT_NARRATOR_TIMEOUT_SECONDS,
     AppSettings,
@@ -296,6 +302,15 @@ def _build_scan_service(
             executable=cli_settings.executable,
             root_only=root_only,
             sanitize=sanitize,
+        )
+    if settings.cache.enabled:
+        source = CachingSessionSource(
+            source=source,
+            cache=SessionCache(
+                path=cache_file_path(),
+                adapter_version=adapter_version(sanitized=sanitize),
+            ),
+            metrics=metrics,
         )
     return ScanService(
         source=source,

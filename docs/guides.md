@@ -136,6 +136,11 @@ Narrator              opencode
 The summary goes to stderr, so `iiwi report --dry-run --verbose > report.md` still writes a
 clean report and `iiwi scan --json --verbose | jq` still gets valid JSON.
 
+`Cache hits` and `Cache misses` in that list are the session cache: a session that has not
+changed since the last run is read back instead of exported again, which is most of why a
+repeat report over the same week finishes in about a second. See
+[Session cache](configuration.md#session-cache) to turn it off or move it.
+
 ## OpenCode privacy modes
 
 `iiwi report --days 7` runs the resolved local narration CLI over a

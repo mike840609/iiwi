@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, cast
 
 from iiwi.errors import HarnessSourceError, SessionParseError
 from iiwi.harnesses.base import HarnessSessionSource
@@ -216,6 +216,14 @@ class ScanService:
             # queue before surfacing. Cancelling the backlog leaves only the
             # handful already in flight to finish.
             executor.shutdown(cancel_futures=True)
+
+        # A source may have something to say about itself — the session cache
+        # reports here when it had to be bypassed. Drained after the per-session
+        # warnings so those stay first, and through `getattr` because saying
+        # nothing is the normal case for a source.
+        drain_warnings = getattr(self._source, "drain_warnings", None)
+        if callable(drain_warnings):
+            warnings.extend(cast(list[str], drain_warnings()))
 
         if descriptors and successful_exports == 0 and failed_count == len(descriptors):
             raise HarnessSourceError(
