@@ -1,3 +1,4 @@
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +12,17 @@ from iiwi.errors import ConfigurationError
 from iiwi.models.time_range import DateRange
 
 runner = CliRunner()
+
+
+def plain_help(stdout: str) -> str:
+    """Rich help output as one line of plain text.
+
+    Rich wraps the help table, pads cells with box-drawing characters, and
+    (under GITHUB_ACTIONS) forces colour, so strip the escapes and the box
+    before matching.
+    """
+    without_ansi = re.sub(r"\x1b\[[0-9;]*m", "", stdout)
+    return " ".join(without_ansi.replace("\u2502", " ").split())
 
 
 def test_help_lists_core_commands() -> None:
@@ -27,19 +39,17 @@ def test_daily_help_describes_standup_without_report_selection_options() -> None
     result = runner.invoke(app, ["daily", "--help"])
 
     assert result.exit_code == 0
-    assert "standup" in result.stdout.casefold()
+    help_text = plain_help(result.stdout)
+    assert "standup" in help_text.casefold()
     for prohibited in ("--harness", "--period", "--days", "--no-review"):
-        assert prohibited not in result.stdout
+        assert prohibited not in help_text
 
 
 def test_report_help_describes_no_llm_without_naming_a_specific_cli() -> None:
     result = runner.invoke(app, ["report", "--help"])
 
     assert result.exit_code == 0
-    # rich wraps the help table and pads cells with box-drawing characters, so
-    # strip those and collapse the whitespace before matching.
-    normalized = " ".join(result.stdout.replace("│", " ").split())
-    assert "without calling a narration CLI" in normalized
+    assert "without calling a narration CLI" in plain_help(result.stdout)
 
 
 def test_sanitize_with_an_explicit_non_opencode_harness_is_rejected() -> None:
