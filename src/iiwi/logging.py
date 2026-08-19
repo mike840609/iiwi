@@ -20,6 +20,7 @@ from rich.text import Text
 
 from iiwi.config_store import SettingRow
 from iiwi.history import HistoryEntry, HistoryKind
+from iiwi.metrics import MetricStage, PerformanceMetrics
 from iiwi.progress import (
     NullProgressReporter,
     ProgressReporter,
@@ -50,6 +51,44 @@ _STAGE_LABELS = {
     ProgressStage.RENDERING_REPORT: "Rendering report",
     ProgressStage.WRITING_REPORT: "Writing report",
 }
+
+
+_METRIC_STAGE_LABELS = {
+    MetricStage.DISCOVER_SESSIONS: "Discover sessions",
+    MetricStage.EXPORT_SESSIONS: "Export sessions",
+    MetricStage.RESOLVE_REPOSITORIES: "Resolve repositories",
+    MetricStage.PREPARE_EVIDENCE: "Prepare evidence",
+    MetricStage.PREPARE_TRANSCRIPT: "Prepare transcript",
+    MetricStage.SUMMARIZE_REPOSITORIES: "Summarize repositories",
+    MetricStage.COLLECT_USAGE: "Collect usage",
+    MetricStage.NARRATE: "Narration",
+    MetricStage.RENDER_REPORT: "Render",
+    MetricStage.WRITE_REPORT: "Write",
+}
+
+_METRIC_COUNT_LABELS = {
+    "candidate_sessions": "Candidate sessions",
+    "loaded_sessions": "Sessions",
+    "failed_sessions": "Failed sessions",
+    "repositories": "Repositories",
+    "transcript_bytes": "Transcript",
+}
+
+_METRIC_LABEL_LABELS = {"narrator": "Narrator"}
+
+
+def _format_size(value: int) -> str:
+    if value < 1024:
+        return f"{value} B"
+    if value < 1024 * 1024:
+        return f"{value / 1024:.0f} KB"
+    return f"{value / (1024 * 1024):.1f} MB"
+
+
+def _metric_name(key: str, labels: dict[str, str]) -> str:
+    """Name a counter, falling back so a new one is readable before it is mapped."""
+
+    return labels.get(key, key.replace("_", " ").capitalize())
 
 
 class _BarWhenCounted(ProgressColumn):
@@ -174,6 +213,38 @@ class ConsoleReporter:
             yield progress
         finally:
             progress.finish()
+
+    def performance(self, metrics: PerformanceMetrics) -> None:
+        """Print the stage-timing summary under `--verbose`, on stderr.
+
+        stderr, not stdout, because every command this appears under owes stdout
+        something exact: `report --dry-run` writes the report there, `scan
+        --json` writes JSON. A diagnostic that answers "why was that slow" must
+        not end up inside the artifact the user redirected to a file.
+        """
+
+        if not self.verbose or self.quiet:
+            return
+        if not metrics.durations and not metrics.counts and not metrics.labels:
+            return
+        table = Table(title="Performance", show_header=False, box=None, padding=(0, 2))
+        table.add_column("Metric", no_wrap=True)
+        table.add_column("Value", justify="right", no_wrap=True)
+        for stage, seconds in metrics.ordered_durations():
+            table.add_row(_METRIC_STAGE_LABELS[stage], f"{seconds:.2f}s")
+        if metrics.durations:
+            # A blank row, not `add_section`: with `box=None` a section boundary
+            # draws nothing at all, and the three groups run together.
+            table.add_row("", "")
+            table.add_row("Total", f"{metrics.total_seconds:.2f}s")
+        if metrics.counts or metrics.labels:
+            table.add_row("", "")
+        for key, value in metrics.counts.items():
+            rendered = _format_size(value) if key.endswith("_bytes") else str(value)
+            table.add_row(_metric_name(key, _METRIC_COUNT_LABELS), rendered)
+        for key, value in metrics.labels.items():
+            table.add_row(_metric_name(key, _METRIC_LABEL_LABELS), Text(value))
+        self.progress_console.print(table)
 
     def message(self, text: str) -> None:
         if not self.quiet:

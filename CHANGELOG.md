@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- `scan --verbose` and `report --verbose` now print a **Performance** summary
+  after the run: how long each stage took (session discovery, export,
+  repository resolution, evidence or transcript preparation, usage collection,
+  narration, render, write), the total, and the counts behind them — candidate,
+  loaded, and failed sessions, repositories, narrator transcript size, and which
+  narration CLI was resolved. It answers "why was that slow" without a profiler.
+  The summary goes to stderr, so `report --dry-run --verbose > report.md` still
+  writes a clean report and `scan --json --verbose | jq` still gets valid JSON.
+  Runs without `--verbose` are unchanged.
+
 ## 0.15.0 - 2026-08-19
 
 - Narration is provider-agnostic: it can now run through `claude -p` or

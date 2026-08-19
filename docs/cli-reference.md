@@ -124,7 +124,7 @@ the complete review, refresh, fallback, and local-state behavior.
 | `--harness NAME` | Harness to read sessions from: `opencode`, `claude-code`, or `codex`; defaults to the first available one, preferring `opencode` (see [availability](configuration.md#harness-availability)). |
 | `--root-only` | Leaves out child and subagent sessions. |
 | `--sanitize / --no-sanitize` | Enables or disables OpenCode export redaction. Raw export is the default. OpenCode only. |
-| `--verbose` | Also shows export, fallback, and narrative warnings. For `scan`, also lists each repository's session titles and working folders. |
+| `--verbose` | Also shows export, fallback, and narrative warnings, and prints a **Performance** summary on stderr: how long each stage took, the total, and the session, repository, transcript-size, and narrator numbers behind them. For `scan`, also lists each repository's session titles and working folders. |
 | `--quiet` | Shows only the session count for `scan`, or the output path for `report`. |
 | `--json / --no-json` | Emits machine-readable JSON (redacted) instead of the human output. When stdout is piped, JSON is the default; `--no-json` forces the human output. Shared by `scan`, `doctor`, `history`, and `update`; `report` does not accept it. |
 

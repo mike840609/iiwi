@@ -48,6 +48,7 @@ from iiwi.interactive.input import TerminalInput
 from iiwi.interactive.models import Screen
 from iiwi.json_output import doctor_result_to_json, scan_result_to_json
 from iiwi.logging import ConsoleReporter
+from iiwi.metrics import PerformanceMetrics
 from iiwi.models.time_range import DateRange
 from iiwi.process import CommandRunner
 from iiwi.progress import ProgressReporter
@@ -273,6 +274,7 @@ def _build_scan_service(
     harness: Harness = Harness.OPENCODE,
     sanitize: bool = False,
     progress: ProgressReporter | None = None,
+    metrics: PerformanceMetrics | None = None,
 ) -> ScanService:
     _require_enabled_harness(settings, harness)
     git_runner = CommandRunner(timeout_seconds=5.0)
@@ -302,6 +304,7 @@ def _build_scan_service(
         progress=progress,
         excluded_repository_ids=frozenset(settings.report.excluded_repository_ids()),
         runner=git_runner,
+        metrics=metrics,
     )
 
 
@@ -515,13 +518,18 @@ def _build_report_service(
     detail: DetailLevel = DetailLevel.FULL,
     progress: ProgressReporter | None = None,
     initial_warnings: list[str] | None = None,
+    metrics: PerformanceMetrics | None = None,
 ) -> ReportService:
     """Build the report service around the command's single clock read."""
 
+    metrics = metrics if metrics is not None else PerformanceMetrics()
     # Only the narrative path reads narrator settings, so `--no-llm` — the
     # documented way to run without an AI CLI — must not fail on a provider it
     # never invokes.
     narrator = None if no_llm else _build_narrator(settings, harness)
+    # Resolved behind the same `no_llm` guard for the same reason: naming the
+    # provider must not be what makes `--no-llm` reject a bad one.
+    metrics.label("narrator", "none (--no-llm)" if no_llm else _resolve_provider(settings, harness))
     summarizer = RuleBasedSummarizer()
 
     usage_provider, days = _usage_provider(settings, period, harness, now)
@@ -532,6 +540,7 @@ def _build_report_service(
         harness=harness,
         sanitize=sanitize,
         progress=progress,
+        metrics=metrics,
     )
 
     return ReportService(
@@ -550,6 +559,7 @@ def _build_report_service(
         include_subagents=not root_only,
         sanitized=sanitize,
         initial_warnings=initial_warnings,
+        metrics=metrics,
     )
 
 
@@ -725,6 +735,7 @@ def scan(
     _validate_output_mode(quiet=quiet, verbose=verbose)
     _validate_json_mode(json=json, quiet=quiet)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
+    metrics = PerformanceMetrics()
     try:
         settings = _load_settings()
         harness = harness or _default_harness(settings)
@@ -748,6 +759,7 @@ def scan(
                     harness=harness,
                     sanitize=True,
                     progress=progress,
+                    metrics=metrics,
                 )
             else:
                 service = _build_scan_service(
@@ -756,6 +768,7 @@ def scan(
                     root_only,
                     harness=harness,
                     progress=progress,
+                    metrics=metrics,
                 )
             result = service.scan()
             if result.loaded_session_count == 0:
@@ -779,6 +792,7 @@ def scan(
         typer.echo(scan_result_to_json(result))
     else:
         reporter.scan_result(result)
+    reporter.performance(metrics)
 
 
 @app.command()
@@ -820,6 +834,7 @@ def report(
 
     _validate_output_mode(quiet=quiet, verbose=verbose)
     reporter = ConsoleReporter(quiet=quiet, verbose=verbose)
+    metrics = PerformanceMetrics()
     try:
         settings = _load_settings()
         harness = harness or _default_harness(settings)
@@ -847,6 +862,7 @@ def report(
                 sanitize=effective_sanitize,
                 detail=detail,
                 progress=progress,
+                metrics=metrics,
             )
             result = service.generate(force=force, dry_run=dry_run)
             if not result.report.repositories and not result.report.narrative_text:
@@ -892,6 +908,7 @@ def report(
         if verbose:
             for warning in result.report.warnings:
                 reporter.message(f"Warning: {warning}")
+    reporter.performance(metrics)
 
 
 @app.command()
@@ -1363,6 +1380,10 @@ def run(
     """
 
     reporter = ConsoleReporter(verbose=verbose)
+    # One collector across both halves of the wizard: `generate(scan=scan)`
+    # reuses the scan above rather than repeating it, so the export and the
+    # narration belong in the same summary.
+    metrics = PerformanceMetrics()
     try:
         _require_a_terminal(
             "run needs a terminal; use scan and report to work non-interactively"
@@ -1407,6 +1428,7 @@ def run(
                 harness=harness,
                 sanitize=sanitize,
                 progress=progress,
+                metrics=metrics,
             )
             scan = scan_service.scan()
             if scan.loaded_session_count == 0:
@@ -1439,6 +1461,7 @@ def run(
                 sanitize=sanitize,
                 detail=detail,
                 progress=progress,
+                metrics=metrics,
             )
             result = service.generate(force=force, dry_run=dry_run, scan=scan)
             if not result.report.repositories and not result.report.narrative_text:
@@ -1479,6 +1502,7 @@ def run(
         reporter.message(f"Report written to {result.output_path}")
     for warning in result.report.warnings:
         reporter.message(f"Warning: {warning}")
+    reporter.performance(metrics)
 
 
 # Ordered by how often each is reached for: the report first, then the scan

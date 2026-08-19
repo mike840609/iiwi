@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from iiwi.errors import HarnessSourceError, ReportAlreadyExistsError, ReportOutputError
+from iiwi.metrics import MetricStage, PerformanceMetrics
 from iiwi.models.outcome import (
     EvidenceRef,
     Outcome,
@@ -48,6 +49,7 @@ def service(
     progress: ProgressReporter | None = None,
     usage_provider: Callable[[ScanResult], str] | None = None,
     detail: DetailLevel = DetailLevel.FULL,
+    metrics: PerformanceMetrics | None = None,
 ) -> ReportService:
     return ReportService(
         scan_service=ScanService(
@@ -55,6 +57,7 @@ def service(
             period=period(),
             resolver=StaticResolver(),
             progress=progress,
+            metrics=metrics,
         ),
         summarizer=RuleBasedSummarizer(),
         renderer=MarkdownRenderer(),
@@ -65,6 +68,7 @@ def service(
         usage_days=10 if usage_provider is not None else None,
         detail=detail,
         progress=progress,
+        metrics=metrics,
     )
 
 
@@ -127,12 +131,14 @@ def narrative_service(
     runner: FakeOpenCodeRunner,
     usage_provider: Callable[[ScanResult], str] | None = None,
     detail: DetailLevel = DetailLevel.FULL,
+    metrics: PerformanceMetrics | None = None,
 ) -> ReportService:
     return ReportService(
         scan_service=ScanService(
             source=source,
             period=period(),
             resolver=StaticResolver(),
+            metrics=metrics,
         ),
         summarizer=RuleBasedSummarizer(),
         renderer=MarkdownRenderer(),
@@ -146,6 +152,7 @@ def narrative_service(
         narrator=runner,
         include_subagents=True,
         sanitized=False,
+        metrics=metrics,
     )
 
 
@@ -720,3 +727,117 @@ def test_the_narrative_session_title_is_filtered_back_out(tmp_path: Path) -> Non
     assert is_iiwi_authored(
         AgentSession(harness="opencode", session_id="x", title=title)
     ), title
+
+
+# --- performance instrumentation ----------------------------------------------
+
+
+def test_a_structured_report_times_every_stage_it_runs(tmp_path: Path) -> None:
+    """The whole point: name where a slow `--no-llm` report spent its time."""
+
+    metrics = PerformanceMetrics()
+
+    service(
+        FakeSource(),
+        tmp_path / "report.md",
+        usage_provider=lambda _scan: "USAGE",
+        metrics=metrics,
+    ).generate()
+
+    assert set(metrics.durations) == {
+        MetricStage.DISCOVER_SESSIONS,
+        MetricStage.EXPORT_SESSIONS,
+        MetricStage.RESOLVE_REPOSITORIES,
+        MetricStage.PREPARE_EVIDENCE,
+        MetricStage.SUMMARIZE_REPOSITORIES,
+        MetricStage.COLLECT_USAGE,
+        MetricStage.RENDER_REPORT,
+        MetricStage.WRITE_REPORT,
+    }
+    assert metrics.total_seconds > 0
+
+
+def test_a_dry_run_reports_no_write_time(tmp_path: Path) -> None:
+    """A stage that never ran must not appear, or the table invents work."""
+
+    metrics = PerformanceMetrics()
+
+    service(FakeSource(), tmp_path / "report.md", metrics=metrics).generate(dry_run=True)
+
+    assert MetricStage.WRITE_REPORT not in metrics.durations
+    assert MetricStage.RENDER_REPORT in metrics.durations
+
+
+def test_a_narrative_report_separates_transcript_preparation_from_narration(
+    tmp_path: Path,
+) -> None:
+    """Narration is usually the bill; it must not hide inside transcript building."""
+
+    metrics = PerformanceMetrics()
+
+    narrative_service(
+        FakeSource(),
+        tmp_path / "report.md",
+        runner=FakeOpenCodeRunner(),
+        metrics=metrics,
+    ).generate()
+
+    assert MetricStage.PREPARE_TRANSCRIPT in metrics.durations
+    assert MetricStage.NARRATE in metrics.durations
+    assert MetricStage.SUMMARIZE_REPOSITORIES not in metrics.durations
+
+
+def test_a_narrative_report_records_the_transcript_size_in_bytes(tmp_path: Path) -> None:
+    """The number the narrator context budget is actually spent in."""
+
+    metrics = PerformanceMetrics()
+    runner = FakeOpenCodeRunner()
+
+    narrative_service(
+        FakeSource(),
+        tmp_path / "report.md",
+        runner=runner,
+        metrics=metrics,
+    ).generate()
+
+    sent = runner.calls[0]["transcript"]
+    assert metrics.counts["transcript_bytes"] == len(sent.encode("utf-8"))
+
+
+def test_a_structured_report_records_no_transcript_size(tmp_path: Path) -> None:
+    metrics = PerformanceMetrics()
+
+    service(FakeSource(), tmp_path / "report.md", metrics=metrics).generate()
+
+    assert "transcript_bytes" not in metrics.counts
+
+
+def test_a_failed_narration_times_the_structured_fallback_too(tmp_path: Path) -> None:
+    """The fallback is extra work the user waited through; hiding it lies by omission."""
+
+    metrics = PerformanceMetrics()
+    runner = FakeOpenCodeRunner()
+    runner.failures.append(OpenCodeRunError("narrator exploded"))
+
+    narrative_service(
+        FakeSource(),
+        tmp_path / "report.md",
+        runner=runner,
+        metrics=metrics,
+    ).generate()
+
+    assert MetricStage.NARRATE in metrics.durations
+    assert MetricStage.SUMMARIZE_REPOSITORIES in metrics.durations
+
+
+def test_a_reviewed_report_times_rendering_and_writing(tmp_path: Path) -> None:
+    metrics = PerformanceMetrics()
+
+    service(
+        FakeSource(),
+        tmp_path / "report.md",
+        metrics=metrics,
+    ).generate_reviewed(reviewed_draft())
+
+    assert MetricStage.RENDER_REPORT in metrics.durations
+    assert MetricStage.WRITE_REPORT in metrics.durations

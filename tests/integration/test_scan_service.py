@@ -2,6 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from iiwi.errors import SessionParseError
+from iiwi.metrics import MetricStage, PerformanceMetrics
 from iiwi.models.repository import RepositoryIdentity, RepositoryIdentityType
 from iiwi.models.session import (
     ActivityType,
@@ -549,3 +550,90 @@ def test_scan_drops_an_iiwi_authored_session_before_any_warning_fires() -> None:
 
     assert result.resolved_sessions == []
     assert result.warnings == []
+
+
+# --- performance instrumentation ----------------------------------------------
+
+
+def scan_with_metrics(source: FakeSource) -> PerformanceMetrics:
+    metrics = PerformanceMetrics()
+    ScanService(
+        source=source,
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=TZ),
+            until=datetime(2026, 7, 27, tzinfo=TZ),
+        ),
+        resolver=StaticResolver(),
+        metrics=metrics,
+    ).scan()
+    return metrics
+
+
+def test_a_scan_times_discovery_export_and_repository_resolution_separately() -> None:
+    """Export is the suspected cost; it must be separable from what surrounds it."""
+
+    metrics = scan_with_metrics(FakeSource())
+
+    assert set(metrics.durations) == {
+        MetricStage.DISCOVER_SESSIONS,
+        MetricStage.EXPORT_SESSIONS,
+        MetricStage.RESOLVE_REPOSITORIES,
+    }
+
+
+def test_a_scan_records_the_counts_that_explain_its_timings() -> None:
+    source = FakeSource()
+
+    metrics = scan_with_metrics(source)
+
+    assert metrics.counts == {
+        "candidate_sessions": 3,
+        "loaded_sessions": 3,
+        "failed_sessions": 0,
+        "repositories": 1,
+    }
+
+
+def test_a_failed_export_is_counted_and_still_timed() -> None:
+    """A harness failing slowly is a performance problem, not just a warning."""
+
+    source = FakeSource()
+    source.fail_session_ids = {"bad"}
+
+    metrics = scan_with_metrics(source)
+
+    assert metrics.counts["candidate_sessions"] == 3
+    assert metrics.counts["loaded_sessions"] == 2
+    assert metrics.counts["failed_sessions"] == 1
+    assert metrics.durations[MetricStage.EXPORT_SESSIONS] > 0
+
+
+def test_a_scan_with_no_sessions_records_zeroed_counts_not_missing_ones() -> None:
+    source = FakeSource()
+    source.descriptors = []
+
+    metrics = scan_with_metrics(source)
+
+    assert metrics.counts == {
+        "candidate_sessions": 0,
+        "loaded_sessions": 0,
+        "failed_sessions": 0,
+        "repositories": 0,
+    }
+    assert MetricStage.EXPORT_SESSIONS not in metrics.durations
+
+
+def test_a_scan_without_a_collector_still_scans() -> None:
+    """Instrumentation is optional wiring, never a precondition for scanning."""
+
+    result = ScanService(
+        source=FakeSource(),
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=TZ),
+            until=datetime(2026, 7, 27, tzinfo=TZ),
+        ),
+        resolver=StaticResolver(),
+    ).scan()
+
+    assert result.loaded_session_count == 3
+

@@ -786,6 +786,7 @@ def test_report_records_a_history_entry_after_writing(monkeypatch, tmp_path) -> 
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
         detail=cli.DetailLevel.FULL,
     ):
         return StubReportService(output_path, period)

@@ -357,3 +357,21 @@ def test_daily_docs_describe_available_harnesses() -> None:
     for text in (reference, daily):
         assert "available" in text
         assert "every enabled harness" not in text
+
+
+def test_cli_reference_documents_the_verbose_performance_summary() -> None:
+    """A diagnostic nobody knows about diagnoses nothing."""
+
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
+
+    assert "Performance" in reference
+    assert "stderr" in reference
+
+
+def test_guides_show_what_the_verbose_performance_summary_looks_like() -> None:
+    guides = Path("docs/guides.md").read_text(encoding="utf-8")
+
+    assert "Performance" in guides
+    assert "Narration" in guides
+    assert "Transcript" in guides
+

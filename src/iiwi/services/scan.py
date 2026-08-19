@@ -7,6 +7,7 @@ from typing import Protocol
 
 from iiwi.errors import HarnessSourceError, SessionParseError
 from iiwi.harnesses.base import HarnessSessionSource
+from iiwi.metrics import MetricStage, PerformanceMetrics
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -97,6 +98,7 @@ class ScanService:
         progress: ProgressReporter | None = None,
         excluded_repository_ids: frozenset[str] = frozenset(),
         runner: Runner | None = None,
+        metrics: PerformanceMetrics | None = None,
     ) -> None:
         self._source = source
         self._period = period
@@ -104,10 +106,12 @@ class ScanService:
         self._progress = progress if progress is not None else NullProgressReporter()
         self._excluded_repository_ids = excluded_repository_ids
         self._runner = runner
+        self._metrics = metrics if metrics is not None else PerformanceMetrics()
 
     def scan(self) -> ScanResult:
         self._progress.start(ProgressStage.DISCOVERING_SESSIONS)
-        descriptors = self._source.discover(self._period)
+        with self._metrics.measure(MetricStage.DISCOVER_SESSIONS):
+            descriptors = self._source.discover(self._period)
         self._progress.start(
             ProgressStage.EXPORTING_SESSIONS,
             total=len(descriptors),
@@ -123,7 +127,8 @@ class ScanService:
         for completed, descriptor in enumerate(descriptors, start=1):
             try:
                 try:
-                    session = self._source.load(descriptor)
+                    with self._metrics.measure(MetricStage.EXPORT_SESSIONS):
+                        session = self._source.load(descriptor)
                 except (SessionParseError, HarnessSourceError) as exc:
                     failed_count += 1
                     warnings.append(
@@ -150,7 +155,8 @@ class ScanService:
                 filtered = filter_session_to_period(session, self._period)
                 if filtered is None:
                     continue
-                repository = self._resolver.resolve(filtered)
+                with self._metrics.measure(MetricStage.RESOLVE_REPOSITORIES):
+                    repository = self._resolver.resolve(filtered)
                 pairs.append((filtered, repository))
             finally:
                 self._progress.advance(completed)
@@ -161,7 +167,8 @@ class ScanService:
             )
 
         if self._runner is not None:
-            pairs, reattached_count = reattach_by_branch(pairs, runner=self._runner)
+            with self._metrics.measure(MetricStage.RESOLVE_REPOSITORIES):
+                pairs, reattached_count = reattach_by_branch(pairs, runner=self._runner)
         else:
             reattached_count = 0
         if reattached_count:
@@ -204,13 +211,19 @@ class ScanService:
                 f"repositories: {', '.join(sorted(excluded_repository_names.values()))}"
             )
 
+        sessions_by_repository = group_resolved_sessions(resolved_sessions)
+        self._metrics.count("candidate_sessions", len(descriptors))
+        self._metrics.count("loaded_sessions", len(resolved_sessions))
+        self._metrics.count("failed_sessions", failed_count)
+        self._metrics.count("repositories", len(sessions_by_repository))
+
         return ScanResult(
             period=self._period,
             candidate_session_count=len(descriptors),
             loaded_session_count=len(resolved_sessions),
             failed_session_count=failed_count,
             resolved_sessions=resolved_sessions,
-            sessions_by_repository=group_resolved_sessions(resolved_sessions),
+            sessions_by_repository=sessions_by_repository,
             warnings=warnings,
             excluded_session_count=excluded_session_count,
         )
