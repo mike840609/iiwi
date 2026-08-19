@@ -42,6 +42,38 @@ def test_report_help_describes_no_llm_without_naming_a_specific_cli() -> None:
     assert "without calling a narration CLI" in normalized
 
 
+def test_sanitize_with_an_explicit_non_opencode_harness_is_rejected() -> None:
+    """An explicit --harness claude-code with --sanitize is a sanitize-specific
+    error, not a 'no harness' error."""
+    import typer
+
+    with pytest.raises(typer.BadParameter, match="supported only with --harness opencode"):
+        cli._validate_privacy_options(
+            harness=cli.Harness.CLAUDE_CODE,
+            sanitize=True,
+        )
+
+
+def test_sanitize_with_no_harness_reports_no_harness_available_first(tmp_path) -> None:
+    """When no --harness is given and none is available, the harness-resolution
+    error surfaces before the sanitize check, so the user sees 'no harness is
+    available' rather than a sanitize-specific message."""
+    result = runner.invoke(
+        app,
+        ["scan", "--sanitize"],
+        env={
+            "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(
+                tmp_path / "no-claude-projects"
+            ),
+            "IIWI_HARNESSES__CODEX__HOME_DIRECTORY": str(tmp_path / "no-codex-home"),
+            "IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE": "iiwi-nonexistent-opencode",
+        },
+    )
+
+    assert result.exit_code == 3
+    assert "no harness is available" in result.stdout
+
+
 def test_daily_refuses_non_terminal_input(monkeypatch) -> None:
     import iiwi.cli as cli
 
