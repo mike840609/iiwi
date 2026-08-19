@@ -1,7 +1,12 @@
+import threading
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from iiwi.errors import SessionParseError
+import pytest
+
+import iiwi.services.scan as scan_module
+from iiwi.errors import HarnessSourceError, SessionParseError
 from iiwi.metrics import MetricStage, PerformanceMetrics
 from iiwi.models.repository import RepositoryIdentity, RepositoryIdentityType
 from iiwi.models.session import (
@@ -12,7 +17,7 @@ from iiwi.models.session import (
 )
 from iiwi.models.time_range import DateRange
 from iiwi.progress import ProgressStage
-from iiwi.services.scan import ScanService
+from iiwi.services.scan import ScanResult, ScanService
 from tests.progress import RecordingProgressReporter
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -636,4 +641,274 @@ def test_a_scan_without_a_collector_still_scans() -> None:
     ).scan()
 
     assert result.loaded_session_count == 3
+
+
+# --- concurrent session loading -----------------------------------------------
+
+
+def scan_period() -> DateRange:
+    return DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ),
+        until=datetime(2026, 7, 27, tzinfo=TZ),
+    )
+
+
+def probe_session(session_id: str) -> AgentSession:
+    return AgentSession(
+        harness="opencode",
+        session_id=session_id,
+        activities=[
+            SessionActivity(
+                activity_id=f"{session_id}:a1",
+                activity_type=ActivityType.USER_MESSAGE,
+                timestamp=datetime(2026, 7, 22, tzinfo=TZ),
+                content="Add weekly report generation",
+            )
+        ],
+    )
+
+
+class BarrierSource:
+    """A source whose loads block until `parties` of them are in flight at once.
+
+    A barrier rather than a sleep: if loading ever went back to serial the
+    barrier could not fill, so a regression fails the test outright instead of
+    merely making it slower, and a loaded CI box cannot make it flaky.
+    """
+
+    def __init__(
+        self,
+        session_ids: list[str],
+        *,
+        parties: int,
+        failing: frozenset[str] = frozenset(),
+        timeout: float = 10.0,
+    ) -> None:
+        self.descriptors = [
+            SessionDescriptor(harness="opencode", session_id=session_id)
+            for session_id in session_ids
+        ]
+        self._barrier = threading.Barrier(parties, timeout=timeout)
+        self._failing = failing
+        self._lock = threading.Lock()
+        self._in_flight = 0
+        self.max_in_flight = 0
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return self.descriptors
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        with self._lock:
+            self._in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self._in_flight)
+        try:
+            self._barrier.wait()
+            if descriptor.session_id in self._failing:
+                raise SessionParseError(f"failed export: {descriptor.session_id}")
+            return probe_session(descriptor.session_id)
+        finally:
+            with self._lock:
+                self._in_flight -= 1
+
+
+class ReverseOrderSource:
+    """A source that finishes its loads in reverse descriptor order.
+
+    Exists to separate two things a serial loader conflated: the order loads
+    *complete* in, and the order their results are *handled* in. Only the second
+    is a promise this service makes.
+    """
+
+    def __init__(self, session_ids: list[str], *, timeout: float = 10.0) -> None:
+        self.descriptors = [
+            SessionDescriptor(harness="opencode", session_id=session_id)
+            for session_id in session_ids
+        ]
+        self._last_loaded = threading.Event()
+        self._timeout = timeout
+        self._lock = threading.Lock()
+        self.completion_order: list[str] = []
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return self.descriptors
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        first = self.descriptors[0].session_id
+        last = self.descriptors[-1].session_id
+        if descriptor.session_id == first:
+            self._last_loaded.wait(self._timeout)
+        with self._lock:
+            self.completion_order.append(descriptor.session_id)
+        if descriptor.session_id == last:
+            self._last_loaded.set()
+        return probe_session(descriptor.session_id)
+
+
+def run_scan(source, *, progress=None, metrics=None) -> ScanResult:
+    return ScanService(
+        source=source,
+        period=scan_period(),
+        resolver=StaticResolver(),
+        progress=progress,
+        metrics=metrics,
+    ).scan()
+
+
+def test_sessions_are_loaded_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The point of the change: four exports wait on each other, not in a queue."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = BarrierSource(["s1", "s2", "s3", "s4"], parties=4)
+
+    result = run_scan(source)
+
+    assert source.max_in_flight == 4
+    assert result.loaded_session_count == 4
+
+
+def test_concurrency_stays_within_the_worker_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unbounded loading would launch one coding-agent subprocess per session."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 2)
+    source = BarrierSource(["s1", "s2", "s3", "s4", "s5", "s6"], parties=2)
+
+    result = run_scan(source)
+
+    assert source.max_in_flight == 2
+    assert result.loaded_session_count == 6
+
+
+def test_results_follow_descriptor_order_not_completion_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = ReverseOrderSource(["s1", "s2", "s3"])
+
+    result = run_scan(source)
+
+    assert source.completion_order == ["s2", "s3", "s1"]
+    assert [
+        resolved.session.session_id for resolved in result.resolved_sessions
+    ] == ["s1", "s2", "s3"]
+
+
+def test_warnings_follow_descriptor_order_not_completion_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Warning order is user-visible output; concurrency must not shuffle it."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = BarrierSource(
+        ["s1", "s2", "s3", "s4"],
+        parties=4,
+        failing=frozenset({"s1", "s3"}),
+    )
+
+    result = run_scan(source)
+
+    assert [warning.split()[1] for warning in result.warnings] == ["s1", "s3"]
+
+
+def test_progress_still_advances_once_per_descriptor_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    progress = RecordingProgressReporter()
+
+    run_scan(ReverseOrderSource(["s1", "s2", "s3"]), progress=progress)
+
+    advances = [event[1] for event in progress.events if event[0] == "advance"]
+    assert advances == [1, 2, 3]
+
+
+def test_an_early_failure_does_not_cancel_the_sessions_queued_behind_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`Executor.map` would end the run here; every later session must survive."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = BarrierSource(["s1", "s2", "s3", "s4"], parties=4, failing=frozenset({"s1"}))
+
+    result = run_scan(source)
+
+    assert result.failed_session_count == 1
+    assert [
+        resolved.session.session_id for resolved in result.resolved_sessions
+    ] == ["s2", "s3", "s4"]
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_the_scan_result_is_identical_at_every_worker_count(
+    workers: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The acceptance criterion: parallelism changes the clock, nothing else."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 1)
+    serial_source = FakeSource()
+    serial_source.fail_session_ids = {"bad"}
+    serial = run_scan(serial_source)
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", workers)
+    parallel_source = FakeSource()
+    parallel_source.fail_session_ids = {"bad"}
+    parallel = run_scan(parallel_source)
+
+    assert parallel == serial
+
+
+def test_the_export_metric_measures_waiting_not_the_sum_across_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Summing per-session durations would report more time than the scan took.
+
+    Deliberately relative rather than an absolute number of seconds: the claim
+    is that the stage cannot outrun the clock, which holds on any machine.
+    """
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    metrics = PerformanceMetrics()
+    source = BarrierSource(["s1", "s2", "s3", "s4"], parties=4)
+
+    started = time.perf_counter()
+    run_scan(source, metrics=metrics)
+    elapsed = time.perf_counter() - started
+
+    assert metrics.durations[MetricStage.EXPORT_SESSIONS] <= elapsed
+
+
+def test_every_load_failing_still_raises_rather_than_reporting_an_empty_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = BarrierSource(
+        ["s1", "s2", "s3", "s4"],
+        parties=4,
+        failing=frozenset({"s1", "s2", "s3", "s4"}),
+    )
+
+    with pytest.raises(HarnessSourceError):
+        run_scan(source)
+
+
+def test_an_unexpected_load_error_still_surfaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the two documented failures are per-session; anything else is a bug."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+
+    class BrokenSource:
+        descriptors = [SessionDescriptor(harness="opencode", session_id="s1")]
+
+        def discover(self, period: DateRange) -> list[SessionDescriptor]:
+            return self.descriptors
+
+        def load(self, descriptor: SessionDescriptor) -> AgentSession:
+            raise RuntimeError("mapper blew up")
+
+    with pytest.raises(RuntimeError, match="mapper blew up"):
+        run_scan(BrokenSource())
 

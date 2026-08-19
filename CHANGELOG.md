@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Sessions are now exported concurrently, up to four at a time, instead of one
+  after another. On a real 228-session OpenCode week this cut the scan from
+  294s to 108s; the file-backed harnesses (Claude Code, Codex) gain less
+  because reading a transcript was never the slow part. Nothing else about a
+  scan changes: warnings, progress counting, report ordering, and every count
+  in the result are identical to what serial loading produced, because only
+  the waiting is parallel — filtering, repository resolution, and grouping all
+  still happen on one thread in session order. A session that fails to export
+  still fails on its own without taking the rest of the scan with it. The
+  worker count is fixed rather than configurable: measured on an 8-core
+  machine, eight workers (144s) and twelve (151s) were both *slower* than
+  four, because each OpenCode export is its own process.
 - `scan --verbose` and `report --verbose` now print a **Performance** summary
   after the run: how long each stage took (session discovery, export,
   repository resolution, evidence or transcript preparation, usage collection,

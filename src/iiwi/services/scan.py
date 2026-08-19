@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -13,7 +15,7 @@ from iiwi.models.repository import (
     RepositoryIdentityType,
     ResolvedSession,
 )
-from iiwi.models.session import ActivityType, AgentSession
+from iiwi.models.session import ActivityType, AgentSession, SessionDescriptor
 from iiwi.models.time_range import DateRange
 from iiwi.progress import NullProgressReporter, ProgressReporter, ProgressStage
 from iiwi.repositories.resolver import Runner, reattach_by_branch
@@ -23,6 +25,13 @@ from iiwi.sessions.hierarchy import group_resolved_sessions
 _ASSISTANT_ACTIVITY_TYPES = frozenset(
     {ActivityType.ASSISTANT_MESSAGE, ActivityType.TOOL_CALL}
 )
+
+# Loading a session is dominated by waiting, not computing: OpenCode spawns an
+# `opencode export` subprocess per session, and the file-backed harnesses read a
+# transcript off disk. Four at a time hides most of that latency. The CPU count
+# caps it rather than merely informing it because each OpenCode load is a whole
+# coding-agent process, which a small machine should not be asked to host four of.
+_SESSION_LOAD_WORKERS = min(4, os.cpu_count() or 1)
 
 
 class Resolver(Protocol):
@@ -108,6 +117,28 @@ class ScanService:
         self._runner = runner
         self._metrics = metrics if metrics is not None else PerformanceMetrics()
 
+    def _loaded_or_warned(
+        self,
+        descriptor: SessionDescriptor,
+        future: Future[AgentSession],
+        warnings: list[str],
+    ) -> AgentSession | None:
+        """Wait for one session's load, turning its failure into a warning.
+
+        Timed here because this is where the calling thread actually waits. With
+        several loaders running, the total wait collapses toward the export
+        phase's wall time, which is the number the performance summary should
+        show — a sum of per-session durations across workers would exceed the
+        clock and make the stage look slower for being faster.
+        """
+
+        try:
+            with self._metrics.measure(MetricStage.EXPORT_SESSIONS):
+                return future.result()
+        except (SessionParseError, HarnessSourceError) as exc:
+            warnings.append(f"Session {descriptor.session_id} export failed: {exc}")
+            return None
+
     def scan(self) -> ScanResult:
         self._progress.start(ProgressStage.DISCOVERING_SESSIONS)
         with self._metrics.measure(MetricStage.DISCOVER_SESSIONS):
@@ -123,43 +154,68 @@ class ScanService:
         # Pass 1: load, filter to period, and resolve each session's repository
         # identity. Reattachment (below) needs every identity up front, so the
         # exclusion check and the fallback-identity warning wait for pass 2.
+        #
+        # Loads run concurrently; everything downstream of one stays on this
+        # thread and is consumed in descriptor order. That split is deliberate:
+        # warning order, progress counting, the repository resolver's Git cache,
+        # and the order of `resolved_sessions` all stay exactly what they were
+        # when loading was serial, so only the waiting is parallel.
+        #
+        # `submit` up front rather than `Executor.map`: map's iterator is a
+        # generator that dies on the first result that raises, which would turn
+        # one unreadable transcript into a scan that silently drops every session
+        # queued behind it. Independent per-session failure is the contract here.
         pairs: list[tuple[AgentSession, RepositoryIdentity]] = []
-        for completed, descriptor in enumerate(descriptors, start=1):
-            try:
+        executor = ThreadPoolExecutor(
+            max_workers=_SESSION_LOAD_WORKERS,
+            thread_name_prefix="iiwi-session-load",
+        )
+        try:
+            futures = [
+                executor.submit(self._source.load, descriptor)
+                for descriptor in descriptors
+            ]
+            for completed, (descriptor, future) in enumerate(
+                zip(descriptors, futures, strict=True),
+                start=1,
+            ):
                 try:
-                    with self._metrics.measure(MetricStage.EXPORT_SESSIONS):
-                        session = self._source.load(descriptor)
-                except (SessionParseError, HarnessSourceError) as exc:
-                    failed_count += 1
-                    warnings.append(
-                        f"Session {descriptor.session_id} export failed: {exc}"
+                    session = self._loaded_or_warned(descriptor, future, warnings)
+                    if session is None:
+                        failed_count += 1
+                        continue
+                    successful_exports += 1
+                    # iiwi's own opencode runs are machinery, not the user's work. This
+                    # runs before any warning append below, so a dropped session never
+                    # surfaces a warning naming a session absent from the rest of the
+                    # result.
+                    if is_iiwi_authored(session):
+                        continue
+                    missing_timestamp_count = sum(
+                        activity.timestamp is None for activity in session.activities
                     )
-                    continue
-                successful_exports += 1
-                # iiwi's own opencode runs are machinery, not the user's work. This
-                # runs before any warning append below, so a dropped session never
-                # surfaces a warning naming a session absent from the rest of the
-                # result.
-                if is_iiwi_authored(session):
-                    continue
-                missing_timestamp_count = sum(
-                    activity.timestamp is None for activity in session.activities
-                )
-                if missing_timestamp_count:
-                    warnings.append(
-                        f"Session {session.session_id} has {missing_timestamp_count} "
-                        "timestamp-less activities that were excluded"
-                    )
-                if _has_assistant_work_but_no_prompt(session):
-                    warnings.append(_missing_prompt_warning(session))
-                filtered = filter_session_to_period(session, self._period)
-                if filtered is None:
-                    continue
-                with self._metrics.measure(MetricStage.RESOLVE_REPOSITORIES):
-                    repository = self._resolver.resolve(filtered)
-                pairs.append((filtered, repository))
-            finally:
-                self._progress.advance(completed)
+                    if missing_timestamp_count:
+                        warnings.append(
+                            f"Session {session.session_id} has {missing_timestamp_count} "
+                            "timestamp-less activities that were excluded"
+                        )
+                    if _has_assistant_work_but_no_prompt(session):
+                        warnings.append(_missing_prompt_warning(session))
+                    filtered = filter_session_to_period(session, self._period)
+                    if filtered is None:
+                        continue
+                    with self._metrics.measure(MetricStage.RESOLVE_REPOSITORIES):
+                        repository = self._resolver.resolve(filtered)
+                    pairs.append((filtered, repository))
+                finally:
+                    self._progress.advance(completed)
+        finally:
+            # Not a `with` block: `Executor.__exit__` waits for every queued
+            # load, so a Ctrl-C or an unexpected error partway through a
+            # hundred-session scan would sit through the whole remaining export
+            # queue before surfacing. Cancelling the backlog leaves only the
+            # handful already in flight to finish.
+            executor.shutdown(cancel_futures=True)
 
         if descriptors and successful_exports == 0 and failed_count == len(descriptors):
             raise HarnessSourceError(
