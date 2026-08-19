@@ -56,12 +56,13 @@ class ClaudeNarrator:
                 "-p",
                 marked_prompt(prompt, title),
                 "--strict-mcp-config",
-                # Deny-by-default tool allowlist: the narration only needs to
-                # read the transcript, so restrict the agent to the read-only
-                # tools (Read/Grep/Glob). The official docs recommend --tools
-                # over --disallowedTools for restricting availability.
+                # No tools at all: the transcript arrives on stdin, so
+                # narration never needs to touch the filesystem. An allowlist
+                # that kept Read/Grep/Glob would still let a prompt injection in
+                # the transcript read a local secret and print it into the
+                # report. "" is the documented way to disable the built-in set.
                 "--tools",
-                "Read,Grep,Glob",
+                "",
             ]
             if self._model:
                 args += ["--model", self._model]
