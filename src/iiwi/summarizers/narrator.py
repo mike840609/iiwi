@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
+from iiwi.errors import IiwiError
 from iiwi.models.report_options import DetailLevel
 from iiwi.process import CommandResult
 from iiwi.security.secure_files import secure_temporary_directory
@@ -135,7 +136,7 @@ Rules:
 """
 
 
-class NarrativeRunError(Exception):
+class NarrativeRunError(IiwiError):
     """A provider CLI could not produce a narrative."""
 
 
