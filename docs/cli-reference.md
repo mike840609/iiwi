@@ -13,7 +13,7 @@ can go directly to the [Daily Standup guide](daily-standup.md).
 | `doctor` | Checks that the selected harness and `git` are ready to use. |
 | `scan` | Shows which sessions fall in a period and how they group into repositories. |
 | `report` | Writes the Markdown report for a period. |
-| `daily` | Reviews Yesterday, Today, and Blockers from every enabled harness. |
+| `daily` | Reviews Yesterday, Today, and Blockers from available harnesses. |
 | `history` | Lists the reports this tool has written. |
 | `update` | Checks PyPI for a newer release. |
 | `run` | Walks you through the wizard: pick a harness and period, preview the scan, then write the report. |
@@ -99,7 +99,7 @@ reports under **History**, where Enter shows a report's recorded output path.
 
 `iiwi daily` opens the same Daily Standup flow as the main-menu entry. It needs
 an interactive terminal and has no period picker, harness picker, Report type,
-Detail, Split, Next week, or `--no-review` option. It scans all enabled harnesses,
+Detail, Split, Next week, or `--no-review` option. It scans available harnesses,
 including child and subagent sessions, from yesterday's local midnight through
 one captured current time.
 
