@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.15.0 - 2026-08-19
 
 - Narration is provider-agnostic: it can now run through `claude -p` or
   `codex exec` in addition to `opencode run`, chosen from the selected
@@ -25,6 +25,19 @@ All notable changes to this project are documented in this file.
   `harnesses.opencode.cli.run_timeout_seconds` is replaced by
   `narrator.timeout_seconds`. The old keys keep working and print a one-time
   note on stderr pointing at the replacement.
+
+- `iiwi report` no longer fails with `OpenCode database returned invalid JSON`
+  on a busy period. The session query read `opencode db` through a pipe, which
+  that command truncates at the OS pipe buffer while still exiting 0, so a
+  large result decoded as invalid JSON; it is now captured through a file the
+  same way session exports already were.
+- `report --no-llm` no longer fails on an unusable `narrator.provider`. The
+  flag exists for machines without an AI CLI, so a setting that path never
+  reads must not block it; the narrative path still rejects an unknown
+  provider.
+- An invalid `narrator.provider` no longer crashes the interactive app when
+  Quick Review synthesizes. It now reaches the recoverable-error screen with
+  the message naming the valid providers.
 
 ## 0.14.0 - 2026-08-17
 
