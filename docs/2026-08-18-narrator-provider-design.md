@@ -475,6 +475,14 @@ binary path into iiwi.
 
 ## Known residual risk
 
+The narration subprocesses are tool-restricted against prompt-injection
+exfiltration: `claude -p` runs with `--tools Read,Grep,Glob` (a deny-by-default
+allowlist of the read-only tools narration needs; the official docs recommend
+`--tools` over `--disallowedTools` for restricting availability) and
+`codex exec` runs with `--sandbox read-only` (explicit even though it is the
+default, as a self-documenting posture). Neither flag changes the credential
+path or the workdir isolation described below.
+
 `claude -p` still loads the user's global `~/.claude/CLAUDE.md`. A global
 instruction such as "always answer in one sentence" would visibly distort
 reports. `--bare` would prevent it but also disables OAuth, which is not

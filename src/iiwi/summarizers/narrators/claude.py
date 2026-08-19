@@ -56,6 +56,12 @@ class ClaudeNarrator:
                 "-p",
                 marked_prompt(prompt, title),
                 "--strict-mcp-config",
+                # Deny-by-default tool allowlist: the narration only needs to
+                # read the transcript, so restrict the agent to the read-only
+                # tools (Read/Grep/Glob). The official docs recommend --tools
+                # over --disallowedTools for restricting availability.
+                "--tools",
+                "Read,Grep,Glob",
             ]
             if self._model:
                 args += ["--model", self._model]

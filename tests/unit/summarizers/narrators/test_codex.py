@@ -37,6 +37,17 @@ def test_run_skips_the_git_repo_check(tmp_path: Path, runner_factory) -> None:
     assert "--skip-git-repo-check" in runner.calls[0]
 
 
+def test_run_passes_an_explicit_read_only_sandbox(tmp_path: Path, runner_factory) -> None:
+    runner = runner_factory(output="ok\n")
+    narrator = CodexNarrator(runner=runner, workdir=tmp_path)
+
+    narrator.run(transcript="t", prompt="p", title="t")
+
+    args = runner.calls[0]
+    assert "--sandbox" in args
+    assert args[args.index("--sandbox") + 1] == "read-only"
+
+
 def test_run_sends_the_transcript_on_stdin(tmp_path: Path, runner_factory) -> None:
     runner = runner_factory(output="ok\n")
     narrator = CodexNarrator(runner=runner, workdir=tmp_path)
