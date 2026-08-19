@@ -32,6 +32,16 @@ def test_daily_help_describes_standup_without_report_selection_options() -> None
         assert prohibited not in result.stdout
 
 
+def test_report_help_describes_no_llm_without_naming_a_specific_cli() -> None:
+    result = runner.invoke(app, ["report", "--help"])
+
+    assert result.exit_code == 0
+    # rich wraps the help table and pads cells with box-drawing characters, so
+    # strip those and collapse the whitespace before matching.
+    normalized = " ".join(result.stdout.replace("│", " ").split())
+    assert "without calling a narration CLI" in normalized
+
+
 def test_daily_refuses_non_terminal_input(monkeypatch) -> None:
     import iiwi.cli as cli
 

@@ -777,7 +777,10 @@ def report(
     no_llm: bool = typer.Option(
         False,
         "--no-llm",
-        help="Skip the narrative report; emit the structured report without invoking opencode.",
+        help=(
+            "Skip the narrative report; emit the structured report without "
+            "calling a narration CLI."
+        ),
     ),
     sanitize: bool | None = typer.Option(
         None,
