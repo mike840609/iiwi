@@ -62,6 +62,7 @@ class CommandRunner:
                     capture_output=True,
                     input=stdin_text,
                     text=True,
+                    encoding="utf-8",
                     timeout=self._timeout_seconds,
                     env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                     cwd=cwd,
