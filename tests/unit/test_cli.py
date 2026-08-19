@@ -257,6 +257,19 @@ def test_doctor_refuses_a_disabled_harness() -> None:
     assert "disabled by configuration" in result.stdout
 
 
+def test_doctor_default_harness_falls_back_to_opencode_when_every_harness_is_disabled() -> None:
+    """doctor must never raise on a fully-disabled config; it falls back to
+    OpenCode so the checks themselves can report what is missing."""
+    import iiwi.cli as cli
+
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.enabled = False
+    settings.harnesses.codex.enabled = False
+    settings.harnesses.opencode.enabled = False
+
+    assert cli._doctor_default_harness(settings) == cli.Harness.OPENCODE
+
+
 def test_doctor_still_prints_checks_when_no_harness_is_available(tmp_path) -> None:
     """must-fix 3: doctor exists to diagnose exactly this state (no harness
     available on this machine), so it must fall back to a harness and print
