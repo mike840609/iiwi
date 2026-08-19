@@ -92,7 +92,7 @@ def test_readmes_document_the_config_command() -> None:
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
 
     for text in (readme, readme_zh_tw):
-        assert "iiwi config set harnesses.opencode.cli.model deepseek-r1" in text
+        assert "iiwi config set narrator.model deepseek-r1" in text
         assert "iiwi config list" in text
         assert "iiwi config unset" in text
 
