@@ -9,6 +9,7 @@ from rich.console import Console
 from iiwi.errors import (
     ConfigurationError,
     DailySourceUnavailableError,
+    IiwiError,
     ReportOutputError,
 )
 from iiwi.interactive import controller
@@ -91,6 +92,13 @@ def test_configuration_error_from_start_daily_is_recoverable_not_fatal() -> None
     assert state.error is not None
     assert state.error.kind == "daily-start"
     assert "no harness is enabled" in state.error.detail
+
+
+def test_narrative_run_error_is_an_iiwi_error() -> None:
+    """NarrativeRunError subclasses IiwiError, so a single `except IiwiError`
+    arm catches it alongside ConfigurationError and the other expected errors."""
+
+    assert issubclass(NarrativeRunError, IiwiError)
 
 
 def test_narrative_run_error_from_start_daily_is_recoverable_not_fatal() -> None:

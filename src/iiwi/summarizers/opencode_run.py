@@ -8,9 +8,8 @@ from iiwi.summarizers.narrator import (
     CommandRunnerLike,
     NarrativeRunError,
     build_summary_prompt,
-    failure_detail,
+    finish_narrative_run,
     marked_prompt,
-    narrator_failure_message,
     run_with_workdir,
 )
 
@@ -33,11 +32,13 @@ class OpenCodeRunner:
         executable: str = "opencode",
         model: str = "",
         workdir: Path | None = None,
+        executable_configured: bool = False,
     ) -> None:
         self._runner = runner
         self._executable = executable
         self._model = model
         self._workdir = workdir
+        self._executable_configured = executable_configured
 
     def run(
         self,
@@ -91,19 +92,14 @@ class OpenCodeRunner:
             # before narration became provider-agnostic. Changing it now would
             # break that promise for the one provider iiwi has always shipped.
             result = self._runner.run(args, stdout_path=output_path)
-            narrative = ""
-            if output_path.exists():
-                narrative = output_path.read_text(encoding="utf-8").strip()
-            if result.returncode != 0:
-                raise OpenCodeRunError(
-                    narrator_failure_message(
-                        "opencode",
-                        self._executable,
-                        failure_detail(result.stderr, narrative, fallback="opencode run failed"),
-                    )
-                )
         except OSError as exc:
             raise OpenCodeRunError(str(exc)) from exc
-        if not narrative:
-            raise OpenCodeRunError("opencode run produced no output")
-        return narrative
+        return finish_narrative_run(
+            "opencode",
+            self._executable,
+            result,
+            output_path,
+            fallback="opencode run failed",
+            empty_output_message="opencode run produced no output",
+            executable_configured=self._executable_configured,
+        )

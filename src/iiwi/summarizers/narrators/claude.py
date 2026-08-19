@@ -7,9 +7,8 @@ from pathlib import Path
 from iiwi.summarizers.narrator import (
     CommandRunnerLike,
     NarrativeRunError,
-    failure_detail,
+    finish_narrative_run,
     marked_prompt,
-    narrator_failure_message,
     run_with_workdir,
 )
 
@@ -24,11 +23,13 @@ class ClaudeNarrator:
         executable: str = "claude",
         model: str = "",
         workdir: Path | None = None,
+        executable_configured: bool = False,
     ) -> None:
         self._runner = runner
         self._executable = executable
         self._model = model
         self._workdir = workdir
+        self._executable_configured = executable_configured
 
     def run(self, *, transcript: str, prompt: str, title: str) -> str:
         return run_with_workdir(
@@ -73,19 +74,14 @@ class ClaudeNarrator:
             result = self._runner.run(
                 args, stdout_path=output_path, stdin_text=transcript, cwd=workdir
             )
-            narrative = ""
-            if output_path.exists():
-                narrative = output_path.read_text(encoding="utf-8").strip()
         except OSError as exc:
             raise NarrativeRunError(str(exc)) from exc
-        if result.returncode != 0:
-            raise NarrativeRunError(
-                narrator_failure_message(
-                    "claude",
-                    self._executable,
-                    failure_detail(result.stderr, narrative, fallback="claude -p failed"),
-                )
-            )
-        if not narrative:
-            raise NarrativeRunError("claude -p produced no output")
-        return narrative
+        return finish_narrative_run(
+            "claude",
+            self._executable,
+            result,
+            output_path,
+            fallback="claude -p failed",
+            empty_output_message="claude -p produced no output",
+            executable_configured=self._executable_configured,
+        )

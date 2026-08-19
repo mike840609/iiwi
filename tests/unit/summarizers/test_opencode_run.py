@@ -82,7 +82,9 @@ def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
     tmp_path: Path,
 ) -> None:
     runner = RecordingRunner(returncode=1, stderr="boom")
-    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+    driver = OpenCodeRunner(
+        runner=runner, workdir=tmp_path, executable_configured=True
+    )
 
     with pytest.raises(OpenCodeRunError) as error:
         driver.run(transcript="t", prompt="p", title="title")
@@ -91,6 +93,41 @@ def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
     assert "opencode narration failed (boom)" in message
     assert "narrator.provider" in message
     assert "narrator.executable" in message
+
+
+def test_run_pins_the_exact_empty_output_message(tmp_path: Path) -> None:
+    """Characterization lock: the empty-output message is exact and stable."""
+    runner = RecordingRunner(output="")
+    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(OpenCodeRunError, match="opencode run produced no output"):
+        driver.run(transcript="t", prompt="p", title="title")
+
+
+def test_run_pins_the_failure_message_content(tmp_path: Path) -> None:
+    """Characterization lock: a non-zero exit surfaces the narrator failure detail."""
+    runner = RecordingRunner(returncode=1, stderr="boom")
+    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(OpenCodeRunError) as error:
+        driver.run(transcript="t", prompt="p", title="title")
+
+    assert "opencode narration failed (boom)" in str(error.value)
+
+
+def test_run_wraps_output_read_oserror(tmp_path: Path) -> None:
+    """Characterization lock: an OSError reading the output file is an OpenCodeRunError."""
+
+    class DirRunner(RecordingRunner):
+        def run(self, args, *, stdout_path=None, stdin_text=None):
+            del args, stdin_text
+            stdout_path.mkdir()  # exists() is True, read_text raises IsADirectoryError
+            return CommandResult(0, "", "")
+
+    driver = OpenCodeRunner(runner=DirRunner(), workdir=tmp_path)
+
+    with pytest.raises(OpenCodeRunError):
+        driver.run(transcript="t", prompt="p", title="title")
 
 
 def test_run_does_not_pass_a_cwd(tmp_path: Path) -> None:
@@ -176,4 +213,16 @@ def test_run_reports_the_reason_when_it_arrives_on_stdout(tmp_path: Path) -> Non
     driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
 
     with pytest.raises(OpenCodeRunError, match="Not logged in"):
+        driver.run(transcript="t", prompt="p", title="title")
+
+
+def test_run_falls_back_to_the_generic_message_when_stderr_and_stdout_are_empty(
+    tmp_path: Path,
+) -> None:
+    """A non-zero exit with nothing on stderr or stdout falls back to the
+    generic 'opencode run failed' message."""
+    runner = RecordingRunner(returncode=1, stderr="", output="")
+    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(OpenCodeRunError, match="opencode run failed"):
         driver.run(transcript="t", prompt="p", title="title")

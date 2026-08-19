@@ -62,6 +62,12 @@ class CommandRunner:
                     capture_output=True,
                     input=stdin_text,
                     text=True,
+                    encoding="utf-8",
+                    # The redirected branch below already decodes with
+                    # errors="replace"; a child that emits a stray non-UTF-8
+                    # byte (a Big5 commit message reaching `git log`) must not
+                    # raise UnicodeDecodeError past every caller's except OSError.
+                    errors="replace",
                     timeout=self._timeout_seconds,
                     env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                     cwd=cwd,
