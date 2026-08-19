@@ -32,11 +32,13 @@ class OpenCodeRunner:
         executable: str = "opencode",
         model: str = "",
         workdir: Path | None = None,
+        executable_configured: bool = False,
     ) -> None:
         self._runner = runner
         self._executable = executable
         self._model = model
         self._workdir = workdir
+        self._executable_configured = executable_configured
 
     def run(
         self,
@@ -99,4 +101,5 @@ class OpenCodeRunner:
             output_path,
             fallback="opencode run failed",
             empty_output_message="opencode run produced no output",
+            executable_configured=self._executable_configured,
         )

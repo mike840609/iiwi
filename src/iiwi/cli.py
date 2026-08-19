@@ -410,16 +410,28 @@ def _narrator_for_provider(settings: AppSettings, provider: str) -> NarrativeRun
     executable = _resolve_executable(settings, provider)
     model = _resolve_model(settings, provider)
     runner = CommandRunner(timeout_seconds=_resolve_timeout(settings, provider))
+    executable_configured = bool(settings.narrator.executable.strip())
     if provider == "claude":
-        return ClaudeNarrator(runner=runner, executable=executable, model=model)
+        return ClaudeNarrator(
+            runner=runner,
+            executable=executable,
+            model=model,
+            executable_configured=executable_configured,
+        )
     if provider == "codex":
         return CodexNarrator(
             runner=runner,
             executable=executable,
             model=model,
             codex_home=settings.harnesses.codex.home_directory,
+            executable_configured=executable_configured,
         )
-    return OpenCodeRunner(runner=runner, executable=executable, model=model)
+    return OpenCodeRunner(
+        runner=runner,
+        executable=executable,
+        model=model,
+        executable_configured=executable_configured,
+    )
 
 
 def _build_narrator(settings: AppSettings, harness: Harness) -> NarrativeRunner:

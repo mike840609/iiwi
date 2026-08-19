@@ -82,7 +82,9 @@ def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
     tmp_path: Path,
 ) -> None:
     runner = RecordingRunner(returncode=1, stderr="boom")
-    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+    driver = OpenCodeRunner(
+        runner=runner, workdir=tmp_path, executable_configured=True
+    )
 
     with pytest.raises(OpenCodeRunError) as error:
         driver.run(transcript="t", prompt="p", title="title")

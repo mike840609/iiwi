@@ -204,6 +204,7 @@ def narrator_failure_message(
     detail: str,
     *,
     codex_home: Path | None = None,
+    executable_configured: bool = False,
 ) -> str:
     """Name the resolved provider and where to fix it, on top of the raw detail.
 
@@ -215,12 +216,20 @@ def narrator_failure_message(
     just interpolate that exception, so building the full message here — the
     one place that already has the provider and the resolved executable — is
     what reaches both call sites without threading settings through them.
+
+    When the executable is a default (the user never set narrator.executable),
+    the advice points at installing the CLI rather than at a setting they never
+    touched.
     """
 
-    message = (
-        f"{provider} narration failed ({detail}); set narrator.provider or "
-        f"narrator.executable (currently {executable!r})"
-    )
+    if executable_configured:
+        advice = (
+            f"set narrator.provider or narrator.executable "
+            f"(currently {executable!r})"
+        )
+    else:
+        advice = f"install the {provider} CLI or set narrator.provider / narrator.executable"
+    message = f"{provider} narration failed ({detail}); {advice}"
     # A Codex desktop install ships its CLI outside PATH, under a private
     # directory a future release can relocate, so this points at the docs
     # instead of guessing the path.
@@ -243,6 +252,7 @@ def finish_narrative_run(
     fallback: str,
     codex_home: Path | None = None,
     empty_output_message: str,
+    executable_configured: bool = False,
 ) -> str:
     """Turn a provider subprocess result into a narrative, or a NarrativeRunError.
 
@@ -266,6 +276,7 @@ def finish_narrative_run(
                 executable,
                 failure_detail(result.stderr, narrative, fallback=fallback),
                 codex_home=codex_home,
+                executable_configured=executable_configured,
             )
         )
     if not narrative:

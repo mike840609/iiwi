@@ -24,6 +24,7 @@ class CodexNarrator:
         model: str = "",
         workdir: Path | None = None,
         codex_home: Path | None = None,
+        executable_configured: bool = False,
     ) -> None:
         self._runner = runner
         self._executable = executable
@@ -33,6 +34,7 @@ class CodexNarrator:
         # Codex desktop docs (see narrator_failure_message); never read to
         # locate the executable itself.
         self._codex_home = codex_home
+        self._executable_configured = executable_configured
 
     def run(self, *, transcript: str, prompt: str, title: str) -> str:
         return run_with_workdir(
@@ -79,4 +81,5 @@ class CodexNarrator:
             fallback="codex exec failed",
             codex_home=self._codex_home,
             empty_output_message="codex exec produced no output",
+            executable_configured=self._executable_configured,
         )

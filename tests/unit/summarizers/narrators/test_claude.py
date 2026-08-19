@@ -106,7 +106,9 @@ def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
     tmp_path: Path, runner_factory
 ) -> None:
     runner = runner_factory(returncode=1, stderr="boom")
-    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+    narrator = ClaudeNarrator(
+        runner=runner, workdir=tmp_path, executable_configured=True
+    )
 
     with pytest.raises(NarrativeRunError) as error:
         narrator.run(transcript="t", prompt="p", title="t")
@@ -115,6 +117,22 @@ def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
     assert "claude narration failed (boom)" in message
     assert "narrator.provider" in message
     assert "narrator.executable" in message
+
+
+def test_run_failure_advises_install_when_executable_is_a_default(
+    tmp_path: Path, runner_factory
+) -> None:
+    """When the user never set narrator.executable, the failure should point at
+    installing the CLI, not at a setting they never touched."""
+    runner = runner_factory(returncode=1, stderr="boom")
+    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError) as error:
+        narrator.run(transcript="t", prompt="p", title="t")
+
+    message = str(error.value)
+    assert "install the claude CLI" in message
+    assert "(currently" not in message
 
 
 def test_run_pins_the_exact_empty_output_message(tmp_path: Path, runner_factory) -> None:

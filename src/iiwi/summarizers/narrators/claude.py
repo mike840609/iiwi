@@ -23,11 +23,13 @@ class ClaudeNarrator:
         executable: str = "claude",
         model: str = "",
         workdir: Path | None = None,
+        executable_configured: bool = False,
     ) -> None:
         self._runner = runner
         self._executable = executable
         self._model = model
         self._workdir = workdir
+        self._executable_configured = executable_configured
 
     def run(self, *, transcript: str, prompt: str, title: str) -> str:
         return run_with_workdir(
@@ -74,4 +76,5 @@ class ClaudeNarrator:
             output_path,
             fallback="claude -p failed",
             empty_output_message="claude -p produced no output",
+            executable_configured=self._executable_configured,
         )
