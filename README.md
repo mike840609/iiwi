@@ -137,7 +137,7 @@ default:
 
 ```bash
 iiwi config init                                          # walk through all
-iiwi config set harnesses.opencode.cli.model deepseek-r1  # write one
+iiwi config set narrator.model deepseek-r1  # write one
 iiwi config list                                          # show all, with sources
 iiwi config unset report.timezone                         # back to the default
 ```

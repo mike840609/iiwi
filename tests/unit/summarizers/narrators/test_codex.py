@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from iiwi.process import CommandResult
 from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.summarizers.narrator import NarrativeRunError
 from iiwi.summarizers.narrators.codex import CodexNarrator
@@ -35,6 +36,17 @@ def test_run_skips_the_git_repo_check(tmp_path: Path, runner_factory) -> None:
     narrator.run(transcript="t", prompt="p", title="t")
 
     assert "--skip-git-repo-check" in runner.calls[0]
+
+
+def test_run_passes_an_explicit_read_only_sandbox(tmp_path: Path, runner_factory) -> None:
+    runner = runner_factory(output="ok\n")
+    narrator = CodexNarrator(runner=runner, workdir=tmp_path)
+
+    narrator.run(transcript="t", prompt="p", title="t")
+
+    args = runner.calls[0]
+    assert "--sandbox" in args
+    assert args[args.index("--sandbox") + 1] == "read-only"
 
 
 def test_run_sends_the_transcript_on_stdin(tmp_path: Path, runner_factory) -> None:
@@ -116,7 +128,9 @@ def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
     tmp_path: Path, runner_factory
 ) -> None:
     runner = runner_factory(returncode=1, stderr="boom")
-    narrator = CodexNarrator(runner=runner, workdir=tmp_path)
+    narrator = CodexNarrator(
+        runner=runner, workdir=tmp_path, executable_configured=True
+    )
 
     with pytest.raises(NarrativeRunError) as error:
         narrator.run(transcript="t", prompt="p", title="t")
@@ -125,6 +139,57 @@ def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
     assert "codex narration failed (boom)" in message
     assert "narrator.provider" in message
     assert "narrator.executable" in message
+
+
+def test_run_failure_advises_install_when_executable_is_a_default(
+    tmp_path: Path, runner_factory
+) -> None:
+    """When the user never set narrator.executable, the failure should point at
+    installing the CLI, not at a setting they never touched."""
+    runner = runner_factory(returncode=1, stderr="boom")
+    narrator = CodexNarrator(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError) as error:
+        narrator.run(transcript="t", prompt="p", title="t")
+
+    message = str(error.value)
+    assert "install the codex CLI" in message
+    assert "(currently" not in message
+
+
+def test_run_pins_the_exact_empty_output_message(tmp_path: Path, runner_factory) -> None:
+    """Characterization lock: the empty-output message is exact and stable."""
+    runner = runner_factory(output="")
+    narrator = CodexNarrator(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError, match="codex exec produced no output"):
+        narrator.run(transcript="t", prompt="p", title="t")
+
+
+def test_run_pins_the_failure_message_content(tmp_path: Path, runner_factory) -> None:
+    """Characterization lock: a non-zero exit surfaces the narrator failure detail."""
+    runner = runner_factory(returncode=1, stderr="boom")
+    narrator = CodexNarrator(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError) as error:
+        narrator.run(transcript="t", prompt="p", title="t")
+
+    assert "codex narration failed (boom)" in str(error.value)
+
+
+def test_run_wraps_output_read_oserror(tmp_path: Path, runner_factory) -> None:
+    """Characterization lock: an OSError reading the output file is a NarrativeRunError."""
+
+    class DirRunner(runner_factory):
+        def run(self, args, *, stdout_path=None, stdin_text=None, cwd=None):
+            del args, stdin_text, cwd
+            stdout_path.mkdir()  # exists() is True, read_text raises IsADirectoryError
+            return CommandResult(0, "", "")
+
+    narrator = CodexNarrator(runner=DirRunner(), workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError):
+        narrator.run(transcript="t", prompt="p", title="t")
 
 
 def test_run_failure_points_at_the_codex_desktop_docs_when_the_binary_is_missing(

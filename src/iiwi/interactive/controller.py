@@ -78,7 +78,6 @@ from iiwi.models.time_range import DateRange
 from iiwi.renderers.markdown import DetailLevel
 from iiwi.services.outcomes import SynthesisBudgetExceededError
 from iiwi.services.scan import ScanResult
-from iiwi.summarizers.narrator import NarrativeRunError
 
 _ADVANCED_ROW = "Advanced settings"
 _SESSION_FALLBACK_NOTICE = "Outcome synthesis unavailable; generated the session-based report."
@@ -1016,16 +1015,16 @@ def _begin_daily_review(state: _State, actions: InteractiveActions) -> None:
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return
-    except (IiwiError, NarrativeRunError) as exc:
+    except IiwiError as exc:
         # start_daily reads settings, the enabled harnesses and the clock before
         # it ever scans, so ConfigurationError reaches here on an unusable
         # config. NarrativeRunError reaches here too: Daily builds its
         # narrator from whichever harness is installed (see
         # cli._build_daily_narrator), and that provider-selection step can
-        # fail before any scan starts. NarrativeRunError subclasses Exception,
-        # not IiwiError, so it must be listed explicitly. Every other menu
-        # entry shows failures like this as a recoverable error rather than
-        # letting them escape _dispatch and kill the app.
+        # fail before any scan starts. NarrativeRunError subclasses IiwiError,
+        # so this single arm catches it. Every other menu entry shows failures
+        # like this as a recoverable error rather than letting them escape
+        # _dispatch and kill the app.
         state.error = _ErrorState(
             kind="daily-start",
             title="Could not start Daily Standup",

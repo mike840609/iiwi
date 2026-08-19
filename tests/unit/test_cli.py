@@ -1,3 +1,4 @@
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +12,17 @@ from iiwi.errors import ConfigurationError
 from iiwi.models.time_range import DateRange
 
 runner = CliRunner()
+
+
+def plain_help(stdout: str) -> str:
+    """Rich help output as one line of plain text.
+
+    Rich wraps the help table, pads cells with box-drawing characters, and
+    (under GITHUB_ACTIONS) forces colour, so strip the escapes and the box
+    before matching.
+    """
+    without_ansi = re.sub(r"\x1b\[[0-9;]*m", "", stdout)
+    return " ".join(without_ansi.replace("\u2502", " ").split())
 
 
 def test_help_lists_core_commands() -> None:
@@ -27,9 +39,49 @@ def test_daily_help_describes_standup_without_report_selection_options() -> None
     result = runner.invoke(app, ["daily", "--help"])
 
     assert result.exit_code == 0
-    assert "standup" in result.stdout.casefold()
+    help_text = plain_help(result.stdout)
+    assert "standup" in help_text.casefold()
     for prohibited in ("--harness", "--period", "--days", "--no-review"):
-        assert prohibited not in result.stdout
+        assert prohibited not in help_text
+
+
+def test_report_help_describes_no_llm_without_naming_a_specific_cli() -> None:
+    result = runner.invoke(app, ["report", "--help"])
+
+    assert result.exit_code == 0
+    assert "without calling a narration CLI" in plain_help(result.stdout)
+
+
+def test_sanitize_with_an_explicit_non_opencode_harness_is_rejected() -> None:
+    """An explicit --harness claude-code with --sanitize is a sanitize-specific
+    error, not a 'no harness' error."""
+    import typer
+
+    with pytest.raises(typer.BadParameter, match="supported only with --harness opencode"):
+        cli._validate_privacy_options(
+            harness=cli.Harness.CLAUDE_CODE,
+            sanitize=True,
+        )
+
+
+def test_sanitize_with_no_harness_reports_no_harness_available_first(tmp_path) -> None:
+    """When no --harness is given and none is available, the harness-resolution
+    error surfaces before the sanitize check, so the user sees 'no harness is
+    available' rather than a sanitize-specific message."""
+    result = runner.invoke(
+        app,
+        ["scan", "--sanitize"],
+        env={
+            "IIWI_HARNESSES__CLAUDE_CODE__PROJECTS_DIRECTORY": str(
+                tmp_path / "no-claude-projects"
+            ),
+            "IIWI_HARNESSES__CODEX__HOME_DIRECTORY": str(tmp_path / "no-codex-home"),
+            "IIWI_HARNESSES__OPENCODE__CLI__EXECUTABLE": "iiwi-nonexistent-opencode",
+        },
+    )
+
+    assert result.exit_code == 3
+    assert "no harness is available" in result.stdout
 
 
 def test_daily_refuses_non_terminal_input(monkeypatch) -> None:
@@ -255,6 +307,19 @@ def test_doctor_refuses_a_disabled_harness() -> None:
 
     assert result.exit_code == 3
     assert "disabled by configuration" in result.stdout
+
+
+def test_doctor_default_harness_falls_back_to_opencode_when_every_harness_is_disabled() -> None:
+    """doctor must never raise on a fully-disabled config; it falls back to
+    OpenCode so the checks themselves can report what is missing."""
+    import iiwi.cli as cli
+
+    settings = cli.AppSettings()
+    settings.harnesses.claude_code.enabled = False
+    settings.harnesses.codex.enabled = False
+    settings.harnesses.opencode.enabled = False
+
+    assert cli._doctor_default_harness(settings) == cli.Harness.OPENCODE
 
 
 def test_doctor_still_prints_checks_when_no_harness_is_available(tmp_path) -> None:

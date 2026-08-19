@@ -90,6 +90,42 @@ def test_run_feeds_stdin_text_to_the_child() -> None:
     assert result.stdout == "HELLO"
 
 
+def test_run_feeds_stdin_text_utf8_independent_of_locale() -> None:
+    """The text branch must encode stdin as UTF-8, not the process locale, so a
+    non-ASCII transcript survives on a machine whose locale is not UTF-8."""
+    runner = CommandRunner(timeout_seconds=10.0)
+
+    result = runner.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write(sys.stdin.buffer.read().decode('utf-8'))",
+        ],
+        stdin_text="繁體中文測試",
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == "繁體中文測試"
+
+
+def test_run_replaces_undecodable_output_instead_of_raising() -> None:
+    """A child emitting non-UTF-8 bytes is a failed command, not a crash."""
+    runner = CommandRunner(timeout_seconds=10.0)
+
+    result = runner.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.buffer.write(b'\\xff'); "
+            "sys.stderr.buffer.write(b'\\xfe')",
+        ]
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == "\ufffd"
+    assert result.stderr == "\ufffd"
+
+
 def test_run_feeds_stdin_text_when_redirecting_stdout(tmp_path: Path) -> None:
     runner = CommandRunner(timeout_seconds=10.0)
     destination = tmp_path / "out.txt"

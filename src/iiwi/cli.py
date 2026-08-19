@@ -16,7 +16,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import typer
 
 from iiwi import __version__, config_store
-from iiwi.config import DEFAULT_NARRATOR_TIMEOUT_SECONDS, AppSettings
+from iiwi.config import (
+    DEFAULT_NARRATOR_TIMEOUT_SECONDS,
+    AppSettings,
+    OpenCodeCliSettings,
+)
 from iiwi.errors import (
     ConfigurationError,
     HarnessSourceError,
@@ -372,6 +376,22 @@ def _resolve_executable(settings: AppSettings, provider: str) -> str:
     return provider
 
 
+def _executable_is_configured(settings: AppSettings, provider: str) -> bool:
+    """Whether the executable `_resolve_executable` picks came from a setting.
+
+    This decides whether a failure tells the user to install the CLI or to fix
+    the setting that named it, so it has to mirror `_resolve_executable`'s
+    fallback order above — including the OpenCode harness setting, which names
+    the binary for a user who never touched `narrator.executable`.
+    """
+
+    if settings.narrator.executable.strip():
+        return True
+    if provider != "opencode":
+        return False
+    return settings.harnesses.opencode.cli.executable != OpenCodeCliSettings().executable
+
+
 def _describe_narrator(settings: AppSettings, harness: Harness) -> NarratorDescription:
     """Name the resolved narrator for `doctor`, and where that choice came from.
 
@@ -410,16 +430,28 @@ def _narrator_for_provider(settings: AppSettings, provider: str) -> NarrativeRun
     executable = _resolve_executable(settings, provider)
     model = _resolve_model(settings, provider)
     runner = CommandRunner(timeout_seconds=_resolve_timeout(settings, provider))
+    executable_configured = _executable_is_configured(settings, provider)
     if provider == "claude":
-        return ClaudeNarrator(runner=runner, executable=executable, model=model)
+        return ClaudeNarrator(
+            runner=runner,
+            executable=executable,
+            model=model,
+            executable_configured=executable_configured,
+        )
     if provider == "codex":
         return CodexNarrator(
             runner=runner,
             executable=executable,
             model=model,
             codex_home=settings.harnesses.codex.home_directory,
+            executable_configured=executable_configured,
         )
-    return OpenCodeRunner(runner=runner, executable=executable, model=model)
+    return OpenCodeRunner(
+        runner=runner,
+        executable=executable,
+        model=model,
+        executable_configured=executable_configured,
+    )
 
 
 def _build_narrator(settings: AppSettings, harness: Harness) -> NarrativeRunner:
@@ -765,7 +797,10 @@ def report(
     no_llm: bool = typer.Option(
         False,
         "--no-llm",
-        help="Skip the narrative report; emit the structured report without invoking opencode.",
+        help=(
+            "Skip the narrative report; emit the structured report without "
+            "calling a narration CLI."
+        ),
     ),
     sanitize: bool | None = typer.Option(
         None,
@@ -1295,7 +1330,7 @@ def _ask_output_path(settings: AppSettings, period: DateRange) -> tuple[Path, bo
 
 @app.command()
 def daily() -> None:
-    """Draft a standup with yesterday, today and blockers from all enabled coding agents."""
+    """Draft a standup with yesterday, today and blockers from available coding agents."""
 
     reporter = ConsoleReporter()
     try:

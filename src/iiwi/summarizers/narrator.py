@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
+from iiwi.errors import IiwiError
 from iiwi.models.report_options import DetailLevel
 from iiwi.process import CommandResult
 from iiwi.security.secure_files import secure_temporary_directory
@@ -135,7 +136,7 @@ Rules:
 """
 
 
-class NarrativeRunError(Exception):
+class NarrativeRunError(IiwiError):
     """A provider CLI could not produce a narrative."""
 
 
@@ -203,6 +204,7 @@ def narrator_failure_message(
     detail: str,
     *,
     codex_home: Path | None = None,
+    executable_configured: bool = False,
 ) -> str:
     """Name the resolved provider and where to fix it, on top of the raw detail.
 
@@ -214,12 +216,20 @@ def narrator_failure_message(
     just interpolate that exception, so building the full message here — the
     one place that already has the provider and the resolved executable — is
     what reaches both call sites without threading settings through them.
+
+    When the executable is a default (the user never set narrator.executable),
+    the advice points at installing the CLI rather than at a setting they never
+    touched.
     """
 
-    message = (
-        f"{provider} narration failed ({detail}); set narrator.provider or "
-        f"narrator.executable (currently {executable!r})"
-    )
+    if executable_configured:
+        advice = (
+            f"set narrator.provider or narrator.executable "
+            f"(currently {executable!r})"
+        )
+    else:
+        advice = f"install the {provider} CLI or set narrator.provider / narrator.executable"
+    message = f"{provider} narration failed ({detail}); {advice}"
     # A Codex desktop install ships its CLI outside PATH, under a private
     # directory a future release can relocate, so this points at the docs
     # instead of guessing the path.
@@ -231,6 +241,47 @@ def narrator_failure_message(
     ):
         message += "; see the Codex desktop section of docs/configuration.md"
     return message
+
+
+def finish_narrative_run(
+    provider: str,
+    executable: str,
+    result: CommandResult,
+    output_path: Path,
+    *,
+    fallback: str,
+    codex_home: Path | None = None,
+    empty_output_message: str,
+    executable_configured: bool = False,
+) -> str:
+    """Turn a provider subprocess result into a narrative, or a NarrativeRunError.
+
+    Every adapter ends the same way: read the output file (an OSError there
+    becomes a NarrativeRunError), translate a non-zero exit into a
+    `narrator_failure_message`, then reject an empty narrative with the
+    provider-specific `empty_output_message`. The caller keeps its own
+    try/except around `runner.run` so a launch OSError is still wrapped here.
+    """
+
+    try:
+        narrative = ""
+        if output_path.exists():
+            narrative = output_path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise NarrativeRunError(str(exc)) from exc
+    if result.returncode != 0:
+        raise NarrativeRunError(
+            narrator_failure_message(
+                provider,
+                executable,
+                failure_detail(result.stderr, narrative, fallback=fallback),
+                codex_home=codex_home,
+                executable_configured=executable_configured,
+            )
+        )
+    if not narrative:
+        raise NarrativeRunError(empty_output_message)
+    return narrative
 
 
 def run_with_workdir(workdir: Path | None, execute: Callable[[Path], str]) -> str:

@@ -65,6 +65,30 @@ def test_configured_executable_wins_for_every_provider() -> None:
     assert cli._resolve_executable(settings, "opencode").endswith("codex")
 
 
+def test_a_default_executable_is_not_configured() -> None:
+    settings = _settings()
+
+    for provider in ("claude", "codex", "opencode"):
+        assert cli._executable_is_configured(settings, provider) is False
+
+
+def test_a_configured_narrator_executable_counts_for_every_provider() -> None:
+    settings = _settings(executable="/opt/bin/claude")
+
+    for provider in ("claude", "codex", "opencode"):
+        assert cli._executable_is_configured(settings, provider) is True
+
+
+def test_the_opencode_harness_executable_counts_for_opencode_only() -> None:
+    """A user with OpenCode outside PATH names it here and never touches
+    narrator.executable, so the failure advice must not tell them to install it."""
+    settings = _settings()
+    settings.harnesses.opencode.cli.executable = "/opt/bin/opencode"
+
+    assert cli._executable_is_configured(settings, "opencode") is True
+    assert cli._executable_is_configured(settings, "claude") is False
+
+
 def test_model_falls_back_only_for_opencode() -> None:
     settings = _settings()
     settings.harnesses.opencode.cli.model = "deepseek-r1"

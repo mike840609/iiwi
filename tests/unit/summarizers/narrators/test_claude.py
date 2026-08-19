@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from iiwi.process import CommandResult
 from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
 from iiwi.summarizers.narrator import NarrativeRunError
 from iiwi.summarizers.narrators.claude import ClaudeNarrator
@@ -25,6 +26,17 @@ def test_run_sends_the_prompt_as_an_argument(tmp_path: Path, runner_factory) -> 
     prompt_arg = args[args.index("-p") + 1]
     assert prompt_arg.startswith(f"{IIWI_SESSION_TITLE_PREFIX}narrative 2026-08-01")
     assert prompt_arg.endswith("Write a report.")
+
+
+def test_run_disables_the_toolset(tmp_path: Path, runner_factory) -> None:
+    runner = runner_factory(output="ok\n")
+    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+
+    narrator.run(transcript="t", prompt="Write a report.", title="narrative")
+
+    args = runner.calls[0]
+    assert "--tools" in args
+    assert args[args.index("--tools") + 1] == ""
 
 
 def test_run_sends_the_transcript_on_stdin(tmp_path: Path, runner_factory) -> None:
@@ -105,7 +117,9 @@ def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
     tmp_path: Path, runner_factory
 ) -> None:
     runner = runner_factory(returncode=1, stderr="boom")
-    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+    narrator = ClaudeNarrator(
+        runner=runner, workdir=tmp_path, executable_configured=True
+    )
 
     with pytest.raises(NarrativeRunError) as error:
         narrator.run(transcript="t", prompt="p", title="t")
@@ -114,3 +128,54 @@ def test_run_failure_names_the_provider_and_the_settings_that_fix_it(
     assert "claude narration failed (boom)" in message
     assert "narrator.provider" in message
     assert "narrator.executable" in message
+
+
+def test_run_failure_advises_install_when_executable_is_a_default(
+    tmp_path: Path, runner_factory
+) -> None:
+    """When the user never set narrator.executable, the failure should point at
+    installing the CLI, not at a setting they never touched."""
+    runner = runner_factory(returncode=1, stderr="boom")
+    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError) as error:
+        narrator.run(transcript="t", prompt="p", title="t")
+
+    message = str(error.value)
+    assert "install the claude CLI" in message
+    assert "(currently" not in message
+
+
+def test_run_pins_the_exact_empty_output_message(tmp_path: Path, runner_factory) -> None:
+    """Characterization lock: the empty-output message is exact and stable."""
+    runner = runner_factory(output="")
+    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError, match="claude -p produced no output"):
+        narrator.run(transcript="t", prompt="p", title="t")
+
+
+def test_run_pins_the_failure_message_content(tmp_path: Path, runner_factory) -> None:
+    """Characterization lock: a non-zero exit surfaces the narrator failure detail."""
+    runner = runner_factory(returncode=1, stderr="boom")
+    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError) as error:
+        narrator.run(transcript="t", prompt="p", title="t")
+
+    assert "claude narration failed (boom)" in str(error.value)
+
+
+def test_run_wraps_output_read_oserror(tmp_path: Path, runner_factory) -> None:
+    """Characterization lock: an OSError reading the output file is a NarrativeRunError."""
+
+    class DirRunner(runner_factory):
+        def run(self, args, *, stdout_path=None, stdin_text=None, cwd=None):
+            del args, stdin_text, cwd
+            stdout_path.mkdir()  # exists() is True, read_text raises IsADirectoryError
+            return CommandResult(0, "", "")
+
+    narrator = ClaudeNarrator(runner=DirRunner(), workdir=tmp_path)
+
+    with pytest.raises(NarrativeRunError):
+        narrator.run(transcript="t", prompt="p", title="t")
