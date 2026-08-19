@@ -92,7 +92,7 @@ def test_readmes_document_the_config_command() -> None:
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
 
     for text in (readme, readme_zh_tw):
-        assert "iiwi config set harnesses.opencode.cli.model deepseek-r1" in text
+        assert "iiwi config set narrator.model deepseek-r1" in text
         assert "iiwi config list" in text
         assert "iiwi config unset" in text
 
@@ -346,3 +346,14 @@ def test_readmes_document_the_run_dry_run_option() -> None:
 def test_readmes_state_the_pronunciation() -> None:
     for path in ("README.md", "README.zh-TW.md"):
         assert "ee-wee" in Path(path).read_text(encoding="utf-8")
+
+
+def test_daily_docs_describe_available_harnesses() -> None:
+    """Daily scans available (enabled and readable) harnesses, not all enabled ones."""
+
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
+    daily = Path("docs/daily-standup.md").read_text(encoding="utf-8")
+
+    for text in (reference, daily):
+        assert "available" in text
+        assert "every enabled harness" not in text

@@ -4,7 +4,7 @@ Daily Standup turns recent coding-agent activity into a short, reviewed update:
 
 ```text
 iiwi daily
-  → all enabled harnesses
+  → available harnesses
   → Yesterday / Today / Blockers
   → Quick Review
   → Preview
@@ -13,9 +13,10 @@ iiwi daily
 
 Run `iiwi daily` in an interactive terminal, or choose **Daily Standup** from
 the main menu. Both routes open the same review. Daily has no period or harness
-picker: it includes child and subagent sessions from every enabled harness and
+picker: it includes child and subagent sessions from available harnesses and
 uses one local-time window from yesterday at 00:00 through the captured current
-time.
+time. Harnesses that pass the availability pre-check are scanned; ones that fail
+mid-scan appear as coverage warnings.
 
 ## Review the draft
 

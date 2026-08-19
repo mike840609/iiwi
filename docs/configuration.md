@@ -20,10 +20,10 @@ shell it was set in:
 iiwi config path                        # where the file is
 iiwi config list                        # every setting, value, and source
 iiwi config init                        # walk through every setting
-iiwi config set harnesses.opencode.cli.model deepseek-r1   # write one setting
-iiwi config set harnesses.opencode.cli.model               # ask for the value
-iiwi config set harnesses.opencode.cli.model ""            # empty: back to the default
-iiwi config unset harnesses.opencode.cli.model             # same thing, spelled out
+iiwi config set narrator.model deepseek-r1   # write one setting
+iiwi config set narrator.model               # ask for the value
+iiwi config set narrator.model ""            # empty: back to the default
+iiwi config unset narrator.model             # same thing, spelled out
 ```
 
 ## Setting values interactively

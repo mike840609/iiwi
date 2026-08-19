@@ -1310,7 +1310,7 @@ def _ask_output_path(settings: AppSettings, period: DateRange) -> tuple[Path, bo
 
 @app.command()
 def daily() -> None:
-    """Draft a standup with yesterday, today and blockers from all enabled coding agents."""
+    """Draft a standup with yesterday, today and blockers from available coding agents."""
 
     reporter = ConsoleReporter()
     try:

@@ -130,7 +130,7 @@ iiwi run                          # 使用逐步引導模式
 
 ```bash
 iiwi config init                                          # 逐項詢問
-iiwi config set harnesses.opencode.cli.model deepseek-r1  # 寫入單一設定
+iiwi config set narrator.model deepseek-r1  # 寫入單一設定
 iiwi config list                                          # 列出所有設定與來源
 iiwi config unset report.timezone                         # 回到預設值
 ```

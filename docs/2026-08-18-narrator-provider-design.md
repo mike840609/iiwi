@@ -475,6 +475,23 @@ binary path into iiwi.
 
 ## Known residual risk
 
+The narration subprocesses are tool-restricted against prompt-injection
+exfiltration. `claude -p` runs with `--tools ""`, which disables the built-in
+tool set outright: the transcript arrives on stdin, so narration never reads a
+file, and an allowlist that kept `Read` would leave an injection able to print a
+local secret into the report itself. With no tools available the model may
+instead emit a made-up tool call as plain text, which dirties a report rather
+than leaking from it.
+
+`codex exec` runs with `--sandbox read-only` — explicit even though it is the
+default, so a user's own `sandbox_mode = "workspace-write"` cannot widen the
+narration run. Codex has no tool-allowlist flag, so the two providers are not
+symmetric: the sandbox stops writes, shell escapes and network, but the model
+can still read a local file and put its contents in the narrative.
+
+Neither flag changes the credential path or the workdir isolation described
+below.
+
 `claude -p` still loads the user's global `~/.claude/CLAUDE.md`. A global
 instruction such as "always answer in one sentence" would visibly distort
 reports. `--bare` would prevent it but also disables OAuth, which is not

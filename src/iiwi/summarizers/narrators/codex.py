@@ -65,6 +65,10 @@ class CodexNarrator:
             # nothing here and would otherwise make every run fail with
             # "Not inside a trusted directory".
             args += ["--skip-git-repo-check"]
+            # Explicit read-only sandbox: narration only reads the transcript,
+            # so forbid writes even though read-only is the default — a
+            # self-documenting posture against prompt-injection exfiltration.
+            args += ["--sandbox", "read-only"]
             # `cwd=workdir` keeps `codex exec` out of the user's project: without
             # it the subprocess inherits iiwi's own cwd and gets write access to
             # the repository being reported on.

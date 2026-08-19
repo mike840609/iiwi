@@ -57,6 +57,13 @@ class ClaudeNarrator:
                 "-p",
                 marked_prompt(prompt, title),
                 "--strict-mcp-config",
+                # No tools at all: the transcript arrives on stdin, so
+                # narration never needs to touch the filesystem. An allowlist
+                # that kept Read/Grep/Glob would still let a prompt injection in
+                # the transcript read a local secret and print it into the
+                # report. "" is the documented way to disable the built-in set.
+                "--tools",
+                "",
             ]
             if self._model:
                 args += ["--model", self._model]

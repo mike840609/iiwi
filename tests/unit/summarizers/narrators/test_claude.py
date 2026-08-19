@@ -28,6 +28,17 @@ def test_run_sends_the_prompt_as_an_argument(tmp_path: Path, runner_factory) -> 
     assert prompt_arg.endswith("Write a report.")
 
 
+def test_run_disables_the_toolset(tmp_path: Path, runner_factory) -> None:
+    runner = runner_factory(output="ok\n")
+    narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
+
+    narrator.run(transcript="t", prompt="Write a report.", title="narrative")
+
+    args = runner.calls[0]
+    assert "--tools" in args
+    assert args[args.index("--tools") + 1] == ""
+
+
 def test_run_sends_the_transcript_on_stdin(tmp_path: Path, runner_factory) -> None:
     runner = runner_factory(output="ok\n")
     narrator = ClaudeNarrator(runner=runner, workdir=tmp_path)
