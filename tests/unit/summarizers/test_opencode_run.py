@@ -214,3 +214,15 @@ def test_run_reports_the_reason_when_it_arrives_on_stdout(tmp_path: Path) -> Non
 
     with pytest.raises(OpenCodeRunError, match="Not logged in"):
         driver.run(transcript="t", prompt="p", title="title")
+
+
+def test_run_falls_back_to_the_generic_message_when_stderr_and_stdout_are_empty(
+    tmp_path: Path,
+) -> None:
+    """A non-zero exit with nothing on stderr or stdout falls back to the
+    generic 'opencode run failed' message."""
+    runner = RecordingRunner(returncode=1, stderr="", output="")
+    driver = OpenCodeRunner(runner=runner, workdir=tmp_path)
+
+    with pytest.raises(OpenCodeRunError, match="opencode run failed"):
+        driver.run(transcript="t", prompt="p", title="title")
