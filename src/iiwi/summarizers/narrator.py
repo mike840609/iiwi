@@ -233,6 +233,45 @@ def narrator_failure_message(
     return message
 
 
+def finish_narrative_run(
+    provider: str,
+    executable: str,
+    result: CommandResult,
+    output_path: Path,
+    *,
+    fallback: str,
+    codex_home: Path | None = None,
+    empty_output_message: str,
+) -> str:
+    """Turn a provider subprocess result into a narrative, or a NarrativeRunError.
+
+    Every adapter ends the same way: read the output file (an OSError there
+    becomes a NarrativeRunError), translate a non-zero exit into a
+    `narrator_failure_message`, then reject an empty narrative with the
+    provider-specific `empty_output_message`. The caller keeps its own
+    try/except around `runner.run` so a launch OSError is still wrapped here.
+    """
+
+    try:
+        narrative = ""
+        if output_path.exists():
+            narrative = output_path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise NarrativeRunError(str(exc)) from exc
+    if result.returncode != 0:
+        raise NarrativeRunError(
+            narrator_failure_message(
+                provider,
+                executable,
+                failure_detail(result.stderr, narrative, fallback=fallback),
+                codex_home=codex_home,
+            )
+        )
+    if not narrative:
+        raise NarrativeRunError(empty_output_message)
+    return narrative
+
+
 def run_with_workdir(workdir: Path | None, execute: Callable[[Path], str]) -> str:
     """Run `execute` in `workdir`, or in a fresh temporary one when absent.
 
