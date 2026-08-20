@@ -54,124 +54,105 @@ A reviewed report can look like this:
 
 Requires Python 3.11+ and `git`.
 
-- **Reads from:** local session history from OpenCode, Claude Code, or Codex.
-- **Drafts with:** the CLI matching whatever it read — `opencode`, `claude`, or `codex`.
-- **No CLI installed?** Use `--no-llm` for a simpler structured report.
-
-Reading Claude Code or Codex history does not need their CLI tools, but drafting does.
-Set `narrator.provider` to draft with a different CLI than the one you read from.
-
 ```bash
 pipx install iiwi                 # or: pip install iiwi
 
-iiwi doctor                       # check your setup
-iiwi daily                        # review yesterday, today, and blockers
-iiwi report --period last-week    # write last week's report
+iiwi doctor                      # check that Iiwi can read your setup
+iiwi                             # open the interactive menu
 ```
 
-Reports are written under `reports/` by default. Add `--dry-run` to preview a
-report in the terminal without writing a file.
+From the menu, choose what you want to do and Iiwi walks you through the rest.
 
-## The interactive menu
+For common shortcuts:
 
-Run `iiwi` with no arguments if you would rather use a menu than remember flags.
-The main menu gives you Review Activity, Daily Standup, Generate Report, History,
-Check Setup, and Settings. Use `iiwi --help` when you want the full command list.
-
-**Generate Report** lets you choose the report settings, review the sessions Iiwi
-found, and then generate the report. **Review Sessions** shows the work grouped by
-repository so you can quickly keep or exclude what belongs in the update:
-
-```text
-Review Sessions   6 / 6 selected │ 252 / 252 msgs
-══════════════════════════════════════════════════════
-Select sessions to include in the report:
-
-  1. ▾ ████████████  71% ● iiwi   3 / 3    Aug 5 │ 180 msgs
-▶      ████░░░░░░░░  24% ● Add the interactive menu Aug 5 │ 60 msgs
-       ████░░░░░░░░  24% ● Redact before writing    Aug 5 │ 60 msgs
-       ████░░░░░░░░  24% ● Group worktrees          Aug 5 │ 60 msgs
-  2. ▸ ████░░░░░░░░  24% ● obsidian-wiki   2 / 2    Aug 4 │ 60 msgs
-  3. ▸ █░░░░░░░░░░░   5% ● dotfiles   1 / 1         Aug 3 │ 12 msgs
-
-↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ e Exclude │ a All │ g Generate │ / Search │ ? Help │ b Back
+```bash
+iiwi daily                       # prepare today's standup update
+iiwi report --period last-week   # prepare last week's report
 ```
 
-**Daily Standup**, or `iiwi daily`, opens a Yesterday / Today / Blockers review
-for recent work. **History** lists reports Iiwi has already written.
+Reports are saved under `reports/` by default.
 
-Before a report is written, Quick Review lets you keep, edit, reorder, split, or
-add work items so the final Markdown reflects what you actually want to share.
-For the full keyboard flow, report modes, and recovery behavior, see the
-[Quick Review guide](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md).
-For Daily Standup details, see the
-[Daily Standup guide](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md).
+## Use the interactive menu
 
-## Commands
+Run `iiwi` with no arguments when you do not want to remember commands or flags.
+
+The menu lets you:
+
+- review recent AI coding activity;
+- prepare a daily standup;
+- generate a report;
+- open report history;
+- check your setup;
+- change settings.
+
+When generating a report, Iiwi shows the work it found first. You choose what belongs,
+review the final items, and then write the Markdown report.
+
+For the full review workflow and keyboard controls, see the
+[Quick Review guide](docs/evidence-first-quick-review.md). For the daily flow, see the
+[Daily Standup guide](docs/daily-standup.md).
+
+## Use the CLI directly
+
+The interactive menu is the easiest place to start, but every main action also has a
+command:
 
 ```bash
 iiwi doctor                       # check your setup
-iiwi daily                        # review yesterday, today, and blockers
-iiwi scan --period last-week      # preview the sessions Iiwi found
-iiwi report --period last-week    # write last week's report
-iiwi history                      # list reports already written
-iiwi update                       # check PyPI for a newer release
+iiwi scan --period last-week      # see what Iiwi found
+iiwi report --period last-week    # generate a report
+iiwi daily                        # prepare a daily standup
+iiwi history                      # see reports already created
+iiwi update                       # check for a newer release
 iiwi run                          # use the step-by-step wizard
 ```
 
-| Flag | What it does |
-|---|---|
-| `--harness claude-code` / `--harness codex` | Read sessions from Claude Code or Codex instead of OpenCode |
-| `--no-llm` | Create a structured report without calling a CLI for the narrative |
-| `--sanitize` | Stronger redaction (OpenCode only); removes most work evidence |
-| `--dry-run` | Print the report instead of writing a file |
-| `--json` | Return redacted machine-readable output for supported commands |
-
-`iiwi --help` lists every command and option. Use `iiwi run` if you prefer a
-step-by-step wizard; for scripts, call the subcommand you need directly.
+Run `iiwi --help` for a quick list. See the
+[CLI reference](docs/cli-reference.md) for every command, flag, example, and exit code.
 
 ## Configuration
 
-Settings come from an environment variable first, then the settings file, then the
-default:
+You can start using Iiwi without changing any settings.
+
+If you want to change things such as the model, timezone, paths, or defaults, use:
 
 ```bash
-iiwi config init                                          # walk through all
-iiwi config set narrator.model deepseek-r1  # write one
-iiwi config list                                          # show all, with sources
-iiwi config unset report.timezone                         # back to the default
+iiwi config init                  # walk through the settings
+iiwi config list                  # see the settings currently in use
 ```
 
-Every setting and its environment-variable name is in the
-[configuration guide](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md).
+See the [configuration guide](docs/configuration.md) for all available settings and
+advanced setup.
 
 ## Privacy
 
-Session reading, redaction, and report generation stay on your machine. Iiwi
-passes the redacted session text to a CLI you already have installed — `opencode`,
-`claude`, or `codex` — and no API key is required. `iiwi update` is the command
-that checks the network for a newer release on PyPI.
+Iiwi reads your local session history and builds reports on your machine. Before session
+text is passed to a supported local CLI for drafting, common secret patterns are redacted.
 
-Reports can still contain private goals, filenames, commands, and full working
-paths, so review a report before sharing it. See
-[Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md)
-for the full data flow and current limits.
+Reports can still contain private goals, filenames, commands, and working paths, so review
+a report before sharing it.
+
+See [Privacy and security](docs/privacy.md) for the full data flow, redaction behavior,
+and current limits.
 
 ## Documentation
 
-| Page | What's in it |
-|---|---|
-| [CLI reference](https://github.com/mike840609/iiwi/blob/main/docs/cli-reference.md) | Every command, option, and exit code |
-| [Daily Standup](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md) | Yesterday/Today/Blockers review, refresh, warnings, and output |
-| [Quick Review guide](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md) | Outcome review keys, report modes, recovery, and current exclusions |
-| [Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md) | Settings file, environment variables, precedence |
-| [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md) | Data flow, redaction boundary, what reports still contain |
-| [Security policy](https://github.com/mike840609/iiwi/blob/main/SECURITY.md) | Threat model and how to report a vulnerability |
-| [Usage guides](https://github.com/mike840609/iiwi/blob/main/docs/guides.md) | Reporting periods, subagents, repository grouping, output handling |
-| [Usage statistics](https://github.com/mike840609/iiwi/blob/main/docs/usage-statistics.md) | How the usage section is built, and its window caveat |
-| [Support and limits](https://github.com/mike840609/iiwi/blob/main/docs/limitations.md) | The per-harness caveat list |
-| [Architecture](https://github.com/mike840609/iiwi/blob/main/docs/architecture.md) | How a report is produced, end to end |
-| [Releasing](https://github.com/mike840609/iiwi/blob/main/docs/releasing.md) | How a release is cut |
+### Using Iiwi
+
+- [CLI reference](docs/cli-reference.md) — commands, flags, examples, and exit codes
+- [Daily Standup](docs/daily-standup.md) — Yesterday / Today / Blockers workflow
+- [Quick Review guide](docs/evidence-first-quick-review.md) — review controls and report flow
+- [Configuration](docs/configuration.md) — settings, models, paths, and environment variables
+- [Usage guides](docs/guides.md) — reporting periods, subagents, repository grouping, and output
+- [Privacy and security](docs/privacy.md) — what stays local and what reports can contain
+- [Support and limits](docs/limitations.md) — current harness-specific limits
+
+### Project details
+
+- [Architecture](docs/architecture.md) — how Iiwi produces a report
+- [Usage statistics](docs/usage-statistics.md) — how the usage section is built
+- [Security policy](SECURITY.md) — security model and vulnerability reporting
+- [Releasing](docs/releasing.md) — release process
 
 ## The name
 
