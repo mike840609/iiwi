@@ -63,7 +63,7 @@ iiwi                             # open the interactive menu
 
 From the menu, choose what you want to do and Iiwi walks you through the rest.
 
-For common shortcuts:
+Two useful shortcuts:
 
 ```bash
 iiwi daily                       # prepare today's standup update
@@ -76,17 +76,11 @@ Reports are saved under `reports/` by default.
 
 Run `iiwi` with no arguments when you do not want to remember commands or flags.
 
-The menu lets you:
+The menu lets you review recent work, prepare a standup, generate reports, check past
+reports, verify your setup, and change settings.
 
-- review recent AI coding activity;
-- prepare a daily standup;
-- generate a report;
-- open report history;
-- check your setup;
-- change settings.
-
-When generating a report, Iiwi shows the work it found first. You choose what belongs,
-review the final items, and then write the Markdown report.
+When generating a report, Iiwi shows the work it found first. Pick what belongs, edit
+anything you want to change, and Iiwi writes the Markdown report.
 
 For the full review workflow and keyboard controls, see the
 [Quick Review guide](docs/evidence-first-quick-review.md). For the daily flow, see the
@@ -94,20 +88,16 @@ For the full review workflow and keyboard controls, see the
 
 ## Use the CLI directly
 
-The interactive menu is the easiest place to start, but every main action also has a
-command:
+The interactive menu is the easiest place to start. If you prefer commands, these cover
+the most common cases:
 
 ```bash
 iiwi doctor                       # check your setup
-iiwi scan --period last-week      # see what Iiwi found
-iiwi report --period last-week    # generate a report
 iiwi daily                        # prepare a daily standup
-iiwi history                      # see reports already created
-iiwi update                       # check for a newer release
-iiwi run                          # use the step-by-step wizard
+iiwi report --period last-week    # generate last week's report
 ```
 
-Run `iiwi --help` for a quick list. See the
+Run `iiwi --help` for the rest, or see the
 [CLI reference](docs/cli-reference.md) for every command, flag, example, and exit code.
 
 ## Configuration
@@ -126,8 +116,9 @@ advanced setup.
 
 ## Privacy
 
-Iiwi reads your local session history and builds reports on your machine. Before session
-text is passed to a supported local CLI for drafting, common secret patterns are redacted.
+Iiwi reads and processes your session history on your machine. If you use AI drafting,
+Iiwi redacts common secret patterns before passing the text to the CLI you configured for
+drafting. What that CLI does next depends on its own configuration.
 
 Reports can still contain private goals, filenames, commands, and working paths, so review
 a report before sharing it.
@@ -137,22 +128,18 @@ and current limits.
 
 ## Documentation
 
-### Using Iiwi
+Most day-to-day details live in the guides below instead of this README:
 
 - [CLI reference](docs/cli-reference.md) — commands, flags, examples, and exit codes
-- [Daily Standup](docs/daily-standup.md) — Yesterday / Today / Blockers workflow
 - [Quick Review guide](docs/evidence-first-quick-review.md) — review controls and report flow
+- [Daily Standup](docs/daily-standup.md) — Yesterday / Today / Blockers workflow
 - [Configuration](docs/configuration.md) — settings, models, paths, and environment variables
-- [Usage guides](docs/guides.md) — reporting periods, subagents, repository grouping, and output
 - [Privacy and security](docs/privacy.md) — what stays local and what reports can contain
 - [Support and limits](docs/limitations.md) — current harness-specific limits
 
-### Project details
-
-- [Architecture](docs/architecture.md) — how Iiwi produces a report
-- [Usage statistics](docs/usage-statistics.md) — how the usage section is built
-- [Security policy](SECURITY.md) — security model and vulnerability reporting
-- [Releasing](docs/releasing.md) — release process
+For contributors and deeper technical details, see
+[Architecture](docs/architecture.md), [Security policy](SECURITY.md), and the rest of the
+[`docs/`](docs/) directory.
 
 ## The name
 
