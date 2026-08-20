@@ -2,6 +2,49 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Sessions that have not changed are no longer re-exported. Each normalized
+  session is kept in a small SQLite database and reused while the harness's own
+  update timestamp still matches, so a repeat report over the same week costs
+  almost nothing: on a real 228-session OpenCode week, a second scan went from
+  133.8s to 1.0s. The cache is invalidated by that timestamp and by the iiwi
+  version — an upgrade re-exports everything once rather than serving payloads
+  an older mapper built — and a session whose harness reports no update time is
+  never cached at all, since there would be no way to notice it had changed.
+  Every failure path (missing directory, unreadable file, locked or corrupt
+  database) falls back to exporting normally and adds one warning, so the cache
+  can slow a report down but never fail one or change what it says.
+  `--verbose` reports hits, misses, and stale entries.
+- The session cache stores session content as iiwi normalized it, unredacted,
+  in the platform cache directory (`~/Library/Caches/iiwi/sessions.db` on
+  macOS, `$XDG_CACHE_HOME/iiwi` on Linux) at mode `0600` inside a `0700`
+  directory. This is a new place that content rests, so it is switchable:
+  `IIWI_CACHE__ENABLED=false` exports everything every run and writes nothing.
+  Sanitized and raw payloads are kept under separate keys and never served
+  across that boundary. See `docs/privacy.md`.
+- Sessions are now exported concurrently, up to four at a time, instead of one
+  after another. On a real 228-session OpenCode week this cut the scan from
+  294s to 108s; the file-backed harnesses (Claude Code, Codex) gain less
+  because reading a transcript was never the slow part. Nothing else about a
+  scan changes: warnings, progress counting, report ordering, and every count
+  in the result are identical to what serial loading produced, because only
+  the waiting is parallel — filtering, repository resolution, and grouping all
+  still happen on one thread in session order. A session that fails to export
+  still fails on its own without taking the rest of the scan with it. The
+  worker count is fixed rather than configurable: measured on an 8-core
+  machine, eight workers (144s) and twelve (151s) were both *slower* than
+  four, because each OpenCode export is its own process.
+- `scan --verbose` and `report --verbose` now print a **Performance** summary
+  after the run: how long each stage took (session discovery, export,
+  repository resolution, evidence or transcript preparation, usage collection,
+  narration, render, write), the total, and the counts behind them — candidate,
+  loaded, and failed sessions, repositories, narrator transcript size, and which
+  narration CLI was resolved. It answers "why was that slow" without a profiler.
+  The summary goes to stderr, so `report --dry-run --verbose > report.md` still
+  writes a clean report and `scan --json --verbose | jq` still gets valid JSON.
+  Runs without `--verbose` are unchanged.
+
 ## 0.15.0 - 2026-08-19
 
 - Narration is provider-agnostic: it can now run through `claude -p` or

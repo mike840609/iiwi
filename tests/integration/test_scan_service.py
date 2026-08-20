@@ -1,7 +1,14 @@
+import threading
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from iiwi.errors import SessionParseError
+import pytest
+
+import iiwi.services.scan as scan_module
+from iiwi.cache import CachingSessionSource, SessionCache, adapter_version
+from iiwi.errors import HarnessSourceError, SessionParseError
+from iiwi.metrics import MetricStage, PerformanceMetrics
 from iiwi.models.repository import RepositoryIdentity, RepositoryIdentityType
 from iiwi.models.session import (
     ActivityType,
@@ -11,7 +18,7 @@ from iiwi.models.session import (
 )
 from iiwi.models.time_range import DateRange
 from iiwi.progress import ProgressStage
-from iiwi.services.scan import ScanService
+from iiwi.services.scan import ScanResult, ScanService
 from tests.progress import RecordingProgressReporter
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -549,3 +556,465 @@ def test_scan_drops_an_iiwi_authored_session_before_any_warning_fires() -> None:
 
     assert result.resolved_sessions == []
     assert result.warnings == []
+
+
+# --- performance instrumentation ----------------------------------------------
+
+
+def scan_with_metrics(source: FakeSource) -> PerformanceMetrics:
+    metrics = PerformanceMetrics()
+    ScanService(
+        source=source,
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=TZ),
+            until=datetime(2026, 7, 27, tzinfo=TZ),
+        ),
+        resolver=StaticResolver(),
+        metrics=metrics,
+    ).scan()
+    return metrics
+
+
+def test_a_scan_times_discovery_export_and_repository_resolution_separately() -> None:
+    """Export is the suspected cost; it must be separable from what surrounds it."""
+
+    metrics = scan_with_metrics(FakeSource())
+
+    assert set(metrics.durations) == {
+        MetricStage.DISCOVER_SESSIONS,
+        MetricStage.EXPORT_SESSIONS,
+        MetricStage.RESOLVE_REPOSITORIES,
+    }
+
+
+def test_a_scan_records_the_counts_that_explain_its_timings() -> None:
+    source = FakeSource()
+
+    metrics = scan_with_metrics(source)
+
+    assert metrics.counts == {
+        "candidate_sessions": 3,
+        "loaded_sessions": 3,
+        "failed_sessions": 0,
+        "repositories": 1,
+    }
+
+
+def test_a_failed_export_is_counted_and_still_timed() -> None:
+    """A harness failing slowly is a performance problem, not just a warning."""
+
+    source = FakeSource()
+    source.fail_session_ids = {"bad"}
+
+    metrics = scan_with_metrics(source)
+
+    assert metrics.counts["candidate_sessions"] == 3
+    assert metrics.counts["loaded_sessions"] == 2
+    assert metrics.counts["failed_sessions"] == 1
+    assert metrics.durations[MetricStage.EXPORT_SESSIONS] > 0
+
+
+def test_a_scan_with_no_sessions_records_zeroed_counts_not_missing_ones() -> None:
+    source = FakeSource()
+    source.descriptors = []
+
+    metrics = scan_with_metrics(source)
+
+    assert metrics.counts == {
+        "candidate_sessions": 0,
+        "loaded_sessions": 0,
+        "failed_sessions": 0,
+        "repositories": 0,
+    }
+    assert MetricStage.EXPORT_SESSIONS not in metrics.durations
+
+
+def test_a_scan_without_a_collector_still_scans() -> None:
+    """Instrumentation is optional wiring, never a precondition for scanning."""
+
+    result = ScanService(
+        source=FakeSource(),
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=TZ),
+            until=datetime(2026, 7, 27, tzinfo=TZ),
+        ),
+        resolver=StaticResolver(),
+    ).scan()
+
+    assert result.loaded_session_count == 3
+
+
+# --- concurrent session loading -----------------------------------------------
+
+
+def scan_period() -> DateRange:
+    return DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ),
+        until=datetime(2026, 7, 27, tzinfo=TZ),
+    )
+
+
+def probe_session(session_id: str) -> AgentSession:
+    return AgentSession(
+        harness="opencode",
+        session_id=session_id,
+        activities=[
+            SessionActivity(
+                activity_id=f"{session_id}:a1",
+                activity_type=ActivityType.USER_MESSAGE,
+                timestamp=datetime(2026, 7, 22, tzinfo=TZ),
+                content="Add weekly report generation",
+            )
+        ],
+    )
+
+
+class BarrierSource:
+    """A source whose loads block until `parties` of them are in flight at once.
+
+    A barrier rather than a sleep: if loading ever went back to serial the
+    barrier could not fill, so a regression fails the test outright instead of
+    merely making it slower, and a loaded CI box cannot make it flaky.
+    """
+
+    def __init__(
+        self,
+        session_ids: list[str],
+        *,
+        parties: int,
+        failing: frozenset[str] = frozenset(),
+        timeout: float = 10.0,
+    ) -> None:
+        self.descriptors = [
+            SessionDescriptor(harness="opencode", session_id=session_id)
+            for session_id in session_ids
+        ]
+        self._barrier = threading.Barrier(parties, timeout=timeout)
+        self._failing = failing
+        self._lock = threading.Lock()
+        self._in_flight = 0
+        self.max_in_flight = 0
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return self.descriptors
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        with self._lock:
+            self._in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self._in_flight)
+        try:
+            self._barrier.wait()
+            if descriptor.session_id in self._failing:
+                raise SessionParseError(f"failed export: {descriptor.session_id}")
+            return probe_session(descriptor.session_id)
+        finally:
+            with self._lock:
+                self._in_flight -= 1
+
+
+class ReverseOrderSource:
+    """A source that finishes its loads in reverse descriptor order.
+
+    Exists to separate two things a serial loader conflated: the order loads
+    *complete* in, and the order their results are *handled* in. Only the second
+    is a promise this service makes.
+    """
+
+    def __init__(self, session_ids: list[str], *, timeout: float = 10.0) -> None:
+        self.descriptors = [
+            SessionDescriptor(harness="opencode", session_id=session_id)
+            for session_id in session_ids
+        ]
+        self._last_loaded = threading.Event()
+        self._timeout = timeout
+        self._lock = threading.Lock()
+        self.completion_order: list[str] = []
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return self.descriptors
+
+    def load(self, descriptor: SessionDescriptor) -> AgentSession:
+        first = self.descriptors[0].session_id
+        last = self.descriptors[-1].session_id
+        if descriptor.session_id == first:
+            self._last_loaded.wait(self._timeout)
+        with self._lock:
+            self.completion_order.append(descriptor.session_id)
+        if descriptor.session_id == last:
+            self._last_loaded.set()
+        return probe_session(descriptor.session_id)
+
+
+def run_scan(source, *, progress=None, metrics=None) -> ScanResult:
+    return ScanService(
+        source=source,
+        period=scan_period(),
+        resolver=StaticResolver(),
+        progress=progress,
+        metrics=metrics,
+    ).scan()
+
+
+def test_sessions_are_loaded_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The point of the change: four exports wait on each other, not in a queue."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = BarrierSource(["s1", "s2", "s3", "s4"], parties=4)
+
+    result = run_scan(source)
+
+    assert source.max_in_flight == 4
+    assert result.loaded_session_count == 4
+
+
+def test_concurrency_stays_within_the_worker_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unbounded loading would launch one coding-agent subprocess per session."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 2)
+    source = BarrierSource(["s1", "s2", "s3", "s4", "s5", "s6"], parties=2)
+
+    result = run_scan(source)
+
+    assert source.max_in_flight == 2
+    assert result.loaded_session_count == 6
+
+
+def test_results_follow_descriptor_order_not_completion_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = ReverseOrderSource(["s1", "s2", "s3"])
+
+    result = run_scan(source)
+
+    assert source.completion_order == ["s2", "s3", "s1"]
+    assert [
+        resolved.session.session_id for resolved in result.resolved_sessions
+    ] == ["s1", "s2", "s3"]
+
+
+def test_warnings_follow_descriptor_order_not_completion_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Warning order is user-visible output; concurrency must not shuffle it."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = BarrierSource(
+        ["s1", "s2", "s3", "s4"],
+        parties=4,
+        failing=frozenset({"s1", "s3"}),
+    )
+
+    result = run_scan(source)
+
+    assert [warning.split()[1] for warning in result.warnings] == ["s1", "s3"]
+
+
+def test_progress_still_advances_once_per_descriptor_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    progress = RecordingProgressReporter()
+
+    run_scan(ReverseOrderSource(["s1", "s2", "s3"]), progress=progress)
+
+    advances = [event[1] for event in progress.events if event[0] == "advance"]
+    assert advances == [1, 2, 3]
+
+
+def test_an_early_failure_does_not_cancel_the_sessions_queued_behind_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`Executor.map` would end the run here; every later session must survive."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = BarrierSource(["s1", "s2", "s3", "s4"], parties=4, failing=frozenset({"s1"}))
+
+    result = run_scan(source)
+
+    assert result.failed_session_count == 1
+    assert [
+        resolved.session.session_id for resolved in result.resolved_sessions
+    ] == ["s2", "s3", "s4"]
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_the_scan_result_is_identical_at_every_worker_count(
+    workers: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The acceptance criterion: parallelism changes the clock, nothing else."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 1)
+    serial_source = FakeSource()
+    serial_source.fail_session_ids = {"bad"}
+    serial = run_scan(serial_source)
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", workers)
+    parallel_source = FakeSource()
+    parallel_source.fail_session_ids = {"bad"}
+    parallel = run_scan(parallel_source)
+
+    assert parallel == serial
+
+
+def test_the_export_metric_measures_waiting_not_the_sum_across_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Summing per-session durations would report more time than the scan took.
+
+    Deliberately relative rather than an absolute number of seconds: the claim
+    is that the stage cannot outrun the clock, which holds on any machine.
+    """
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    metrics = PerformanceMetrics()
+    source = BarrierSource(["s1", "s2", "s3", "s4"], parties=4)
+
+    started = time.perf_counter()
+    run_scan(source, metrics=metrics)
+    elapsed = time.perf_counter() - started
+
+    assert metrics.durations[MetricStage.EXPORT_SESSIONS] <= elapsed
+
+
+def test_every_load_failing_still_raises_rather_than_reporting_an_empty_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    source = BarrierSource(
+        ["s1", "s2", "s3", "s4"],
+        parties=4,
+        failing=frozenset({"s1", "s2", "s3", "s4"}),
+    )
+
+    with pytest.raises(HarnessSourceError):
+        run_scan(source)
+
+
+def test_an_unexpected_load_error_still_surfaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the two documented failures are per-session; anything else is a bug."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+
+    class BrokenSource:
+        descriptors = [SessionDescriptor(harness="opencode", session_id="s1")]
+
+        def discover(self, period: DateRange) -> list[SessionDescriptor]:
+            return self.descriptors
+
+        def load(self, descriptor: SessionDescriptor) -> AgentSession:
+            raise RuntimeError("mapper blew up")
+
+    with pytest.raises(RuntimeError, match="mapper blew up"):
+        run_scan(BrokenSource())
+
+
+# --- the session cache, seen from a whole scan --------------------------------
+
+
+class StampedSource:
+    """A source whose descriptors carry update times, so they can be cached."""
+
+    def __init__(self, updated: dict[str, datetime]) -> None:
+        self.updated = dict(updated)
+        self.load_calls: list[str] = []
+
+    def discover(self, period: DateRange) -> list[SessionDescriptor]:
+        return [
+            SessionDescriptor(harness="opencode", session_id=session_id, updated_at=stamp)
+            for session_id, stamp in self.updated.items()
+        ]
+
+    def load(self, target: SessionDescriptor) -> AgentSession:
+        self.load_calls.append(target.session_id)
+        return probe_session(target.session_id)
+
+
+def cached_scan(source: StampedSource, path, **kwargs) -> ScanResult:
+    return run_scan(
+        CachingSessionSource(
+            source=source,
+            cache=SessionCache(path=path, adapter_version=adapter_version(sanitized=False)),
+            **kwargs,
+        )
+    )
+
+
+def test_a_cached_scan_produces_the_same_result_as_an_uncached_one(tmp_path) -> None:
+    """The acceptance criterion: the cache changes the clock, not the report."""
+
+    stamp = datetime(2026, 7, 22, tzinfo=TZ)
+    uncached = run_scan(StampedSource({"s1": stamp, "s2": stamp, "s3": stamp}))
+    source = StampedSource({"s1": stamp, "s2": stamp, "s3": stamp})
+    cached_scan(source, tmp_path / "c.db")
+
+    warm = cached_scan(source, tmp_path / "c.db")
+
+    assert warm == uncached
+
+
+def test_a_warm_scan_exports_nothing(tmp_path) -> None:
+    stamp = datetime(2026, 7, 22, tzinfo=TZ)
+    source = StampedSource({"s1": stamp, "s2": stamp, "s3": stamp})
+    cached_scan(source, tmp_path / "c.db")
+    source.load_calls.clear()
+
+    result = cached_scan(source, tmp_path / "c.db")
+
+    assert source.load_calls == []
+    assert result.loaded_session_count == 3
+
+
+def test_a_broken_cache_warns_through_the_scan_result(tmp_path) -> None:
+    """A cache problem is worth saying out loud, and worth saying only once."""
+
+    path = tmp_path / "c.db"
+    path.write_bytes(b"not a database")
+    stamp = datetime(2026, 7, 22, tzinfo=TZ)
+    source = StampedSource({"s1": stamp, "s2": stamp})
+
+    result = cached_scan(source, path)
+
+    assert result.loaded_session_count == 2
+    assert [w for w in result.warnings if "session cache" in w]
+    assert len([w for w in result.warnings if "session cache" in w]) == 1
+
+
+def test_cache_counters_reach_the_performance_summary(tmp_path) -> None:
+    stamp = datetime(2026, 7, 22, tzinfo=TZ)
+    source = StampedSource({"s1": stamp, "s2": stamp})
+    cached_scan(source, tmp_path / "c.db")
+    metrics = PerformanceMetrics()
+
+    cached_scan(source, tmp_path / "c.db", metrics=metrics)
+
+    assert metrics.counts["cache_hits"] == 2
+
+
+def test_a_cached_scan_still_loads_concurrently(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Caching sits inside the thread pool, so a cold scan keeps its parallelism."""
+
+    monkeypatch.setattr(scan_module, "_SESSION_LOAD_WORKERS", 4)
+    barrier = BarrierSource(["s1", "s2", "s3", "s4"], parties=4)
+    for target in barrier.descriptors:
+        target.updated_at = datetime(2026, 7, 22, tzinfo=TZ)
+
+    result = run_scan(
+        CachingSessionSource(
+            source=barrier,
+            cache=SessionCache(
+                path=tmp_path / "c.db",
+                adapter_version=adapter_version(sanitized=False),
+            ),
+        )
+    )
+
+    assert barrier.max_in_flight == 4
+    assert result.loaded_session_count == 4

@@ -210,6 +210,29 @@ The transcript is a temporary file that is removed after the invocation, and the
 prose returns to the same process. Use `--no-llm` to produce the deterministic
 structured report without invoking a narration CLI at all.
 
+## The session cache
+
+Iiwi stores each normalized session in a SQLite database so a repeat run does not
+re-export sessions that have not changed. This is a real change in where your data
+rests: content that previously existed only for the duration of a run is now written
+to disk.
+
+- **Location.** `sessions.db` in the platform cache directory — `~/Library/Caches/iiwi`
+  on macOS, `$XDG_CACHE_HOME/iiwi` (usually `~/.cache/iiwi`) on Linux. `IIWI_CACHE_FILE`
+  overrides it.
+- **Permissions.** The file is created mode `0600` inside a `0700` directory, the same
+  as every other file iiwi writes.
+- **Contents.** The normalized session, *before* the redaction that runs when a report is
+  written. Redaction happens on the way into a report, not on the way into the cache, so
+  the cache holds the same unredacted material the harness handed over — the same
+  material already sitting in `~/.claude/projects`, the OpenCode store, or `~/.codex`.
+  With `--sanitize`, OpenCode's redacted export is what gets stored; sanitized and raw
+  payloads are kept under separate keys and are never served across that boundary.
+- **Turning it off.** Set `IIWI_CACHE__ENABLED=false` (or `cache.enabled` in the settings
+  file). Every run then exports every session and writes nothing to disk.
+- **Clearing it.** Delete the file. Nothing depends on it; the next run rebuilds what it
+  needs.
+
 ## Reports remain sensitive
 
 A generated report can still reveal proprietary information, including:

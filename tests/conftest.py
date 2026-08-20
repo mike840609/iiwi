@@ -38,6 +38,11 @@ def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     the developer's real user-data directory, so running the suite would delete
     their saved standup review state.
 
+    IIWI_CACHE_FILE is the same class of hazard pointing the other way: the
+    session cache is on by default, so an unset path would have the suite write
+    fixture sessions into the developer's real cache — and then serve them back
+    to a later run of a test that meant to exercise a cold load.
+
     Per-test monkeypatch.setenv calls take precedence and will override this default.
     """
 
@@ -45,6 +50,7 @@ def _isolate_settings_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
     monkeypatch.setenv("IIWI_STATE_FILE", str(tmp_path / "state.json"))
     monkeypatch.setenv("IIWI_DAILY_STATE_DIR", str(tmp_path / "daily"))
+    monkeypatch.setenv("IIWI_CACHE_FILE", str(tmp_path / "cache" / "sessions.db"))
 
 
 @pytest.fixture(autouse=True)
