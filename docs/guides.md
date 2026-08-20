@@ -1,7 +1,7 @@
 # Usage guides
 
-Deep dives for the topics the README only summarizes. For the command options
-and the three rule set, see the README's [Command reference](../README.md#command-reference).
+Deep dives for the topics the README only summarizes. For every command, option,
+and exit code, see the [CLI reference](cli-reference.md).
 
 ## Reporting periods
 
@@ -59,14 +59,18 @@ repository, it stays linked to that repository.
 
 ## Narrative report
 
-`report` defaults to a narrative weekly review written by a local narration
-CLI — `opencode`, `claude`, or `codex`, resolved from the harness you read
-sessions from unless `narrator.provider` overrides it (see
+`report` defaults to a narrative weekly review written by a narration CLI —
+`opencode`, `claude`, or `codex`, resolved from the harness you read sessions from
+unless `narrator.provider` overrides it (see
 [Narrator](configuration.md#narrator)). Iiwi builds a grouped, redacted raw
-transcript from the session content and hands it to that CLI with a
-summarization prompt; the prose comes back and is wrapped under the standard
-report header. No network request, API key, or other service is involved — a
-CLI you already have installed writes the report.
+transcript from the session content and passes it to that locally launched CLI with a
+summarization prompt; the prose comes back and is wrapped under the standard report
+header.
+
+Iiwi itself does not read a model API key or make a model API request. The narration CLI
+is a separate program, however, and may use its own credentials, provider, and network
+connection according to that CLI's configuration. See [Privacy and security](privacy.md)
+for the full data boundary.
 
 ```bash
 iiwi report --period last-week
@@ -112,7 +116,7 @@ output path after a successful report.
 
 ## OpenCode privacy modes
 
-`iiwi report --days 7` runs the resolved local narration CLI over a
-raw OpenCode export transcript. Add `--sanitize` to ask OpenCode to redact the
-export; the narrative still runs, but the transcript loses most work details.
-Add `--no-llm` to produce the deterministic structured report instead.
+`iiwi report --days 7` runs the resolved narration CLI over a raw OpenCode export
+transcript. Add `--sanitize` to ask OpenCode to redact the export; the narrative still
+runs, but the transcript loses most work details. Add `--no-llm` to produce the
+deterministic structured report instead.

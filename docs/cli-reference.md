@@ -31,6 +31,10 @@ current flow. The main screen offers Review Activity, Daily Standup, Generate Re
 History, Check Setup, and Settings. Completed actions return to an interactive screen or
 the main menu instead of requiring a new process.
 
+On the main menu, `1` through `6` select the matching menu item directly, `?` opens help,
+and `q` quits. These shortcuts are optional; arrow keys or `j/k` plus Enter are enough for
+the whole menu.
+
 Generate Report opens a summary before scanning. Harness, period, detail, subagent
 inclusion, narrative mode, and sanitize mode can be changed independently;
 only harness, period, subagent inclusion, and sanitize changes invalidate a cached scan.
@@ -38,19 +42,45 @@ When editing harness or period, Enter keeps the value already shown in the draft
 is shown as unavailable for non-OpenCode harnesses rather than acting like a selectable
 setting that can change those sources.
 
+The Generate Report screen uses `←/→` to change the focused value, `r` to review the
+sessions currently in scope, `g` to generate, `?` to show the fuller key guide, and `b` to
+go back. Less common settings live under **Advanced settings** so the default screen stays
+short.
+
+### Review Sessions
+
 Review Sessions groups the scanned activity by repository. On a repository row, `Space`
 toggles the whole repository and `Enter` expands or collapses it. Inside an expanded
 repository, `Space` toggles an individual session and `p` opens a scrollable preview of
 that session's transcript (redacted before display). The repository marker is derived from
 its children: `●` means all selected, `○` means none selected, and `◐` means partially
-selected. `a` selects all sessions, `n` selects none, `g` synthesizes the selected
-sessions and opens Quick Review, and `b` returns to the setup summary. A report cannot
-be generated with zero selected sessions. A selection larger than the Quick Review
-evidence budget is measured before any model call is spent and reported as a message
-naming how many sessions synthesis can carry; `G` groups those and leaves the rest as
-ungrouped candidates rather than requiring the selection to be cut by hand. Long session
-lists use the terminal height as a viewport, keeping the active row visible and showing
-`↑ N more` / `↓ N more` when rows exist outside the current window.
+selected.
+
+The available shortcuts are:
+
+```text
+↑↓ jk Move │ Enter Expand/collapse │ Space Select │ p Inspect │ / Search
+a All │ n None │ e Exclude repository │ g Report │ G Group anyway │ ? More │ b Back
+```
+
+`/` starts a search over repository names and session titles, so a long activity list can
+be narrowed without changing the underlying selection. `a` selects every visible session,
+`n` selects none, and `?` shows the less common controls that do not fit in the compact
+footer.
+
+`g` synthesizes the selected sessions and opens Quick Review. A report cannot be generated
+with zero selected sessions. A selection larger than the Quick Review evidence budget is
+measured before any model call is spent and reported as a message naming how many sessions
+synthesis can carry; `G` proceeds with that large selection, grouping what fits and leaving
+the rest as ungrouped candidates rather than requiring the selection to be cut by hand.
+
+On a repository row, `e` adds that repository to the persistent
+`report.exclude_repositories` setting and rescans, so it vanishes from the review and from
+every future scan. The same setting can be edited with
+`config set report.exclude_repositories ...` and reset with `config unset`.
+
+Long session lists use the terminal height as a viewport, keeping the active row visible
+and showing `↑ N more` / `↓ N more` when rows exist outside the current window.
 
 The selection is remembered per harness, period, and subagent setting in a local state
 file. A rescan — including one triggered by changing a setting that clears the scan —
@@ -69,13 +99,14 @@ The review keys are:
 
 ```text
 Space Include/exclude │ e Edit │ J/K Reorder │ v Evidence │ s Split │ a Add
-p Preview │ g Generate │ b Back
+p Preview │ g Generate │ ? Help │ b Back
 ```
 
 `Space` includes or excludes the focused outcome. `e` edits its title, status, and
 Impact. `J/K` reorders it, `v` expands its evidence, and `s` splits a merged
 cross-repository outcome back into its traceable source groups. `a` creates a
-User-added outcome. Blockers and Next week are optional editable rows.
+User-added outcome. Blockers and Next week are optional editable rows. `?` opens the
+screen-specific help without changing the draft.
 
 `p Preview` renders the current in-memory draft without writing a file; `b` returns
 from the preview with edits intact. `g Generate` writes the reviewed draft. A
@@ -84,16 +115,21 @@ failure offers Retry and an explicit, labeled session-based report fallback. Par
 synthesis opens Quick Review with the successful outcomes and the remaining
 Ungrouped candidates.
 
-On a repository row, `e` adds the repository to the persistent
-`report.exclude_repositories` setting and rescans, so the repository vanishes from the
-review and from every future scan. The same setting can be edited with
-`config set report.exclude_repositories ...` and reset with `config unset`.
-
 Interactive reports use the normal default output path. If that path already exists, the
 recovery screen offers **Overwrite once**; it does not silently replace the file. After a
 successful report, the result screen can return to the main menu, start another report
-with the same option values, or print the report path. The main menu also lists past
-reports under **History**, where Enter shows a report's recorded output path.
+with the same option values, or print the report path.
+
+### History and Settings
+
+The interactive **History** screen supports `↑/↓` or `j/k` to move, `Enter` to show the
+recorded output path, `PgUp/PgDn` to move by a page, `g/G` to jump to the top or bottom,
+`?` for help, and `b` to go back.
+
+The interactive **Settings** screen uses `↑/↓` or `j/k` to move, `←/→` to cycle choice
+values, `Enter` to edit a value, `?` for help, and `b` to go back. While editing a value,
+Enter keeps the entered value and Esc cancels. See the
+[configuration guide](configuration.md) for setting semantics and precedence.
 
 ## daily
 
@@ -105,7 +141,8 @@ one captured current time.
 
 Daily Quick Review has fixed Yesterday, Today, and Blockers sections. It supports
 include/exclude, statement edit, section-local reorder, Evidence, manual Add,
-Preview, Generate, and Back. `p Preview` renders without writing; `g Generate`
+Preview, Generate, Help, and Back. The key layout is the same as ordinary Quick Review
+except Daily has no Split action. `p Preview` renders without writing; `g Generate`
 writes the same reviewed bytes to `daily-standup-YYYY-MM-DD.md` and safely
 replaces that date's previous Daily output. Missing harnesses remain visible as
 artifact coverage warnings. See the [Daily Standup guide](daily-standup.md) for
@@ -232,12 +269,16 @@ report that triggered it.
 ## update
 
 `update` compares the installed version against the latest release on PyPI and
-accepts `--json`. It is the only command that touches the network, and it only
-does so when run. When an update is available, the command prints the new
-version and the upgrade command and exits with code 8; up to date means exit 0.
-An unreachable index is not an error — offline machines are legitimate — so a
-failed check prints the reason and exits 0, and in JSON mode emits
-`{"error": "..."}`.
+accepts `--json`. It is Iiwi's only built-in network check, and it only runs when the
+`update` command is invoked. Report generation itself does not call a model API directly,
+but a configured narration CLI launched by `report` or `daily` may use its own provider,
+credentials, and network connection. See [Privacy and security](privacy.md) for that
+boundary.
+
+When an update is available, the command prints the new version and the upgrade command
+and exits with code 8; up to date means exit 0. An unreachable index is not an error —
+offline machines are legitimate — so a failed check prints the reason and exits 0, and in
+JSON mode emits `{"error": "..."}`.
 
 ## Exit codes
 
