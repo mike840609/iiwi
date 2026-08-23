@@ -167,3 +167,18 @@ def test_discover_excludes_a_session_created_after_the_period(tmp_path: Path) ->
     source = ClaudeCodeFileSource(projects_directory=root)
 
     assert source.discover(PERIOD) == []
+
+
+def test_subagent_meta_with_invalid_utf8_does_not_crash_discovery(tmp_path: Path) -> None:
+    source_dir = tmp_path / "projects" / "p1"
+    subagent_dir = source_dir / "subagents"
+    subagent_dir.mkdir(parents=True)
+    jsonl_file = subagent_dir / "agent-1.jsonl"
+    jsonl_file.write_text('{"type": "user"}\n', encoding="utf-8")
+    meta_file = subagent_dir / "agent-1.meta.json"
+    meta_file.write_bytes(b'{"description": "\xff\xfe invalid"}')
+
+    source = ClaudeCodeFileSource(projects_directory=tmp_path / "projects")
+    title = source._subagent_title(jsonl_file)
+    assert title is None or isinstance(title, str)
+
