@@ -446,6 +446,37 @@ def test_a_reset_running_total_is_taken_at_face_value() -> None:
     }
 
 
+def test_compaction_resets_input_tokens_without_inflating_output_tokens() -> None:
+    session = _map(
+        [
+            _turn_context("2026-07-21T01:00:00.000Z", "gpt-5.6-sol"),
+            _record(
+                "2026-07-21T01:00:01.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "first"},
+            ),
+            _token_count(
+                "2026-07-21T01:00:02.000Z", {"input_tokens": 500, "output_tokens": 50}
+            ),
+            _record(
+                "2026-07-21T01:00:03.000Z",
+                "event_msg",
+                {"type": "agent_message", "message": "after compaction"},
+            ),
+            _token_count(
+                "2026-07-21T01:00:04.000Z", {"input_tokens": 20, "output_tokens": 60}
+            ),
+        ]
+    )
+
+    assert session.activities[1].metadata["usage"] == {
+        "input_tokens": 20,
+        "output_tokens": 10,
+    }
+    assert session.token_usage.output_tokens == 60
+
+
+
 def test_usage_follows_the_model_the_turn_context_names() -> None:
     session = _map(
         [
