@@ -78,8 +78,8 @@ class ClaudeCodeFileSource(HarnessSessionSource):
     def _subagent_title(self, path: Path) -> str | None:
         meta_path = path.with_suffix(".meta.json")
         try:
-            payload = json.loads(meta_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            payload = json.loads(meta_path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, ValueError):
             return None
         if not isinstance(payload, Mapping):
             return None

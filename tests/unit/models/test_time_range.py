@@ -61,3 +61,12 @@ def test_current_week_rejects_a_naive_clock() -> None:
 
     with pytest.raises(ValueError):
         DateRange.current_week(now=datetime(2026, 8, 8, 15, 30))
+
+
+def test_current_week_at_monday_midnight_returns_previous_week() -> None:
+    monday_midnight = datetime(2026, 8, 17, 0, 0, 0, tzinfo=TZ)
+    range_ = DateRange.current_week(now=monday_midnight)
+
+    assert range_.since == datetime(2026, 8, 10, 0, 0, 0, tzinfo=TZ)
+    assert range_.until == monday_midnight
+

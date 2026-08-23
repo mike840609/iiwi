@@ -56,4 +56,6 @@ class DateRange(BaseModel):
             second=0,
             microsecond=0,
         )
+        if now <= monday:
+            return cls(since=monday - timedelta(days=7), until=now)
         return cls(since=monday, until=now)

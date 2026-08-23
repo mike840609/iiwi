@@ -629,3 +629,48 @@ def test_settings_table_fully_renders_a_long_key_at_80_columns() -> None:
 
     assert "harnesses.opencode.cli.timeout_seconds" in collapsed
     assert "…" not in output
+
+
+def test_scan_result_redacts_repository_id() -> None:
+    stream = StringIO()
+    console = Console(file=stream, color_system=None, force_terminal=False)
+    reporter = ConsoleReporter(console=console)
+
+    secret_repo_id = "git:https://user:ghp_secretpassword123456789012@github.com/org/repo"
+    identity = RepositoryIdentity(
+        repository_id=secret_repo_id,
+        display_name="repo",
+        identity_type=RepositoryIdentityType.GIT_REMOTE,
+        normalized_remote="github.com/org/repo",
+        resolution_method="test",
+    )
+    resolved = [
+        ResolvedSession(
+            session=AgentSession(
+                harness="claude-code",
+                session_id="s1",
+                created_at=datetime(2026, 7, 21, tzinfo=SCAN_TZ),
+                updated_at=datetime(2026, 7, 21, tzinfo=SCAN_TZ),
+            ),
+            repository=identity,
+        )
+    ]
+    scan_result = ScanResult(
+        period=DateRange(
+            since=datetime(2026, 7, 20, tzinfo=SCAN_TZ),
+            until=datetime(2026, 7, 27, tzinfo=SCAN_TZ),
+        ),
+        candidate_session_count=1,
+        loaded_session_count=1,
+        failed_session_count=0,
+        resolved_sessions=resolved,
+        sessions_by_repository={secret_repo_id: resolved},
+    )
+
+    reporter.scan_result(scan_result)
+
+    output = stream.getvalue()
+    assert "ghp_secretpassword123456789012" not in output
+    assert "[REDACTED]" in output
+
+

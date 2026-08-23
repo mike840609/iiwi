@@ -13,16 +13,19 @@ _PRIVATE_KEY = re.compile(
 )
 _URL_PASSWORD = re.compile(r"(?P<prefix>\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)[^\s/@]+@", re.I)
 _CURL_USER_PASSWORD = re.compile(r"(?P<prefix>\b(?:curl\s+)?-u\s+[^\s:]+:)[^\s]+", re.I)
-_AUTHORIZATION = re.compile(r"(?P<prefix>\b(?:Bearer|Basic)\s+)[^\s,;\"']+", re.I)
-_GITHUB_TOKEN = re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b")
+_AUTHORIZATION = re.compile(
+    r"(?P<prefix>\b(?:Bearer|Basic)\s+[\"']?)[^\s,;\"']+",
+    re.I,
+)
+_GITHUB_TOKEN = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b")
 _PROVIDER_KEY = re.compile(r"\bsk-(?:proj-|ant-[A-Za-z0-9_-]*-)?[A-Za-z0-9_-]{16,}\b")
 _AWS_ACCESS_KEY = re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")
 _AWS_SECRET_ASSIGNMENT = re.compile(
-    r"(?P<prefix>\b(?:AWS_SECRET_ACCESS_KEY|aws_secret_access_key)\s*[=:]\s*)[^\s,;]+",
+    r"(?P<prefix>[\"']?\b(?:AWS_SECRET_ACCESS_KEY|aws_secret_access_key)\b[\"']?\s*[=:]\s*[\"']?)[^\s,;\"'}]+",
     re.I,
 )
 _ASSIGNMENT = re.compile(
-    r"(?P<prefix>\b(?:password|passwd|pwd|token|secret|api[_-]?key)\s*[=:]\s*)[^\s,;]+",
+    r"(?P<prefix>[\"']?\b(?:password|passwd|pwd|token|secret|api[_-]?key)\b[\"']?\s*[=:]\s*[\"']?)[^\s,;\"'}]+",
     re.I,
 )
 _JWT = re.compile(r"\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")

@@ -65,6 +65,8 @@ def build_grouped_transcript(
     ]
 
     for _repository_id, resolved_items in ordered_groups:
+        if not resolved_items:
+            continue
         first = resolved_items[0].repository
         lines.append(f"## Project: {first.display_name}")
         lines.append("")

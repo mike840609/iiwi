@@ -69,7 +69,7 @@ class CodexSource(HarnessSessionSource):
                 return discover_threads(
                     database, period, root_only=self._root_only
                 )
-            except sqlite3.Error:
+            except (sqlite3.Error, Exception):
                 # A drifted schema or a locked database must not lose the week's
                 # work: the rollout files carry the same facts, only slower.
                 pass

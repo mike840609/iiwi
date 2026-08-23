@@ -277,3 +277,14 @@ def test_usage_section_is_omitted_when_no_usage_text() -> None:
     )
 
     assert "## Usage" not in out
+
+
+def test_build_grouped_transcript_handles_empty_repository_sessions() -> None:
+    lines = build_grouped_transcript(
+        sessions_by_repository={"repo-empty": []},
+        period=_period(),
+        generated_at=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        include_subagents=False,
+        sanitized=False,
+    )
+    assert "- Projects: 1" in lines
