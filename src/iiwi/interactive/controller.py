@@ -933,7 +933,7 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
                 )
             except IiwiError as exc:
                 state.error = _ErrorState(
-                    kind="report-source",
+                    kind="exclude-source",
                     title="Could not exclude repository",
                     detail=str(exc),
                 )
@@ -1514,6 +1514,8 @@ def _outcome_review_key(
 
 
 def _error_options(error: _ErrorState) -> list[str]:
+    if error.kind == "exclude-source":
+        return ["Back"]
     if error.kind in {"doctor-result"}:
         return ["Main menu"]
     if error.kind in {"new-report-start", "activity-start"}:
@@ -1551,6 +1553,8 @@ def _error_options(error: _ErrorState) -> list[str]:
 
 
 def _error_back_screen(error: _ErrorState) -> Screen:
+    if error.kind == "exclude-source":
+        return Screen.SESSION_REVIEW
     if error.kind == "report-path":
         return Screen.REPORT_RESULT
     if error.kind == "history-path":
