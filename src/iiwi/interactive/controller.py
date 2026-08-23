@@ -1988,7 +1988,11 @@ def _dispatch(
     actions: InteractiveActions,
     console: Console,
 ) -> None:
-    if _exact_char(key, "?") and state.screen is not Screen.HELP:
+    if (
+        _exact_char(key, "?")
+        and state.screen is not Screen.HELP
+        and not state.searching
+    ):
         _open_help(state)
         return
     if state.screen is Screen.MAIN:

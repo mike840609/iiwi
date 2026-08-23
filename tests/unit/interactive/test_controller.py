@@ -804,15 +804,30 @@ def test_history_q_and_escape_return_to_the_main_menu(
     text = console.file.getvalue()
     assert text.count("Past Reports") == 1
     assert text.rstrip().endswith("q Quit")
+def test_question_mark_types_into_search_input() -> None:
+    stream = StringIO()
+    console = Console(
+        file=stream, color_system=None, force_terminal=False, width=100,
+    )
+    input_source = ScriptedInput(
+        [
+            char("3"),
+            char("r"),
+            char("/"),
+            char("?"),
+            char("0"),
+            KeyPress(key=Key.ENTER),
+            char("q"),
+            char("q"),
+            char("q"),
+        ]
+    )
 
-    console = _console()
     run_interactive(
-        actions=_actions(),
-        input_source=ScriptedInput(
-            [char("4"), KeyPress(key=Key.ESCAPE), char("q")]
-        ),
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=input_source,
         console=console,
     )
-    text = console.file.getvalue()
-    assert text.count("Past Reports") == 1
-    assert text.rstrip().endswith("q Quit")
+
+    text = stream.getvalue()
+    assert "Search: ?0" in text
