@@ -12,6 +12,7 @@ from rich.console import Console
 from iiwi import config_store
 from iiwi.interactive.controller import (
     InteractiveActions,
+    _settings_edit_key,
     _settings_key,
     _State,
     run_interactive,
@@ -19,11 +20,12 @@ from iiwi.interactive.controller import (
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.interactive.render import (
+    render_settings,
     settings_capacity,
     settings_display_count,
     settings_display_index,
 )
-from iiwi.interactive.settings import SettingsRow
+from iiwi.interactive.settings import SettingsRow, build_settings_rows
 from iiwi.models.time_range import DateRange
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -232,6 +234,7 @@ def test_editing_a_free_text_row_writes_the_value(config_file: Path) -> None:
                     KeyPress(key=Key.ENTER),
                     char("q"),
                     char("q"),
+                    char("q"),
                 ]
             )
         ),
@@ -260,6 +263,7 @@ def test_editing_with_an_empty_value_restores_the_default(config_file: Path) -> 
                     KeyPress(key=Key.BACKSPACE),
                     KeyPress(key=Key.BACKSPACE),
                     KeyPress(key=Key.ENTER),
+                    char("q"),
                     char("q"),
                     char("q"),
                 ]
@@ -493,6 +497,33 @@ def test_back_returns_to_the_main_menu(config_file: Path) -> None:
     assert first_menu < settings_frame < text.rindex("Review Activity")
 
 
+def test_question_mark_types_into_inline_editor(config_file: Path) -> None:
+    console, stream = _console()
+    downs = [KeyPress(key=Key.DOWN)] * 5
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            _open_settings(
+                [
+                    *downs,
+                    KeyPress(key=Key.ENTER),
+                    char("?"),
+                    char("0"),
+                    KeyPress(key=Key.ENTER),
+                    char("q"),
+                    char("q"),
+                    char("q"),
+                ]
+            )
+        ),
+        console=console,
+    )
+    assert config_store.stored_values(config_file) == {
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL": "?0"
+    }
+    assert "Keyboard shortcuts" not in stream.getvalue()
+
+
 def test_settings_offset_follows_the_cursor_and_saturates_at_the_end() -> None:
     rows = _viewport_settings_rows()
     count = settings_display_count(rows)
@@ -526,3 +557,46 @@ def test_settings_offset_follows_the_cursor_and_saturates_at_the_end() -> None:
         assert state.settings_offset <= selected
         assert selected < state.settings_offset + capacity
     assert state.settings_offset == 0
+
+
+def test_space_and_delete_in_settings_inline_editor() -> None:
+    state = _State(screen=Screen.SETTINGS)
+    state.settings_rows = build_settings_rows()
+    state.settings_cursor = next(
+        index
+        for index, row in enumerate(state.settings_rows)
+        if row.editable and not row.locked
+    )
+    state.settings_editing = True
+    state.settings_edit_value = "hello"
+
+    # Test typing space
+    _settings_edit_key(state, KeyPress(key=Key.SPACE))
+    assert state.settings_edit_value == "hello "
+
+    # Test typing character
+    _settings_edit_key(state, KeyPress(char="w"))
+    assert state.settings_edit_value == "hello w"
+
+    # Test delete key
+    _settings_edit_key(state, KeyPress(key=Key.DELETE))
+    assert state.settings_edit_value == "hello "
+
+
+def test_settings_editing_hint_does_not_advertise_help() -> None:
+    rows = build_settings_rows()
+    console, stream = _console()
+    render_settings(
+        console,
+        rows=rows,
+        selected=0,
+        file_path="config.env",
+        editing=True,
+        edit_value="test",
+        error=None,
+    )
+    output = stream.getvalue()
+    assert "Enter Keep" in output
+    assert "Esc Cancel" in output
+    assert "? Help" not in output
+

@@ -634,7 +634,7 @@ def _settings_edit_key(state: _State, key: KeyPress) -> None:
         state.settings_edit_value = ""
         state.settings_error = None
         return
-    if key.key is Key.BACKSPACE:
+    if key.key in {Key.BACKSPACE, Key.DELETE}:
         state.settings_edit_value = state.settings_edit_value[:-1]
         return
     if key.key is Key.ENTER:
@@ -643,6 +643,9 @@ def _settings_edit_key(state: _State, key: KeyPress) -> None:
         if state.settings_error is None:
             state.settings_editing = False
             state.settings_edit_value = ""
+        return
+    if key.key is Key.SPACE:
+        state.settings_edit_value += " "
         return
     if key.char is not None:
         state.settings_edit_value += key.char
@@ -723,6 +726,8 @@ def _search_input(state: _State, key: KeyPress, cursor_name: str) -> bool:
         state.search_query = state.search_query[:-1]
     elif key.key is Key.ENTER:
         state.searching = False
+    elif key.key is Key.SPACE:
+        state.search_query += " "
     elif key.char is not None and key.char.isprintable():
         state.search_query += key.char
     else:
@@ -933,7 +938,7 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
                 )
             except IiwiError as exc:
                 state.error = _ErrorState(
-                    kind="report-source",
+                    kind="exclude-source",
                     title="Could not exclude repository",
                     detail=str(exc),
                 )
@@ -1514,9 +1519,11 @@ def _outcome_review_key(
 
 
 def _error_options(error: _ErrorState) -> list[str]:
+    if error.kind == "exclude-source":
+        return ["Back"]
     if error.kind in {"doctor-result"}:
         return ["Main menu"]
-    if error.kind in {"new-report-start", "activity-start"}:
+    if error.kind in {"new-report-start", "activity-start", "daily-start"}:
         # No "Change harness"/"Change period": both of those assume
         # state.draft is already set, but these two kinds fire when building
         # the draft itself is what failed, so state.draft is still None.
@@ -1551,13 +1558,15 @@ def _error_options(error: _ErrorState) -> list[str]:
 
 
 def _error_back_screen(error: _ErrorState) -> Screen:
+    if error.kind == "exclude-source":
+        return Screen.SESSION_REVIEW
     if error.kind == "report-path":
         return Screen.REPORT_RESULT
     if error.kind == "history-path":
         return Screen.HISTORY
     if error.kind == "daily-path":
         return Screen.DAILY_RESULT
-    if error.kind == "daily-source":
+    if error.kind in {"daily-source", "daily-start"}:
         return Screen.MAIN
     if error.kind in {"daily-preview", "daily-write"}:
         return Screen.DAILY_REVIEW
@@ -1988,7 +1997,12 @@ def _dispatch(
     actions: InteractiveActions,
     console: Console,
 ) -> None:
-    if _exact_char(key, "?") and state.screen is not Screen.HELP:
+    if (
+        _exact_char(key, "?")
+        and state.screen is not Screen.HELP
+        and not state.searching
+        and not state.settings_editing
+    ):
         _open_help(state)
         return
     if state.screen is Screen.MAIN:

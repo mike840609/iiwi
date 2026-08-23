@@ -1690,7 +1690,7 @@ def render_settings(
     console.print()
     _print_hints(
         console,
-        ["Enter Keep", "Esc Cancel", "? Help"]
+        ["Enter Keep", "Esc Cancel"]
         if editing
         else ["↑↓ jk", "←→ Cycle", "Enter Edit", "? Help", "b Back"],
     )
@@ -1903,6 +1903,7 @@ def render_session_review(
         "p Inspect",
         "/ Search",
         "g Report",
+        "G Force",
         "? More",
         "b Back",
     ]

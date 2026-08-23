@@ -174,8 +174,7 @@ def _tool_result_flags(
         derived = {
             # No structured result means stderr was never observed, and absent
             # must not read as empty — that is what the heuristic treats as clean.
-            "stderr_empty": bool(result)
-            and not (stderr.strip() if isinstance(stderr, str) else ""),
+            "stderr_empty": isinstance(stderr, str) and not stderr.strip(),
             "interrupted": result.get("interrupted") is True,
         }
         for block in content:

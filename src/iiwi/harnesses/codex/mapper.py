@@ -124,17 +124,16 @@ def _usage_delta(
     """
 
     values: dict[str, int] = {}
-    reset = False
     for canonical, source_key in _USAGE_FIELDS.items():
         value = _int_value(total.get(source_key))
         if value is None:
             continue
         values[canonical] = value
-        if value < previous.get(canonical, 0):
-            reset = True
 
     delta = {
-        canonical: value if reset else value - previous.get(canonical, 0)
+        canonical: (
+            value if value < previous.get(canonical, 0) else value - previous.get(canonical, 0)
+        )
         for canonical, value in values.items()
     }
     previous.update(values)

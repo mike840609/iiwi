@@ -25,6 +25,7 @@ from iiwi.services.outcomes import (
 )
 from iiwi.services.scan import ScanResult
 from iiwi.sessions.filtering import is_iiwi_authored
+from iiwi.summarizers.narrator import NarrativeRunError
 
 
 @dataclass
@@ -701,6 +702,16 @@ def test_all_extraction_failures_raise_complete_synthesis_error(monkeypatch) -> 
 def test_invalid_or_empty_model_output_is_a_complete_synthesis_error() -> None:
     with pytest.raises(OutcomeSynthesisError, match="valid outcome JSON"):
         service_for_raw("not-json").synthesize(one_scan())
+
+
+def test_narrative_run_error_is_wrapped_as_outcome_synthesis_error() -> None:
+    class FailingRunner:
+        def run(self, *, transcript: str, prompt: str, title: str) -> str:
+            raise NarrativeRunError("CLI process exited with status 1")
+
+    with pytest.raises(OutcomeSynthesisError, match="CLI process exited with status 1"):
+        OutcomeSynthesisService(FailingRunner()).synthesize(one_scan())
+
 
 
 @pytest.mark.parametrize(
@@ -1445,6 +1456,22 @@ def test_two_word_titles_still_need_every_word() -> None:
 
 def test_a_title_with_no_long_words_falls_back() -> None:
     assert _support("a an of", ["render"]) != "a an of"
+
+
+def test_cjk_supported_title_is_kept() -> None:
+    proposed = "重構日誌解析器"
+    assert _support(proposed, ["重構", "日誌", "解析器"]) == proposed
+
+
+def test_cjk_unsupported_title_falls_back() -> None:
+    proposed = "重構日誌解析器"
+    assert _support(proposed, ["資料庫", "連線"]) != proposed
+
+
+def test_mixed_cjk_and_english_supported_title_is_kept() -> None:
+    proposed = "修復 CLI 崩潰問題"
+    assert _support(proposed, ["修復", "cli", "崩潰", "問題"]) == proposed
+
 
 
 def _weighted(

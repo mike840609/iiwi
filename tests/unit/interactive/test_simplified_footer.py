@@ -87,6 +87,7 @@ def test_review_footer_shows_core_actions_not_power_shortcuts() -> None:
     assert "p Inspect" in text
     assert "/ Search" in text
     assert "g Report" in text
+    assert "G Force" in text
     assert "? More" in text
     assert "b Back" in text
     assert "a All" not in text
@@ -94,6 +95,20 @@ def test_review_footer_shows_core_actions_not_power_shortcuts() -> None:
     assert "e Exclude repo" not in text
     assert "R Rescan" not in text
     assert "←→ hl" not in text
+
+
+def test_review_hint_bar_shows_force_shortcut() -> None:
+    console, stream = _console()
+    selection = SelectionState.from_scan(_scan())
+
+    render_session_review(
+        console,
+        selection,
+        expanded_repositories=set(),
+        cursor=0,
+    )
+
+    assert "G Force" in stream.getvalue()
 
 
 def test_help_keeps_hidden_power_shortcuts_discoverable() -> None:

@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
+from iiwi.errors import IiwiError
 from iiwi.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
@@ -160,6 +161,7 @@ def _actions(
     choose_period,
     counters: dict[str, int],
     content: str = "report-content",
+    exclude_fails: bool = False,
 ) -> InteractiveActions:
     def count(name: str) -> None:
         counters[name] = counters.get(name, 0) + 1
@@ -181,6 +183,11 @@ def _actions(
             session_count=selected_scan.loaded_session_count,
         )
 
+    def exclude(repository_id: str, display_name: str) -> str:
+        if exclude_fails:
+            raise IiwiError("exclusion failed")
+        return "excluded"
+
     return InteractiveActions(
         new_draft=lambda: draft,
         choose_harness=lambda current: current,
@@ -200,7 +207,7 @@ def _actions(
         doctor=lambda harness: [],
         restore_selection=lambda harness, period, include_subagents: None,
         save_selection=lambda harness, period, include_subagents, selected: None,
-        exclude_repository=lambda repository_id, display_name: "excluded",
+        exclude_repository=exclude,
     )
 
 
@@ -441,3 +448,43 @@ def test_selection_from_scan_copies_caller_owned_set() -> None:
 
     assert selected == {"ses-0"}
     assert state.selected_session_ids == set()
+
+
+def test_exclude_failure_returns_to_session_review() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    counters: dict[str, int] = {}
+    console, stream = _console()
+
+    def choose_period(current: str | None) -> tuple[str, DateRange]:
+        return ("Last week", _period())
+
+    actions = _actions(
+        draft=draft,
+        scan_callback=lambda _: _scan(1),
+        choose_period=choose_period,
+        counters=counters,
+        exclude_fails=True,
+    )
+    input_source = ScriptedInput(
+        [
+            char("3"),
+            char("r"),
+            char("e"),
+            char("b"),
+            char("q"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=input_source,
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "Could not exclude repository" in text
+    last_review = text.rindex("Review Sessions")
+    assert text.count("Could not exclude repository") == 1
+    assert "Review Sessions" in text[last_review:]
