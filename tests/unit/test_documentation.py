@@ -1,13 +1,14 @@
 from pathlib import Path
 
 
-def test_readme_documents_release_gate_commands() -> None:
+def test_entrypoint_docs_document_release_gate_commands() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
 
     assert "pipx install iiwi" in readme
     assert "iiwi doctor" in readme
-    assert "iiwi scan --period last-week" in readme
     assert "iiwi report --period last-week" in readme
+    assert "iiwi scan --period last-week" in reference
 
 
 def test_daily_standup_is_linked_from_every_entrypoint_document() -> None:
@@ -24,11 +25,13 @@ def test_daily_standup_is_linked_from_every_entrypoint_document() -> None:
     assert Path("docs/daily-standup.md").is_file()
 
 
-def test_readme_documents_the_harness_option() -> None:
+def test_cli_reference_documents_the_harness_option() -> None:
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
     readme = Path("README.md").read_text(encoding="utf-8")
 
-    assert "--harness" in readme
-    assert "claude-code" in readme
+    assert "--harness" in reference
+    assert "claude-code" in reference
+    assert "codex" in reference
     assert "Codex and Claude Code are not currently supported." not in readme
 
 
@@ -87,14 +90,17 @@ def test_cli_reference_documents_the_verbose_scan_session_listing() -> None:
     assert "lists each repository's session titles and working folders" in reference
 
 
-def test_readmes_document_the_config_command() -> None:
+def test_configuration_doc_documents_config_commands() -> None:
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
     readme = Path("README.md").read_text(encoding="utf-8")
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
 
+    assert "iiwi config set narrator.model deepseek-r1" in configuration
+    assert "iiwi config list" in configuration
+    assert "iiwi config unset" in configuration
     for text in (readme, readme_zh_tw):
-        assert "iiwi config set narrator.model deepseek-r1" in text
+        assert "docs/configuration.md" in text
         assert "iiwi config list" in text
-        assert "iiwi config unset" in text
 
 
 def test_every_config_key_in_the_docs_is_one_the_cli_accepts() -> None:
@@ -156,45 +162,43 @@ def test_every_variable_in_the_configuration_doc_is_a_real_setting() -> None:
     assert documented <= known, f"documented but not settable: {documented - known}"
 
 
-def test_readmes_document_privacy_controls() -> None:
-    for path in (Path("README.md"), Path("README.zh-TW.md")):
-        text = path.read_text(encoding="utf-8")
-        assert "--sanitize" in text
-        assert "--no-llm" in text
-        assert "--allow-remote-llm" not in text
+def test_detailed_docs_document_privacy_controls() -> None:
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
+    privacy = Path("docs/privacy.md").read_text(encoding="utf-8")
+    readme = Path("README.md").read_text(encoding="utf-8")
+    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+    detailed = reference + "\n" + privacy
+
+    assert "--sanitize" in detailed
+    assert "--no-llm" in detailed
+    assert "--allow-remote-llm" not in detailed
+    for text in (readme, readme_zh_tw):
+        assert "docs/privacy.md" in text
 
 
-def test_readmes_document_the_resolved_narration_cli() -> None:
-    """The narrator is no longer hardcoded to opencode; the READMEs must say so."""
+def test_configuration_documents_the_resolved_narration_cli() -> None:
+    """Provider details live in configuration rather than the landing-page READMEs."""
 
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
     readme = Path("README.md").read_text(encoding="utf-8")
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
 
+    assert "narrator.provider" in configuration
+    assert "OPENAPI" not in configuration
     for text in (readme, readme_zh_tw):
-        assert "narrator.provider" in text
-    assert "OPENAPI" not in readme
-    # The old claim was that narration always runs a local `opencode run`,
-    # regardless of harness. That is what this change makes false.
-    assert "the narrative still comes from your local `opencode run`" not in readme
-    assert "the narrative still comes from your local `opencode run`" not in readme_zh_tw
+        assert "docs/configuration.md" in text
+        assert "the narrative still comes from your local `opencode run`" not in text
 
 
-def test_readmes_document_the_local_narration_clis() -> None:
-    """Both READMEs must name every CLI that can write the narrative.
+def test_configuration_documents_the_local_narration_clis() -> None:
+    """The detailed configuration guide names every CLI that can write narration."""
 
-    Replaces an earlier test that asserted `opencode run` specifically; narration
-    is no longer OpenCode-only. The OPENAPI guard is carried over from it — that
-    typo reached the README once.
-    """
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
 
-    readme = Path("README.md").read_text(encoding="utf-8")
-    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
-
-    for text in (readme, readme_zh_tw):
-        assert "`opencode`" in text
-        assert "`claude`" in text
-        assert "`codex`" in text
-        assert "OPENAPI" not in text
+    assert "`opencode`" in configuration
+    assert "`claude`" in configuration
+    assert "`codex`" in configuration
+    assert "OPENAPI" not in configuration
 
 
 def test_configuration_documents_opencode_sanitize_setting() -> None:
@@ -301,12 +305,11 @@ def test_cli_reference_lists_every_config_subcommand() -> None:
     assert "`path`, `list`, `init`, `set`, `unset`" in reference
 
 
-def test_readmes_document_the_interactive_run_command() -> None:
-    readme = Path("README.md").read_text(encoding="utf-8")
-    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+def test_cli_reference_documents_the_interactive_run_command() -> None:
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
 
-    for text in (readme, readme_zh_tw):
-        assert "iiwi run" in text
+    assert "| `run` |" in reference
+    assert "wizard" in reference.casefold()
 
 
 def test_configuration_doc_explains_what_an_empty_answer_means() -> None:
@@ -321,28 +324,23 @@ def test_configuration_doc_explains_what_an_empty_answer_means() -> None:
     assert "rather than reading from stdin" in configuration
 
 
-def test_readmes_document_the_interactive_menu() -> None:
+def test_readmes_link_to_the_interactive_menu_details() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
     readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
 
     for text in (readme, readme_zh_tw):
-        # Running the command bare now prompts rather than printing help, so
-        # both the menu and the way to still get help must be documented.
         assert "iiwi --help" in text
-        # The terminal menu stays in English in both READMEs.
-        assert "Generate Report" in text
+        assert "interactive menu" in text.casefold() or "互動選單" in text
+        assert "docs/cli-reference.md" in text
+    assert "Generate Report" in reference
 
 
-def test_readmes_document_the_run_dry_run_option() -> None:
-    readme = Path("README.md").read_text(encoding="utf-8")
-    readme_zh_tw = Path("README.zh-TW.md").read_text(encoding="utf-8")
+def test_cli_reference_documents_the_run_dry_run_option() -> None:
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
 
-    assert "`--dry-run`" in readme
-    assert "terminal" in readme.casefold()
-    assert "without writing" in readme
-    assert "`--dry-run`" in readme_zh_tw
-    assert "終端機" in readme_zh_tw
-    assert "不會寫入" in readme_zh_tw
+    assert "`--dry-run`" in reference
+    assert "Prints the Markdown instead of writing a file" in reference
 
 
 def test_readmes_state_the_pronunciation() -> None:

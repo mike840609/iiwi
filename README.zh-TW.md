@@ -52,119 +52,86 @@ Iiwi 支援 OpenCode、Claude Code 與 Codex。它會找出你做過什麼、把
 
 需要 Python 3.11 以上與 `git`。
 
-- **讀取來源：** OpenCode、Claude Code 或 Codex 保存在本機的 session history。
-- **整理報告：** 用與讀取來源相同的那個 CLI — `opencode`、`claude` 或 `codex`。
-- **都沒安裝？** 可以使用 `--no-llm` 產生較簡單的結構化報告。
-
-讀取 Claude Code 或 Codex 的紀錄不需要安裝它們的 CLI，但整理報告需要。
-想用跟讀取來源不同的 CLI 來整理，設定 `narrator.provider` 即可。
-
 ```bash
 pipx install iiwi                 # 或：pip install iiwi
 
-iiwi doctor                       # 檢查環境是否準備完成
-iiwi daily                        # 審閱昨天、今天與阻礙事項
-iiwi report --period last-week    # 產生上週報告
+iiwi doctor                      # 檢查 Iiwi 是否能讀取目前環境
+iiwi                             # 開啟互動選單
 ```
 
-報告預設寫到 `reports/`。加上 `--dry-run` 可以直接在終端機預覽，不會寫入檔案。
+進入選單後，只要選擇你想做的事，Iiwi 會一步步帶你完成。
 
-## 互動選單
-
-不想記參數的話，直接執行 `iiwi`。主選單提供 Review Activity、Daily Standup、
-Generate Report、History、Check Setup 與 Settings；想查看所有指令時可以使用 `iiwi --help`。
-
-**Generate Report** 可以調整報告設定、確認 Iiwi 找到的 sessions，再產生報告。
-**Review Sessions** 會依 repository 整理工作，讓你快速保留或排除要放進回報的內容：
-
-```text
-Review Sessions   6 / 6 selected │ 252 / 252 msgs
-══════════════════════════════════════════════════════
-Select sessions to include in the report:
-
-  1. ▾ ████████████  71% ● iiwi   3 / 3    Aug 5 │ 180 msgs
-▶      ████░░░░░░░░  24% ● Add the interactive menu Aug 5 │ 60 msgs
-       ████░░░░░░░░  24% ● Redact before writing    Aug 5 │ 60 msgs
-       ████░░░░░░░░  24% ● Group worktrees          Aug 5 │ 60 msgs
-  2. ▸ ████░░░░░░░░  24% ● obsidian-wiki   2 / 2    Aug 4 │ 60 msgs
-  3. ▸ █░░░░░░░░░░░   5% ● dotfiles   1 / 1         Aug 3 │ 12 msgs
-
-↑↓ jk │ ←→ hl │ Space Toggle │ p Preview │ e Exclude │ a All │ g Generate │ / Search │ ? Help │ b Back
-```
-
-**Daily Standup**，或 `iiwi daily`，會開啟 Yesterday / Today / Blockers 的快速審閱；
-**History** 則會列出 Iiwi 已經產生過的報告。
-
-真正寫出報告前，Quick Review 讓你保留、修改、排序、拆分或新增工作項目，確保最後的 Markdown
-就是你想分享的內容。完整快捷鍵、報告模式與失敗時的處理方式，請見
-[Quick Review 指南](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md)。
-Daily Standup 的完整說明請見
-[Daily Standup 指南](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md)。
-
-## 指令
+兩個常用捷徑：
 
 ```bash
-iiwi doctor                       # 檢查環境是否準備完成
-iiwi daily                        # 審閱昨天、今天與阻礙事項
-iiwi scan --period last-week      # 預覽 Iiwi 找到的 sessions
-iiwi report --period last-week    # 產生上週報告
-iiwi history                      # 列出已產生的報告
-iiwi update                       # 檢查 PyPI 是否有新版
-iiwi run                          # 使用逐步引導模式
+iiwi daily                       # 準備今天的 standup 更新
+iiwi report --period last-week   # 準備上週報告
 ```
 
-| 參數 | 作用 |
-|---|---|
-| `--harness claude-code` / `--harness codex` | 改讀 Claude Code 或 Codex 的 sessions |
-| `--no-llm` | 不呼叫任何 CLI 撰寫敘事，改產生結構化報告 |
-| `--sanitize` | 更強的去敏（僅 OpenCode），會移除大部分工作 evidence |
-| `--dry-run` | 印出報告，不寫入檔案 |
-| `--json` | 對支援的指令輸出去敏後的機器可讀格式 |
+報告預設會存到 `reports/`。
 
-`iiwi --help` 會列出所有指令與選項。偏好逐步引導的話可用 `iiwi run`；腳本中則直接呼叫需要的
-子指令即可。
+## 使用互動選單
+
+不想記指令或參數時，直接執行 `iiwi`。
+
+你可以從選單查看最近的 AI coding 工作、準備 standup、產生報告、查看過去的報告、
+檢查環境，以及修改設定。
+
+產生報告時，Iiwi 會先把找到的工作列出來。挑出要保留的內容、修改需要調整的地方，
+最後由 Iiwi 寫出 Markdown 報告。
+
+完整的 review 流程與快捷鍵請見
+[Quick Review 指南](docs/evidence-first-quick-review.md)；Daily Standup 的完整流程請見
+[Daily Standup 指南](docs/daily-standup.md)。
+
+## 直接使用 CLI
+
+互動選單最適合第一次使用。如果你偏好直接下指令，平常最常用的是：
+
+```bash
+iiwi doctor                       # 檢查環境
+iiwi daily                        # 準備 daily standup
+iiwi report --period last-week    # 產生上週報告
+```
+
+其他指令可以用 `iiwi --help` 查看；完整指令、參數、範例與 exit code 請見
+[CLI reference](docs/cli-reference.md)。
 
 ## 設定
 
-每項設定的讀取順序是：環境變數、設定檔、預設值。
+大多數情況下，不需要先改任何設定就可以開始使用 Iiwi。
+
+如果想調整 model、timezone、路徑或預設行為，可以使用：
 
 ```bash
-iiwi config init                                          # 逐項詢問
-iiwi config set narrator.model deepseek-r1  # 寫入單一設定
-iiwi config list                                          # 列出所有設定與來源
-iiwi config unset report.timezone                         # 回到預設值
+iiwi config init                  # 逐步調整設定
+iiwi config list                  # 查看目前實際使用的設定
 ```
 
-完整設定清單與對應的環境變數名稱，請見
-[Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md)。
+完整設定與進階用法請見 [Configuration](docs/configuration.md)。
 
 ## 隱私
 
-讀取 sessions、去敏與產生報告都在你的電腦上完成。Iiwi 會把去敏後的 session 內容交給你本機
-已安裝的 CLI（`opencode`、`claude` 或 `codex`），不需要 API key。`iiwi update` 會連線到
-PyPI 檢查是否有新版。
+Iiwi 會在你的電腦上讀取並處理 session history。如果使用 AI drafting，Iiwi 會先移除
+常見的機密字串樣式，再把內容交給你設定的 CLI。之後該 CLI 如何處理內容，則取決於它自己的設定。
 
-報告仍可能包含私人目標、檔名、指令與完整工作路徑，因此分享前請先確認內容。完整資料流向與目前限制
-請見
-[Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md)。
+報告仍可能包含私人目標、檔名、指令與工作路徑，因此分享前請先確認內容。
+
+完整資料流向、去敏方式與目前限制請見 [Privacy and security](docs/privacy.md)。
 
 ## 文件
 
-以下文件皆為英文版本。
+日常使用需要的細節都放在下面的文件，不塞在 README 裡：
 
-| 頁面 | 內容 |
-|---|---|
-| [CLI reference](https://github.com/mike840609/iiwi/blob/main/docs/cli-reference.md) | 所有指令、選項與結束代碼 |
-| [Daily Standup](https://github.com/mike840609/iiwi/blob/main/docs/daily-standup.md) | Yesterday／Today／Blockers 審閱、更新、警告與輸出 |
-| [Quick Review 指南](https://github.com/mike840609/iiwi/blob/main/docs/evidence-first-quick-review.md) | 工作項目審閱、報告模式、失敗處理與目前限制 |
-| [Configuration](https://github.com/mike840609/iiwi/blob/main/docs/configuration.md) | 設定檔、環境變數與優先順序 |
-| [Privacy and security](https://github.com/mike840609/iiwi/blob/main/docs/privacy.md) | 資料流向、去敏邊界，以及報告仍會包含什麼 |
-| [Security policy](https://github.com/mike840609/iiwi/blob/main/SECURITY.md) | 威脅模型與漏洞回報方式 |
-| [Usage guides](https://github.com/mike840609/iiwi/blob/main/docs/guides.md) | 統計期間、subagent、repository 分組與輸出處理 |
-| [Usage statistics](https://github.com/mike840609/iiwi/blob/main/docs/usage-statistics.md) | 使用量區塊的產生方式與期間但書 |
-| [Support and limits](https://github.com/mike840609/iiwi/blob/main/docs/limitations.md) | 各 harness 的完整但書清單 |
-| [Architecture](https://github.com/mike840609/iiwi/blob/main/docs/architecture.md) | 報告從讀取到寫出的完整流程 |
-| [Releasing](https://github.com/mike840609/iiwi/blob/main/docs/releasing.md) | 發布流程 |
+- [CLI reference](docs/cli-reference.md) — 指令、參數、範例與 exit code
+- [Quick Review 指南](docs/evidence-first-quick-review.md) — review 操作與報告流程
+- [Daily Standup](docs/daily-standup.md) — Yesterday / Today / Blockers 流程
+- [Configuration](docs/configuration.md) — 設定、model、路徑與環境變數
+- [Privacy and security](docs/privacy.md) — 哪些內容留在本機，以及報告仍可能包含什麼
+- [Support and limits](docs/limitations.md) — 各 harness 目前的限制
+
+以上文件目前為英文。開發與更深入的技術細節可見
+[Architecture](docs/architecture.md)、[Security policy](SECURITY.md)，以及其他 [`docs/`](docs/) 文件。
 
 ## 名字的由來
 
