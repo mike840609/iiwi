@@ -40,7 +40,7 @@ def _text(value: object) -> str | None:
 
 def _rollout_files(home_directory: Path) -> list[Path]:
     files = sorted((home_directory / "sessions").rglob("rollout-*.jsonl"))
-    files.extend(sorted((home_directory / "archived_sessions").glob("rollout-*.jsonl")))
+    files.extend(sorted((home_directory / "archived_sessions").rglob("rollout-*.jsonl")))
     return files
 
 

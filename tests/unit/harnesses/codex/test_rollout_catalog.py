@@ -196,3 +196,16 @@ def test_two_sessions_resumed_from_one_root_stay_distinct(tmp_path: Path) -> Non
 
     ids = {descriptor.session_id for descriptor in descriptors}
     assert ids == {"thread-a", "thread-b"}
+
+
+def test_rollout_files_discovers_nested_archived_sessions(tmp_path: Path) -> None:
+    from iiwi.harnesses.codex.rollout_catalog import _rollout_files
+
+    nested_dir = tmp_path / "archived_sessions" / "2026" / "08" / "15"
+    nested_dir.mkdir(parents=True)
+    rollout = nested_dir / "rollout-nested.jsonl"
+    rollout.write_text('{"type": "session_meta"}\n', encoding="utf-8")
+
+    files = _rollout_files(tmp_path)
+    assert rollout in files
+
