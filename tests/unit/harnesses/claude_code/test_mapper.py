@@ -83,6 +83,43 @@ def test_maps_tool_calls_with_result_flags(records, descriptor) -> None:
     assert edit.metadata["stderr_empty"] is False
 
 
+def test_tool_result_without_stderr_field_is_not_stderr_empty(descriptor) -> None:
+    records = [
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu-custom",
+                        "name": "CustomTool",
+                        "input": {"arg": "val"},
+                    }
+                ]
+            },
+        },
+        {
+            "type": "user",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu-custom",
+                        "content": "done",
+                    }
+                ]
+            },
+            "toolUseResult": {
+                "stdout": "done",
+                "status": 0,
+            },
+        },
+    ]
+    session = ClaudeCodeJsonlMapper().map(records, descriptor)
+    tool_call = session.activities[0]
+    assert tool_call.metadata["stderr_empty"] is False
+
+
 def test_carries_the_tool_result_error_flag(records, descriptor) -> None:
     """`is_error` is the outcome Claude Code actually observes.
 
