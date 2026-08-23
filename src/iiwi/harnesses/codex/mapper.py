@@ -131,7 +131,9 @@ def _usage_delta(
         values[canonical] = value
 
     delta = {
-        canonical: value if value < previous.get(canonical, 0) else value - previous.get(canonical, 0)
+        canonical: (
+            value if value < previous.get(canonical, 0) else value - previous.get(canonical, 0)
+        )
         for canonical, value in values.items()
     }
     previous.update(values)
