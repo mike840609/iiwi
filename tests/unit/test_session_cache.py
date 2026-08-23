@@ -460,6 +460,34 @@ def test_a_cache_that_breaks_mid_run_still_finishes_the_scan(tmp_path: Path) -> 
     assert len(wrapped.drain_warnings()) == 1
 
 
+def test_a_cache_that_breaks_mid_run_degrades_once_not_per_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After one failure the cache stops trying; later sessions pay nothing."""
+
+    stamp = datetime(2026, 7, 22, tzinfo=TZ)
+    path = tmp_path / "c.db"
+    cache = SessionCache(
+        path=path,
+        adapter_version="test|raw",
+        timeout_seconds=0.01,
+    )
+    cache.get(descriptor("s1", updated_at=stamp))
+    path.write_bytes(b"no longer a database")
+
+    cache.get(descriptor("s2", updated_at=stamp))
+    assert not cache._usable
+
+    # A third call must not even attempt to open a connection. Patching
+    # `connect` makes any retry fail loudly instead of silently passing.
+    monkeypatch.setattr(
+        "iiwi.cache.sqlite3.connect",
+        lambda *args, **kwargs: pytest.fail("cache retried after degradation"),
+    )
+    assert cache.get(descriptor("s3", updated_at=stamp)).session is None
+
+
 def test_a_session_that_will_not_serialize_is_skipped_not_raised(
     tmp_path: Path,
 ) -> None:
