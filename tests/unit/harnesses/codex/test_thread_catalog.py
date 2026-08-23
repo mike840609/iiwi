@@ -173,3 +173,18 @@ def test_schema_drift_raises_for_the_caller_to_fall_back(tmp_path: Path) -> None
 
     with pytest.raises(sqlite3.Error):
         discover_threads(database, PERIOD, root_only=False)
+
+
+def test_timestamp_handles_extreme_integers_and_milliseconds() -> None:
+    from iiwi.harnesses.codex.thread_catalog import _timestamp
+
+    # Millisecond timestamp
+    ms_timestamp = 1723500000000
+    parsed = _timestamp(ms_timestamp)
+    assert parsed is not None
+    assert parsed.year == 2024
+
+    # Out of range timestamp (year > 9999)
+    huge_timestamp = 999999999999999999
+    assert _timestamp(huge_timestamp) is None
+

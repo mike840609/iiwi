@@ -58,7 +58,12 @@ def _timestamp(value: object) -> datetime | None:
     # bool is an int subclass; a stray JSON true must not become 1970-01-01.
     if isinstance(value, bool) or not isinstance(value, int):
         return None
-    return datetime.fromtimestamp(value, tz=UTC)
+    if abs(value) > 10_000_000_000:
+        value //= 1000
+    try:
+        return datetime.fromtimestamp(value, tz=UTC)
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def _text(value: object) -> str | None:
