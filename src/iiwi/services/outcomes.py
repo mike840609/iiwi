@@ -879,17 +879,26 @@ def _value_is_observed_in_every_repository(
     )
 
 
+def _title_tokens(text: str) -> list[str]:
+    words = [word for word in re.findall(r"[a-z0-9]+", text.casefold()) if len(word) > 2]
+    non_ascii = [
+        char for char in text.casefold()
+        if not char.isspace() and not char.isascii() and char.isalnum()
+    ]
+    return words + non_ascii
+
+
 def _supported_title(
     proposed: str,
     selected: list[SessionEvidence],
     local_texts_by_source: dict[str, list[str]],
 ) -> str:
-    words = [word for word in re.findall(r"[a-z0-9]+", proposed.casefold()) if len(word) > 2]
-    if not words:
+    tokens = _title_tokens(proposed)
+    if not tokens:
         return _fallback_title(selected)
     corpus = _corpus(selected, local_texts_by_source)
-    supported = sum(1 for word in words if word in corpus)
-    if supported / len(words) >= _TITLE_SUPPORT_RATIO:
+    supported = sum(1 for token in tokens if token in corpus)
+    if supported / len(tokens) >= _TITLE_SUPPORT_RATIO:
         return proposed
     return _fallback_title(selected)
 
