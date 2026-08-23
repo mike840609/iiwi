@@ -831,3 +831,34 @@ def test_question_mark_types_into_search_input() -> None:
 
     text = stream.getvalue()
     assert "Search: ?0" in text
+
+
+def test_space_key_types_into_search_input() -> None:
+    stream = StringIO()
+    console = Console(
+        file=stream, color_system=None, force_terminal=False, width=100,
+    )
+    input_source = ScriptedInput(
+        [
+            char("3"),
+            char("r"),
+            char("/"),
+            char("a"),
+            KeyPress(key=Key.SPACE),
+            char("b"),
+            KeyPress(key=Key.ENTER),
+            char("q"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(scan_callback=_setup_populated_scan),
+        input_source=input_source,
+        console=console,
+    )
+
+    text = stream.getvalue()
+    assert "Search: a b" in text
+

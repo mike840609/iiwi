@@ -723,6 +723,8 @@ def _search_input(state: _State, key: KeyPress, cursor_name: str) -> bool:
         state.search_query = state.search_query[:-1]
     elif key.key is Key.ENTER:
         state.searching = False
+    elif key.key is Key.SPACE:
+        state.search_query += " "
     elif key.char is not None and key.char.isprintable():
         state.search_query += key.char
     else:
