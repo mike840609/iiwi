@@ -10,6 +10,7 @@ from typing import Protocol, cast
 
 from iiwi.errors import HarnessSourceError, ReportAlreadyExistsError
 from iiwi.extraction.pipeline import extract_evidence
+from iiwi.metrics import MetricStage, PerformanceMetrics
 from iiwi.models.evidence import RepositoryEvidence, SessionEvidence
 from iiwi.models.outcome import OutcomeReviewDraft
 from iiwi.models.report import RepositorySummary, WorklogReport
@@ -81,6 +82,7 @@ class ReportService:
         narrator: NarrativeRunner | None = None,
         include_subagents: bool = False,
         sanitized: bool = False,
+        metrics: PerformanceMetrics | None = None,
     ) -> None:
         self._scan_service = scan_service
         self._summarizer = summarizer
@@ -97,6 +99,7 @@ class ReportService:
         self._narrator = narrator
         self._include_subagents = include_subagents
         self._sanitized = sanitized
+        self._metrics = metrics if metrics is not None else PerformanceMetrics()
 
     def _repository_evidence(self, scan: ScanResult) -> list[RepositoryEvidence]:
         child_counts = count_child_sessions_by_repository(scan.resolved_sessions)
@@ -109,26 +112,27 @@ class ReportService:
             scan.sessions_by_repository.items(),
             start=1,
         ):
-            first = resolved_items[0].repository
-            sessions: list[SessionEvidence] = []
-            branches: list[str] = []
-            for resolved in resolved_items:
-                extracted = extract_evidence(resolved)
-                redacted = redact_value(extracted.model_dump(mode="json"))
-                sessions.append(SessionEvidence.model_validate(redacted))
-                branch = resolved.repository.branch
-                if branch and branch not in branches:
-                    branches.append(branch)
-            repositories.append(
-                RepositoryEvidence(
-                    repository_id=repository_id,
-                    display_name=first.display_name,
-                    normalized_remote=first.normalized_remote,
-                    branches=branches,
-                    sessions=sessions,
-                    child_session_count=child_counts.get(repository_id, 0),
+            with self._metrics.measure(MetricStage.PREPARE_EVIDENCE):
+                first = resolved_items[0].repository
+                sessions: list[SessionEvidence] = []
+                branches: list[str] = []
+                for resolved in resolved_items:
+                    extracted = extract_evidence(resolved)
+                    redacted = redact_value(extracted.model_dump(mode="json"))
+                    sessions.append(SessionEvidence.model_validate(redacted))
+                    branch = resolved.repository.branch
+                    if branch and branch not in branches:
+                        branches.append(branch)
+                repositories.append(
+                    RepositoryEvidence(
+                        repository_id=repository_id,
+                        display_name=first.display_name,
+                        normalized_remote=first.normalized_remote,
+                        branches=branches,
+                        sessions=sessions,
+                        child_session_count=child_counts.get(repository_id, 0),
+                    )
                 )
-            )
             self._progress.advance(completed)
         return repositories
 
@@ -140,11 +144,12 @@ class ReportService:
         if self._usage_provider is None:
             return None
         self._progress.start(ProgressStage.COLLECTING_USAGE)
-        try:
-            return redact_text(self._usage_provider(scan))
-        except HarnessSourceError as exc:
-            warnings.append(f"usage statistics unavailable: {exc}")
-            return None
+        with self._metrics.measure(MetricStage.COLLECT_USAGE):
+            try:
+                return redact_text(self._usage_provider(scan))
+            except HarnessSourceError as exc:
+                warnings.append(f"usage statistics unavailable: {exc}")
+                return None
 
     def _structured_report(
         self,
@@ -158,10 +163,11 @@ class ReportService:
             total=len(evidence_items),
         )
         for completed, evidence in enumerate(evidence_items, start=1):
-            summaries.append(self._summarizer.summarize(evidence))
-            drain_warnings = getattr(self._summarizer, "drain_warnings", None)
-            if callable(drain_warnings):
-                warnings.extend(cast(list[str], drain_warnings()))
+            with self._metrics.measure(MetricStage.SUMMARIZE_REPOSITORIES):
+                summaries.append(self._summarizer.summarize(evidence))
+                drain_warnings = getattr(self._summarizer, "drain_warnings", None)
+                if callable(drain_warnings):
+                    warnings.extend(cast(list[str], drain_warnings()))
             self._progress.advance(completed)
         summaries.sort(key=lambda item: item.display_name.casefold())
         usage_text = self._collect_usage(scan, warnings)
@@ -190,24 +196,30 @@ class ReportService:
             if self._detail is DetailLevel.FULL
             else None
         )
-        transcript = build_grouped_transcript(
-            sessions_by_repository=scan.sessions_by_repository,
-            period=self._period,
-            generated_at=self._now_factory(),
-            include_subagents=self._include_subagents,
-            sanitized=self._sanitized,
-            usage_text=usage_text,
-        )
+        with self._metrics.measure(MetricStage.PREPARE_TRANSCRIPT):
+            transcript = build_grouped_transcript(
+                sessions_by_repository=scan.sessions_by_repository,
+                period=self._period,
+                generated_at=self._now_factory(),
+                include_subagents=self._include_subagents,
+                sanitized=self._sanitized,
+                usage_text=usage_text,
+            )
+        # Bytes, not characters: this number exists to be compared against the
+        # narrator's context budget, and a CJK-heavy transcript costs about
+        # three times its character count on the way there.
+        self._metrics.count("transcript_bytes", len(transcript.encode("utf-8")))
         days = self._usage_days or max(1, (self._period.until - self._period.since).days)
-        narrative = self._narrator.run(
-            transcript=transcript,
-            prompt=build_summary_prompt(days, detail=self._detail),
-            title=(
-                f"{IIWI_SESSION_TITLE_PREFIX}narrative "
-                f"{self._period.since.date().isoformat()} "
-                f"to {self._period.until.date().isoformat()}"
-            ),
-        )
+        with self._metrics.measure(MetricStage.NARRATE):
+            narrative = self._narrator.run(
+                transcript=transcript,
+                prompt=build_summary_prompt(days, detail=self._detail),
+                title=(
+                    f"{IIWI_SESSION_TITLE_PREFIX}narrative "
+                    f"{self._period.since.date().isoformat()} "
+                    f"to {self._period.until.date().isoformat()}"
+                ),
+            )
         self._progress.advance(1)
         # No `usage_text`: the narrative owns the usage section (fed by the
         # transcript); carrying it would make the renderer append a second,
@@ -244,18 +256,20 @@ class ReportService:
         else:
             report = self._structured_report(scan, warnings)
         self._progress.start(ProgressStage.RENDERING_REPORT)
-        if narrative_content:
-            timezone = getattr(
-                self._period.since.tzinfo, "key", str(self._period.since.tzinfo)
-            )
-            content = redact_text(
-                render_narrative(report, timezone=timezone, detail=self._detail)
-            )
-        else:
-            content = redact_text(self._renderer.render(report, detail=self._detail))
+        with self._metrics.measure(MetricStage.RENDER_REPORT):
+            if narrative_content:
+                timezone = getattr(
+                    self._period.since.tzinfo, "key", str(self._period.since.tzinfo)
+                )
+                content = redact_text(
+                    render_narrative(report, timezone=timezone, detail=self._detail)
+                )
+            else:
+                content = redact_text(self._renderer.render(report, detail=self._detail))
         if not dry_run:
             self._progress.start(ProgressStage.WRITING_REPORT)
-            atomic_secure_write(self._output_path, content, force=force)
+            with self._metrics.measure(MetricStage.WRITE_REPORT):
+                atomic_secure_write(self._output_path, content, force=force)
         return ReportGenerationResult(
             report=report,
             content=content,
@@ -298,10 +312,12 @@ class ReportService:
             warnings=[redact_text(warning) for warning in warnings],
         )
         self._progress.start(ProgressStage.RENDERING_REPORT)
-        content = redact_text(self._renderer.render_outcomes(report, detail=detail))
+        with self._metrics.measure(MetricStage.RENDER_REPORT):
+            content = redact_text(self._renderer.render_outcomes(report, detail=detail))
         if not dry_run:
             self._progress.start(ProgressStage.WRITING_REPORT)
-            atomic_secure_write(self._output_path, content, force=force)
+            with self._metrics.measure(MetricStage.WRITE_REPORT):
+                atomic_secure_write(self._output_path, content, force=force)
         return ReportGenerationResult(
             report=report,
             content=content,

@@ -229,6 +229,30 @@ login is needed. The location is internal to the Codex install and can move
 between releases; if narration stops working after an update, check this path
 first.
 
+## Session cache
+
+Exporting a session is the slowest thing a scan does, and a session that has ended never
+changes again. Iiwi keeps each already-normalized session in a small SQLite database and
+re-exports only the ones whose harness timestamp has moved since. A second report over the
+same week is typically the difference between minutes and about a second.
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `IIWI_CACHE__ENABLED` | `true` | Set to `false` to export every session on every run and store nothing on disk. |
+
+The database lives at `sessions.db` in the platform cache directory
+(`~/Library/Caches/iiwi` on macOS, `$XDG_CACHE_HOME/iiwi` on Linux), created mode `0600`
+inside a `0700` directory. `IIWI_CACHE_FILE` overrides the location.
+
+It holds session content as iiwi normalized it — including whatever the harness exported,
+unredacted — so turning it off is the right call if you would rather that content existed
+only in memory. See [Privacy and security](privacy.md#the-session-cache).
+
+Entries are invalidated by the harness's own update timestamp and by the iiwi version, so
+an upgrade re-exports everything once rather than serving payloads an older mapper built.
+A session whose harness reports no update time is never cached, because there would be no
+way to notice it had changed. Deleting the file is always safe.
+
 ## Report settings
 
 | Environment variable | Default | Purpose |

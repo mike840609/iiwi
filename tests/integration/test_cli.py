@@ -18,12 +18,13 @@ import iiwi.history as history_module
 from iiwi import config_store
 from iiwi.errors import ConfigurationError, ReportOutputError
 from iiwi.history import HistoryEntry, append_history, read_history
+from iiwi.metrics import MetricStage
 from iiwi.models.report import RepositorySummary, WorklogReport
 from iiwi.models.time_range import DateRange
 from iiwi.progress import NullProgressReporter, ProgressStage
 from iiwi.renderers.markdown import MarkdownRenderer
 from iiwi.services.report import ReportService
-from iiwi.services.scan import ScanService
+from iiwi.services.scan import ScanResult, ScanService
 from iiwi.summarizers.narrator import NarrativeRunner
 from iiwi.summarizers.rule_based import RuleBasedSummarizer
 from tests.integration.test_scan_service import FakeSource, StaticResolver
@@ -144,6 +145,7 @@ def test_report_refuses_overwrite_without_force(
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
         detail=cli.DetailLevel.FULL,
     ):
         return StubReportService(output_path, period)
@@ -176,6 +178,7 @@ def test_report_supports_previous_calendar_week(
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
         detail=cli.DetailLevel.FULL,
     ):
         captured["period"] = period
@@ -332,6 +335,7 @@ def test_no_llm_builds_a_deterministic_report_service(
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
     ):
         return object()
 
@@ -436,7 +440,7 @@ def test_scan_says_sessions_were_excluded_when_configuration_drops_them(
     monkeypatch.setattr(
         cli,
         "_build_scan_service",
-        lambda settings, period, root_only=False, *, harness, progress: StubScanService(),
+        lambda settings, period, root_only=False, *, harness, progress, metrics: StubScanService(),
     )
 
     result = runner.invoke(cli.app, ["scan", "--days", "7", "--harness", "opencode"])
@@ -479,6 +483,7 @@ def test_report_says_sessions_were_excluded_when_configuration_drops_them(
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
         detail=cli.DetailLevel.FULL,
     ):
         return StubReportService(output_path, period)
@@ -520,6 +525,7 @@ def test_report_passes_root_only_to_the_report_service(
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
         detail=cli.DetailLevel.FULL,
     ):
         captured["root_only"] = root_only
@@ -573,6 +579,7 @@ def test_scan_passes_root_only_to_the_scan_service(monkeypatch: pytest.MonkeyPat
         *,
         harness=cli.Harness.OPENCODE,
         progress=None,
+        metrics=None,
     ):
         captured["root_only"] = root_only
         captured["progress"] = progress
@@ -609,6 +616,7 @@ def test_quiet_scan_passes_a_null_progress_reporter(
         *,
         harness=cli.Harness.OPENCODE,
         progress=None,
+        metrics=None,
     ):
         captured["progress"] = progress
         return StubScanService()
@@ -659,6 +667,7 @@ def test_dry_run_keeps_progress_out_of_stdout(
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
         detail=cli.DetailLevel.FULL,
     ):
         return ProgressReportService(output_path, period, progress)
@@ -710,6 +719,7 @@ def test_report_passes_the_detail_level_to_the_report_service(
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
         detail=cli.DetailLevel.FULL,
     ):
         captured["detail"] = detail
@@ -754,6 +764,7 @@ def test_report_defaults_to_full_detail(
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
         detail=cli.DetailLevel.FULL,
     ):
         captured["detail"] = detail
@@ -1321,7 +1332,9 @@ def test_run_scans_once_then_generates(
                 scan=scan,
             )
 
-    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+    def build_scan(
+        settings, period, root_only=False, *, harness, sanitize, progress, metrics=None
+    ):
         seen["root_only"] = root_only
         return StubScanService()
 
@@ -1337,6 +1350,7 @@ def test_run_scans_once_then_generates(
         sanitize,
         detail,
         progress,
+        metrics=None,
     ):
         seen["root_only"] = root_only
         return StubReportService(output_path, period)
@@ -1399,6 +1413,7 @@ def test_run_detail_flags_keep_session_reports_and_bypass_outcome_synthesis(
         sanitize,
         detail,
         progress,
+        metrics=None,
     ):
         del settings, harness, progress
         built.append((detail, no_llm))
@@ -1509,7 +1524,8 @@ def test_run_aborts_when_the_preview_is_declined(
     monkeypatch.setattr(
         cli,
         "_build_scan_service",
-        lambda settings, period, root_only=False, *, harness, sanitize, progress: StubScanService(),
+        lambda settings, period, root_only=False, *, harness, sanitize, progress,
+        metrics=None: StubScanService(),
     )
 
     result = runner.invoke(cli.app, ["run"])
@@ -1547,7 +1563,8 @@ def test_run_preview_says_sessions_were_excluded_when_configuration_drops_them(
     monkeypatch.setattr(
         cli,
         "_build_scan_service",
-        lambda settings, period, root_only=False, *, harness, sanitize, progress: StubScanService(),
+        lambda settings, period, root_only=False, *, harness, sanitize, progress,
+        metrics=None: StubScanService(),
     )
 
     result = runner.invoke(cli.app, ["run"])
@@ -1669,7 +1686,9 @@ def test_run_accepts_a_non_opencode_harness(
                 scan=scan,
             )
 
-    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+    def build_scan(
+        settings, period, root_only=False, *, harness, sanitize, progress, metrics=None
+    ):
         seen["harness"] = harness
         seen["sanitize"] = sanitize
         return StubScanService()
@@ -1686,6 +1705,7 @@ def test_run_accepts_a_non_opencode_harness(
         sanitize,
         detail,
         progress,
+        metrics=None,
     ):
         return StubReportService(output_path, period)
 
@@ -1756,7 +1776,9 @@ def test_run_dry_run_prints_without_writing(
                 scan=scan,
             )
 
-    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+    def build_scan(
+        settings, period, root_only=False, *, harness, sanitize, progress, metrics=None
+    ):
         return StubScanService()
 
     def build_report(
@@ -1771,6 +1793,7 @@ def test_run_dry_run_prints_without_writing(
         sanitize,
         detail,
         progress,
+        metrics=None,
     ):
         return StubReportService(output_path, period)
 
@@ -1856,6 +1879,7 @@ def test_a_dry_run_does_not_ask_where_to_write(
         sanitize,
         detail,
         progress,
+        metrics=None,
     ):
         seen["output_path"] = output_path
         return StubReportService(output_path, period)
@@ -2074,7 +2098,9 @@ def test_run_walks_the_real_prompts_on_defaults(
                 scan=scan,
             )
 
-    def build_scan(settings, period, root_only=False, *, harness, sanitize, progress):
+    def build_scan(
+        settings, period, root_only=False, *, harness, sanitize, progress, metrics=None
+    ):
         captured["harness"] = harness
         captured["sanitize"] = sanitize
         captured["root_only"] = root_only
@@ -2092,6 +2118,7 @@ def test_run_walks_the_real_prompts_on_defaults(
         sanitize,
         detail,
         progress,
+        metrics=None,
     ):
         captured["no_llm"] = no_llm
         captured["detail"] = detail
@@ -2235,6 +2262,7 @@ def test_the_menu_runs_the_real_scan_command_over_the_last_week(
         harness=cli.Harness.OPENCODE,
         sanitize=False,
         progress=None,
+        metrics=None,
     ):
         captured["period"] = period
         captured["harness"] = harness
@@ -2309,3 +2337,356 @@ def test_the_menu_reports_a_configuration_error_from_the_harness_question(
 
     assert result.exit_code == 3
     assert "every harness is disabled by configuration" in result.stdout
+
+
+# --- verbose performance summary ----------------------------------------------
+
+
+class StubScanServiceWithSessions:
+    def __init__(self, period: DateRange) -> None:
+        self._period = period
+
+    def scan(self) -> ScanResult:
+        return ScanResult(
+            period=self._period,
+            candidate_session_count=1,
+            loaded_session_count=1,
+            failed_session_count=0,
+        )
+
+
+class StubReportServiceWithScan(StubReportService):
+    """`StubReportService` plus the scan the history log reads back off a real run."""
+
+    def generate(self, *, force: bool = False, dry_run: bool = False, scan=None):
+        # `run` hands back the scan it already did; `report` does not pass one.
+        result = super().generate(force=force, dry_run=dry_run)
+        return SimpleNamespace(
+            output_path=result.output_path,
+            content=result.content,
+            report=result.report,
+            scan=ScanResult(
+                period=self.period,
+                candidate_session_count=1,
+                loaded_session_count=1,
+                failed_session_count=0,
+            ),
+        )
+
+
+def scan_builder_recording(durations: dict, counts: dict):
+    """A scan-service builder that records into whatever collector the CLI hands it."""
+
+    def build(
+        settings,
+        period,
+        root_only=False,
+        *,
+        harness=cli.Harness.OPENCODE,
+        sanitize=False,
+        progress=None,
+        metrics=None,
+    ):
+        assert metrics is not None, "the CLI must hand the builder a live collector"
+        metrics.durations.update(durations)
+        for key, value in counts.items():
+            metrics.count(key, value)
+        return StubScanServiceWithSessions(period)
+
+    return build
+
+
+def report_builder_recording(durations: dict, counts: dict, labels: dict):
+    def build(
+        settings,
+        period,
+        output_path,
+        no_llm,
+        root_only=False,
+        *,
+        now,
+        harness=cli.Harness.OPENCODE,
+        sanitize=False,
+        progress=None,
+        detail=cli.DetailLevel.FULL,
+        metrics=None,
+    ):
+        assert metrics is not None, "the CLI must hand the builder a live collector"
+        metrics.durations.update(durations)
+        for key, value in counts.items():
+            metrics.count(key, value)
+        for key, value in labels.items():
+            metrics.label(key, value)
+        return StubReportServiceWithScan(output_path, period)
+
+    return build
+
+
+def test_verbose_scan_prints_the_performance_summary_on_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Timings are a diagnostic; stdout stays the scan result a script can parse."""
+
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        scan_builder_recording(
+            {MetricStage.EXPORT_SESSIONS: 11.84},
+            {"loaded_sessions": 42, "repositories": 6},
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app, ["scan", "--days", "7", "--harness", "opencode", "--verbose"]
+    )
+
+    assert result.exit_code == 0
+    assert "Export sessions" in result.stderr
+    assert "11.84s" in result.stderr
+    assert "Performance" not in result.stdout
+
+
+def test_a_normal_scan_prints_no_timings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        scan_builder_recording({MetricStage.EXPORT_SESSIONS: 11.84}, {}),
+    )
+
+    result = runner.invoke(cli.app, ["scan", "--days", "7", "--harness", "opencode"])
+
+    assert result.exit_code == 0
+    assert "Performance" not in result.stdout + result.stderr
+
+
+def test_a_quiet_scan_prints_no_timings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        scan_builder_recording({MetricStage.EXPORT_SESSIONS: 11.84}, {}),
+    )
+
+    result = runner.invoke(
+        cli.app, ["scan", "--days", "7", "--harness", "opencode", "--quiet"]
+    )
+
+    assert result.exit_code == 0
+    assert "Performance" not in result.stdout + result.stderr
+
+
+def test_a_piped_json_scan_keeps_the_timings_out_of_the_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`iiwi scan --json --verbose | jq` must still see valid JSON on stdout."""
+
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        scan_builder_recording({MetricStage.EXPORT_SESSIONS: 11.84}, {}),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["scan", "--days", "7", "--harness", "opencode", "--json", "--verbose"],
+    )
+
+    assert result.exit_code == 0
+    json.loads(result.stdout)
+    assert "Export sessions" in result.stderr
+
+
+def test_verbose_report_prints_the_performance_summary_on_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_build_report_service",
+        report_builder_recording(
+            {MetricStage.NARRATE: 18.96},
+            {"transcript_bytes": 831488},
+            {"narrator": "opencode"},
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "report",
+            "--days",
+            "7",
+            "--output",
+            str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
+            "--verbose",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Narration" in result.stderr
+    assert "18.96s" in result.stderr
+    assert "812 KB" in result.stderr
+    assert "opencode" in result.stderr
+    assert "Performance" not in result.stdout
+
+
+def test_a_normal_report_prints_no_timings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_build_report_service",
+        report_builder_recording({MetricStage.NARRATE: 18.96}, {}, {}),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "report",
+            "--days",
+            "7",
+            "--output",
+            str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Performance" not in result.stdout + result.stderr
+
+
+def test_a_verbose_dry_run_keeps_the_timings_out_of_the_report_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`iiwi report --dry-run --verbose > out.md` must not embed a timing table."""
+
+    monkeypatch.setattr(
+        cli,
+        "_build_report_service",
+        report_builder_recording({MetricStage.NARRATE: 18.96}, {}, {}),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "report",
+            "--days",
+            "7",
+            "--dry-run",
+            "--output",
+            str(tmp_path / "report.md"),
+            "--harness",
+            "opencode",
+            "--verbose",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == "# Engineering Worklog\n"
+    assert "Narration" in result.stderr
+
+
+def test_the_report_builder_names_the_narrator_that_will_run(tmp_path: Path) -> None:
+    """"Scan Codex, narrate with Claude" is invisible unless the summary says so."""
+
+    metrics = cli.PerformanceMetrics()
+
+    cli._build_report_service(
+        cli._load_settings(),
+        DateRange(
+            since=datetime(2026, 7, 20, tzinfo=TZ),
+            until=datetime(2026, 7, 27, tzinfo=TZ),
+        ),
+        tmp_path / "report.md",
+        True,
+        now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        harness=cli.Harness.CODEX,
+        metrics=metrics,
+    )
+
+    assert metrics.labels["narrator"] == "none (--no-llm)"
+
+
+def test_the_report_builder_names_the_resolved_provider_for_a_narrated_run(
+    tmp_path: Path,
+) -> None:
+    metrics = cli.PerformanceMetrics()
+
+    cli._build_report_service(
+        cli._load_settings(),
+        DateRange(
+            since=datetime(2026, 7, 20, tzinfo=TZ),
+            until=datetime(2026, 7, 27, tzinfo=TZ),
+        ),
+        tmp_path / "report.md",
+        False,
+        now=datetime(2026, 7, 29, 20, 0, tzinfo=TZ),
+        harness=cli.Harness.CODEX,
+        metrics=metrics,
+    )
+
+    assert metrics.labels["narrator"] == "codex"
+
+
+def test_the_run_wizard_reports_timings_under_verbose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`run --verbose` accepted the flag but printed no timings; scan/report did."""
+
+    output_path = tmp_path / "wizard.md"
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    _answer_for_run(
+        monkeypatch, output_path=output_path, period=period, final_accept=True
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        scan_builder_recording({MetricStage.EXPORT_SESSIONS: 11.84}, {}),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_report_service",
+        report_builder_recording({MetricStage.NARRATE: 18.96}, {}, {}),
+    )
+
+    result = runner.invoke(cli.app, ["run", "--verbose", "--dry-run"])
+
+    assert result.exit_code == 0, result.stdout
+    # One summary spanning both halves: the wizard scans once and reuses it.
+    assert "Export sessions" in result.stderr
+    assert "Narration" in result.stderr
+
+
+def test_the_run_wizard_stays_quiet_without_verbose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_path = tmp_path / "wizard.md"
+    period = DateRange(
+        since=datetime(2026, 7, 20, tzinfo=TZ), until=datetime(2026, 7, 27, tzinfo=TZ)
+    )
+    _answer_for_run(
+        monkeypatch, output_path=output_path, period=period, final_accept=True
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_scan_service",
+        scan_builder_recording({MetricStage.EXPORT_SESSIONS: 11.84}, {}),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_build_report_service",
+        report_builder_recording({MetricStage.NARRATE: 18.96}, {}, {}),
+    )
+
+    result = runner.invoke(cli.app, ["run", "--dry-run"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Performance" not in result.stdout + result.stderr

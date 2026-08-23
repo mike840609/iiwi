@@ -154,7 +154,9 @@ def test_every_variable_in_the_configuration_doc_is_a_real_setting() -> None:
     configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
     documented = set(re.findall(r"IIWI_[A-Z0-9_]+", configuration))
     known = {setting.variable for setting in setting_keys()}
-    known.add("IIWI_CONFIG_FILE")
+    # Path overrides, not settings: they say *where* iiwi keeps something rather
+    # than what it does, so they have no leaf in the settings model.
+    known.update({"IIWI_CONFIG_FILE", "IIWI_CACHE_FILE"})
 
     assert documented, "no documented variables found; the pattern stopped matching"
     assert documented <= known, f"documented but not settable: {documented - known}"
@@ -355,3 +357,37 @@ def test_daily_docs_describe_available_harnesses() -> None:
     for text in (reference, daily):
         assert "available" in text
         assert "every enabled harness" not in text
+
+
+def test_cli_reference_documents_the_verbose_performance_summary() -> None:
+    """A diagnostic nobody knows about diagnoses nothing."""
+
+    reference = Path("docs/cli-reference.md").read_text(encoding="utf-8")
+
+    assert "Performance" in reference
+    assert "stderr" in reference
+
+
+def test_guides_show_what_the_verbose_performance_summary_looks_like() -> None:
+    guides = Path("docs/guides.md").read_text(encoding="utf-8")
+
+    assert "Performance" in guides
+    assert "Narration" in guides
+    assert "Transcript" in guides
+
+
+def test_configuration_documents_the_session_cache() -> None:
+    configuration = Path("docs/configuration.md").read_text(encoding="utf-8")
+
+    assert "IIWI_CACHE__ENABLED" in configuration
+    assert "IIWI_CACHE_FILE" in configuration
+
+
+def test_privacy_documents_that_the_cache_rests_unredacted_on_disk() -> None:
+    """The cache is a new place the user's session content lives; say so plainly."""
+
+    privacy = Path("docs/privacy.md").read_text(encoding="utf-8")
+
+    assert "session cache" in privacy.lower()
+    assert "0600" in privacy
+    assert "IIWI_CACHE__ENABLED" in privacy

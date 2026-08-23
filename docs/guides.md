@@ -111,8 +111,39 @@ Use `--dry-run` to preview the Markdown without writing a file:
 iiwi report --period last-week --no-llm --dry-run
 ```
 
-Use `--verbose` to show export and narrative fallback warnings. Use `--quiet` to show only the
-output path after a successful report.
+Use `--verbose` to show export and narrative fallback warnings, plus a per-stage timing
+summary on stderr when a run feels slow. Use `--quiet` to show only the output path after a
+successful report.
+
+```
+Performance
+
+Discover sessions        0.31s
+Export sessions         11.84s
+Resolve repositories     0.72s
+Prepare transcript       0.41s
+Collect usage            0.28s
+Narration               18.96s
+Render                   0.03s
+Write                    0.01s
+
+Total                   32.56s
+
+Candidate sessions          45
+Sessions                    42
+Failed sessions              0
+Repositories                 6
+Transcript              812 KB
+Narrator              opencode
+```
+
+The summary goes to stderr, so `iiwi report --dry-run --verbose > report.md` still writes a
+clean report and `iiwi scan --json --verbose | jq` still gets valid JSON.
+
+`Cache hits` and `Cache misses` in that list are the session cache: a session that has not
+changed since the last run is read back instead of exported again, which is most of why a
+repeat report over the same week finishes in about a second. See
+[Session cache](configuration.md#session-cache) to turn it off or move it.
 
 ## OpenCode privacy modes
 
