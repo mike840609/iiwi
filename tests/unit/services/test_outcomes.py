@@ -25,6 +25,7 @@ from iiwi.services.outcomes import (
 )
 from iiwi.services.scan import ScanResult
 from iiwi.sessions.filtering import is_iiwi_authored
+from iiwi.summarizers.narrator import NarrativeRunError
 
 
 @dataclass
@@ -701,6 +702,16 @@ def test_all_extraction_failures_raise_complete_synthesis_error(monkeypatch) -> 
 def test_invalid_or_empty_model_output_is_a_complete_synthesis_error() -> None:
     with pytest.raises(OutcomeSynthesisError, match="valid outcome JSON"):
         service_for_raw("not-json").synthesize(one_scan())
+
+
+def test_narrative_run_error_is_wrapped_as_outcome_synthesis_error() -> None:
+    class FailingRunner:
+        def run(self, *, transcript: str, prompt: str, title: str) -> str:
+            raise NarrativeRunError("CLI process exited with status 1")
+
+    with pytest.raises(OutcomeSynthesisError, match="CLI process exited with status 1"):
+        OutcomeSynthesisService(FailingRunner()).synthesize(one_scan())
+
 
 
 @pytest.mark.parametrize(

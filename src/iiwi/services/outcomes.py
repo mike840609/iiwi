@@ -31,7 +31,7 @@ from iiwi.models.repository import ResolvedSession
 from iiwi.security.redactor import redact_text, redact_value
 from iiwi.services.scan import ScanResult
 from iiwi.sessions.filtering import IIWI_SESSION_TITLE_PREFIX
-from iiwi.summarizers.narrator import NarrativeRunner
+from iiwi.summarizers.narrator import NarrativeRunError, NarrativeRunner
 from iiwi.summarizers.outcome_prompt import build_outcome_prompt
 
 
@@ -334,7 +334,7 @@ class OutcomeSynthesisService:
                 prompt=build_outcome_prompt(),
                 title=f"{IIWI_SESSION_TITLE_PREFIX}outcome synthesis",
             )
-        except OSError as exc:
+        except (NarrativeRunError, OSError) as exc:
             raise OutcomeSynthesisError(str(exc)) from exc
         payload = self._parse_payload(output)
         outcomes: list[Outcome] = []
