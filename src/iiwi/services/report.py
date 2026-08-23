@@ -112,6 +112,8 @@ class ReportService:
             scan.sessions_by_repository.items(),
             start=1,
         ):
+            if not resolved_items:
+                continue
             with self._metrics.measure(MetricStage.PREPARE_EVIDENCE):
                 first = resolved_items[0].repository
                 sessions: list[SessionEvidence] = []
