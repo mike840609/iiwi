@@ -404,3 +404,26 @@ def test_set_value_creates_a_missing_config_directory(
     assert stored_values(path) == {
         "IIWI_HARNESSES__OPENCODE__CLI__MODEL": "gpt-5"
     }
+
+
+def test_set_value_atomically_replaces_file(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.env"
+    config_file.write_text("IIWI_HARNESSES__OPENCODE__ENABLED=true\n", encoding="utf-8")
+
+    set_value("harnesses.opencode.enabled", "false", path=config_file)
+
+    assert stored_values(config_file) == {"IIWI_HARNESSES__OPENCODE__ENABLED": "false"}
+    # Verify no orphan temp files remain
+    assert list(tmp_path.glob(".*.tmp.*")) == []
+
+
+def test_unset_value_atomically_replaces_file(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.env"
+    config_file.write_text("IIWI_HARNESSES__OPENCODE__ENABLED=true\n", encoding="utf-8")
+
+    setting, removed = unset_value("harnesses.opencode.enabled", path=config_file)
+
+    assert removed is True
+    assert stored_values(config_file) == {}
+    assert list(tmp_path.glob(".*.tmp.*")) == []
+

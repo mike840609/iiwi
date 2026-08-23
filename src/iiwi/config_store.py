@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import difflib
 import os
-from collections.abc import Iterator
+import tempfile
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -172,6 +173,38 @@ def stored_values(path: Path | None = None) -> dict[str, str]:
     return {name: value for name, value in values.items() if value is not None}
 
 
+def _atomic_dotenv_update(
+    file_path: Path,
+    action: Callable[[str], tuple[bool | None, str, str]],
+) -> tuple[bool | None, str, str]:
+    _prepare_file(file_path)
+    parent = file_path.parent
+    prefix = f".{file_path.name}.tmp."
+    temp_fd, temp_name = tempfile.mkstemp(dir=parent, prefix=prefix)
+    temp_path = Path(temp_name)
+    try:
+        if file_path.exists():
+            stat = file_path.stat()
+            if os.name == "posix":
+                os.fchmod(temp_fd, stat.st_mode & 0o777)
+            content = file_path.read_bytes()
+            os.write(temp_fd, content)
+        elif os.name == "posix":
+            os.fchmod(temp_fd, 0o600)
+        os.close(temp_fd)
+
+        result = action(str(temp_path))
+        if result[0]:
+            os.replace(temp_path, file_path)
+        return result
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+
 def set_value(key: str, value: str, *, path: Path | None = None) -> SettingKey:
     """Record one setting, replacing any earlier entry for it."""
 
@@ -180,9 +213,11 @@ def set_value(key: str, value: str, *, path: Path | None = None) -> SettingKey:
     # behind that the user then has to clean up.
     validate_value(setting, value)
     file_path = _resolve_path(path)
-    _prepare_file(file_path)
     try:
-        written, _, _ = set_key(str(file_path), setting.variable, value)
+        written, _, _ = _atomic_dotenv_update(
+            file_path,
+            lambda target: set_key(target, setting.variable, value),
+        )
     except OSError as exc:
         raise ConfigurationError(f"cannot write settings file: {file_path}: {exc}") from exc
     if not written:
@@ -200,7 +235,11 @@ def unset_value(key: str, *, path: Path | None = None) -> tuple[SettingKey, bool
         # no-op is not a warning: the user asked for the default and has it.
         return setting, False
     try:
-        removed, _ = unset_key(str(file_path), setting.variable)
+        result = _atomic_dotenv_update(
+            file_path,
+            lambda target: (*unset_key(target, setting.variable), ""),
+        )
+        removed = result[0]
     except OSError as exc:
         raise ConfigurationError(f"cannot write settings file: {file_path}: {exc}") from exc
     # Symmetric with set_value's check of set_key's return value: the key was
