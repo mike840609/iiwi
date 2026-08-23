@@ -1518,7 +1518,7 @@ def _error_options(error: _ErrorState) -> list[str]:
         return ["Back"]
     if error.kind in {"doctor-result"}:
         return ["Main menu"]
-    if error.kind in {"new-report-start", "activity-start"}:
+    if error.kind in {"new-report-start", "activity-start", "daily-start"}:
         # No "Change harness"/"Change period": both of those assume
         # state.draft is already set, but these two kinds fire when building
         # the draft itself is what failed, so state.draft is still None.
@@ -1561,7 +1561,7 @@ def _error_back_screen(error: _ErrorState) -> Screen:
         return Screen.HISTORY
     if error.kind == "daily-path":
         return Screen.DAILY_RESULT
-    if error.kind == "daily-source":
+    if error.kind in {"daily-source", "daily-start"}:
         return Screen.MAIN
     if error.kind in {"daily-preview", "daily-write"}:
         return Screen.DAILY_REVIEW

@@ -226,3 +226,27 @@ def test_daily_output_failures_return_to_daily_review(
     assert state.error is not None
     assert state.error.kind == kind
     assert controller._error_back_screen(state.error) is Screen.DAILY_REVIEW
+
+
+def test_daily_start_error_enter_returns_to_main_without_crash() -> None:
+    log = ActionLog()
+    actions = _replace_daily_actions(
+        _actions(log),
+        start_daily=lambda previous: (_ for _ in ()).throw(
+            ConfigurationError("no harness is enabled")
+        ),
+    )
+    state = _state()
+
+    controller._begin_daily_review(state, actions)
+
+    assert state.screen is Screen.RECOVERABLE_ERROR
+    assert state.error is not None
+    assert state.error.kind == "daily-start"
+    assert controller._error_options(state.error) == ["Back", "Main menu"]
+
+    # Pressing Enter on option 0 ("Back") must not raise AssertionError on state.draft
+    controller._error_key(state, KeyPress(key=Key.ENTER), actions, _console())
+
+    assert state.screen is Screen.MAIN
+
