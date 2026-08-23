@@ -321,7 +321,7 @@ class ConsoleReporter:
         table.add_column("Sessions", justify="right")
         for repository_id, sessions in result.sessions_by_repository.items():
             name = sessions[0].repository.display_name if sessions else repository_id
-            table.add_row(Text(redact_text(name)), repository_id, str(len(sessions)))
+            table.add_row(Text(redact_text(name)), redact_text(repository_id), str(len(sessions)))
         self.console.print(table)
         if self.verbose:
             for warning in result.warnings:
