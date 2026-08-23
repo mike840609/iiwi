@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 0.15.1 - 2026-08-23
+
+- A session cache that fails mid-run — locked or corrupted by another process —
+  now degrades once instead of retrying every session, each paying the full
+  connect timeout.
+
 - Sessions that have not changed are no longer re-exported. Each normalized
   session is kept in a small SQLite database and reused while the harness's own
   update timestamp still matches, so a repeat report over the same week costs

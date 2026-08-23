@@ -120,7 +120,7 @@ toml = [
 
 [[package]]
 name = "iiwi"
-version = "0.15.0"
+version = "0.15.1"
 source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
