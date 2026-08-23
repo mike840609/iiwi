@@ -115,11 +115,18 @@ class SessionCache:
         One unreadable cache produces one warning, not one per session: a
         report topped by two hundred identical lines has buried the session
         warnings that actually needed reading.
+
+        It also stops trying. A cache that failed once — locked, corrupt, or
+        unreadable — is not going to succeed for the next session, and each
+        retry pays the full connect timeout again. Marking the cache unusable
+        here is what turns "one warning" into "one warning *and one delay*",
+        which is the degradation the module docstring promises.
         """
 
         with self._lock:
             if self._problem is None:
                 self._problem = reason
+            self._usable = False
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
