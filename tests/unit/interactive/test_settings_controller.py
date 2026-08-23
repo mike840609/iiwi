@@ -232,6 +232,7 @@ def test_editing_a_free_text_row_writes_the_value(config_file: Path) -> None:
                     KeyPress(key=Key.ENTER),
                     char("q"),
                     char("q"),
+                    char("q"),
                 ]
             )
         ),
@@ -260,6 +261,7 @@ def test_editing_with_an_empty_value_restores_the_default(config_file: Path) -> 
                     KeyPress(key=Key.BACKSPACE),
                     KeyPress(key=Key.BACKSPACE),
                     KeyPress(key=Key.ENTER),
+                    char("q"),
                     char("q"),
                     char("q"),
                 ]
@@ -491,6 +493,33 @@ def test_back_returns_to_the_main_menu(config_file: Path) -> None:
     first_menu = text.index("Review Activity")
     settings_frame = text.index("opencode.enabled")
     assert first_menu < settings_frame < text.rindex("Review Activity")
+
+
+def test_question_mark_types_into_inline_editor(config_file: Path) -> None:
+    console, stream = _console()
+    downs = [KeyPress(key=Key.DOWN)] * 5
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            _open_settings(
+                [
+                    *downs,
+                    KeyPress(key=Key.ENTER),
+                    char("?"),
+                    char("0"),
+                    KeyPress(key=Key.ENTER),
+                    char("q"),
+                    char("q"),
+                    char("q"),
+                ]
+            )
+        ),
+        console=console,
+    )
+    assert config_store.stored_values(config_file) == {
+        "IIWI_HARNESSES__OPENCODE__CLI__MODEL": "?0"
+    }
+    assert "Keyboard shortcuts" not in stream.getvalue()
 
 
 def test_settings_offset_follows_the_cursor_and_saturates_at_the_end() -> None:

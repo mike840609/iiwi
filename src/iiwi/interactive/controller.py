@@ -1992,6 +1992,7 @@ def _dispatch(
         _exact_char(key, "?")
         and state.screen is not Screen.HELP
         and not state.searching
+        and not state.settings_editing
     ):
         _open_help(state)
         return
