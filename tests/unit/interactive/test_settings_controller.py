@@ -12,6 +12,7 @@ from rich.console import Console
 from iiwi import config_store
 from iiwi.interactive.controller import (
     InteractiveActions,
+    _settings_edit_key,
     _settings_key,
     _State,
     run_interactive,
@@ -19,11 +20,12 @@ from iiwi.interactive.controller import (
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.interactive.render import (
+    render_settings,
     settings_capacity,
     settings_display_count,
     settings_display_index,
 )
-from iiwi.interactive.settings import SettingsRow
+from iiwi.interactive.settings import SettingsRow, build_settings_rows
 from iiwi.models.time_range import DateRange
 
 TZ = ZoneInfo("Asia/Taipei")
@@ -555,3 +557,46 @@ def test_settings_offset_follows_the_cursor_and_saturates_at_the_end() -> None:
         assert state.settings_offset <= selected
         assert selected < state.settings_offset + capacity
     assert state.settings_offset == 0
+
+
+def test_space_and_delete_in_settings_inline_editor() -> None:
+    state = _State(screen=Screen.SETTINGS)
+    state.settings_rows = build_settings_rows()
+    state.settings_cursor = next(
+        index
+        for index, row in enumerate(state.settings_rows)
+        if row.editable and not row.locked
+    )
+    state.settings_editing = True
+    state.settings_edit_value = "hello"
+
+    # Test typing space
+    _settings_edit_key(state, KeyPress(key=Key.SPACE))
+    assert state.settings_edit_value == "hello "
+
+    # Test typing character
+    _settings_edit_key(state, KeyPress(char="w"))
+    assert state.settings_edit_value == "hello w"
+
+    # Test delete key
+    _settings_edit_key(state, KeyPress(key=Key.DELETE))
+    assert state.settings_edit_value == "hello "
+
+
+def test_settings_editing_hint_does_not_advertise_help() -> None:
+    rows = build_settings_rows()
+    console, stream = _console()
+    render_settings(
+        console,
+        rows=rows,
+        selected=0,
+        file_path="config.env",
+        editing=True,
+        edit_value="test",
+        error=None,
+    )
+    output = stream.getvalue()
+    assert "Enter Keep" in output
+    assert "Esc Cancel" in output
+    assert "? Help" not in output
+

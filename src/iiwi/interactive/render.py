@@ -1690,7 +1690,7 @@ def render_settings(
     console.print()
     _print_hints(
         console,
-        ["Enter Keep", "Esc Cancel", "? Help"]
+        ["Enter Keep", "Esc Cancel"]
         if editing
         else ["↑↓ jk", "←→ Cycle", "Enter Edit", "? Help", "b Back"],
     )

@@ -634,7 +634,7 @@ def _settings_edit_key(state: _State, key: KeyPress) -> None:
         state.settings_edit_value = ""
         state.settings_error = None
         return
-    if key.key is Key.BACKSPACE:
+    if key.key in {Key.BACKSPACE, Key.DELETE}:
         state.settings_edit_value = state.settings_edit_value[:-1]
         return
     if key.key is Key.ENTER:
@@ -643,6 +643,9 @@ def _settings_edit_key(state: _State, key: KeyPress) -> None:
         if state.settings_error is None:
             state.settings_editing = False
             state.settings_edit_value = ""
+        return
+    if key.key is Key.SPACE:
+        state.settings_edit_value += " "
         return
     if key.char is not None:
         state.settings_edit_value += key.char
