@@ -46,7 +46,7 @@ def test_redaction_preserves_json_syntax() -> None:
     redacted = redact_text(text)
     assert "my_secret_password" not in redacted
     assert "abc12345" not in redacted
-    assert '{"password": "[REDACTED]", "token": "[REDACTED]"}' == redacted
+    assert redacted == '{"password": "[REDACTED]", "token": "[REDACTED]"}'
 
 
 def test_redacts_github_fine_grained_pat() -> None:

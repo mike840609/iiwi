@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import difflib
 import os
 import tempfile
@@ -199,10 +200,8 @@ def _atomic_dotenv_update(
         return result
     finally:
         if temp_path.exists():
-            try:
+            with contextlib.suppress(OSError):
                 temp_path.unlink()
-            except OSError:
-                pass
 
 
 def set_value(key: str, value: str, *, path: Path | None = None) -> SettingKey:
