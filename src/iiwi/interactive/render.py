@@ -1903,6 +1903,7 @@ def render_session_review(
         "p Inspect",
         "/ Search",
         "g Report",
+        "G Force",
         "? More",
         "b Back",
     ]
