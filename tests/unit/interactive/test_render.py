@@ -1420,3 +1420,73 @@ def test_settings_keeps_selection_and_footer_visible_at_every_terminal_height() 
                     assert not above and below, (height, selected)
                 if selected == len(rows) - 1:
                     assert above and not below, (height, selected)
+
+
+_DISABLED_REASON = (
+    "Claude Code is disabled; enable harnesses.claude_code.enabled"
+    " to make this take effect."
+)
+
+
+def test_settings_dims_an_unfocused_disabled_row() -> None:
+    console, stream = _color_console()
+
+    render_settings(
+        console,
+        rows=[
+            _settings_row(disabled_reason=_DISABLED_REASON),
+            _settings_row(
+                key="harnesses.codex.home_directory",
+                label="codex.home_directory",
+                value=str(Path.home() / ".codex"),
+                default=str(Path.home() / ".codex"),
+                choices=(),
+                show_all=False,
+                section="Codex",
+            ),
+        ],
+        selected=1,
+        file_path="/tmp/config.env",
+    )
+
+    text = stream.getvalue()
+    # The muted row's label goes dim. label_cells pads to the longest
+    # label (20 cells), so "opencode.enabled" carries four trailing spaces
+    # inside the escape pair.
+    assert "\x1b[2mopencode.enabled    \x1b[0m" in text
+    # …its active choice loses the highlight entirely…
+    assert "\x1b[1;36mtrue\x1b[0m" not in text
+    # …and its inactive choice is already dim.
+    assert "\x1b[2mfalse\x1b[0m" in text
+
+
+def test_a_focused_disabled_row_keeps_the_cursor_highlight() -> None:
+    console, stream = _color_console()
+
+    render_settings(
+        console,
+        rows=[_settings_row(disabled_reason=_DISABLED_REASON)],
+        selected=0,
+        file_path="/tmp/config.env",
+    )
+
+    text = stream.getvalue()
+    assert "\x1b[1;36mtrue\x1b[0m" in text
+
+
+def test_settings_shows_the_disabled_reason_on_the_detail_line() -> None:
+    console, stream = _console()
+
+    render_settings(
+        console,
+        rows=[_settings_row(disabled_reason=_DISABLED_REASON)],
+        selected=0,
+        file_path="/tmp/config.env",
+    )
+
+    text = stream.getvalue()
+    assert _DISABLED_REASON in text
+    # The reason replaces this row's normal help copy (_SETTINGS_HELP,
+    # render.py:110): "False makes --harness opencode fail with a
+    # configuration error."
+    assert "False makes --harness opencode fail" not in text
