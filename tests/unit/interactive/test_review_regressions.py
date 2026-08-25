@@ -162,6 +162,7 @@ def _actions(
     counters: dict[str, int],
     content: str = "report-content",
     exclude_fails: bool = False,
+    synthesize_callback=None,
 ) -> InteractiveActions:
     def count(name: str) -> None:
         counters[name] = counters.get(name, 0) + 1
@@ -194,8 +195,11 @@ def _actions(
         choose_period=choose_period,
         scan=do_scan,
         generate=generate,
-        synthesize=lambda draft, scan, force: OutcomeReviewDraft(
-            outcomes=_synthesized_outcomes(), report_type=draft.report_type
+        synthesize=synthesize_callback
+        or (
+            lambda draft, scan, force: OutcomeReviewDraft(
+                outcomes=_synthesized_outcomes(), report_type=draft.report_type
+            )
         ),
         generate_reviewed=lambda draft, scan, review, force: generate(
             draft, scan, force
@@ -488,3 +492,107 @@ def test_exclude_failure_returns_to_session_review() -> None:
     last_review = text.rindex("Review Sessions")
     assert text.count("Could not exclude repository") == 1
     assert "Review Sessions" in text[last_review:]
+
+
+def _interrupted_rescan_actions(
+    draft: ReportDraft,
+    counters: dict[str, int],
+    scans: list[ScanResult],
+):
+    """First scan succeeds and is recorded; every later scan is a Ctrl-C."""
+
+    def scan_callback(_value: ReportDraft) -> ScanResult:
+        if not scans:
+            result = _scan(2)
+            scans.append(result)
+            return result
+        raise KeyboardInterrupt
+
+    return scan_callback
+
+
+def test_interrupted_rescan_keeps_previous_scan_and_selection() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    counters: dict[str, int] = {}
+    scans: list[ScanResult] = []
+    console, stream = _console()
+    keys = ScriptedInput(
+        [
+            char("3"),
+            char("r"),
+            char("R"),
+            char("b"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_callback=_interrupted_rescan_actions(draft, counters, scans),
+            choose_period=lambda current: ("Last week", _period()),
+            counters=counters,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert counters.get("scan", 0) == 2
+    assert len(scans) == 1
+    # The interrupted rescan committed nothing: the seeded scan object survives
+    # verbatim and the review screen was re-shown after the cancel.
+    assert draft.scan is scans[0]
+    assert stream.getvalue().count("Review Sessions") >= 2
+    assert draft.selected_session_ids == {
+        item.session.session_id for item in scans[0].resolved_sessions
+    }
+
+
+def test_synthesis_after_failed_rescan_uses_old_sessions() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    counters: dict[str, int] = {}
+    scans: list[ScanResult] = []
+    synthesized: list[ScanResult] = []
+
+    def synthesize_recorder(_draft: ReportDraft, scan: ScanResult, _force: bool):
+        synthesized.append(scan)
+        return OutcomeReviewDraft(
+            outcomes=_synthesized_outcomes(), report_type=_draft.report_type
+        )
+
+    console, _ = _console()
+    keys = ScriptedInput(
+        [
+            char("3"),
+            char("r"),
+            char("R"),
+            char("g"),
+            char("b"),
+            char("q"),
+            char("q"),
+            char("q"),
+        ]
+    )
+
+    run_interactive(
+        actions=_actions(
+            draft=draft,
+            scan_callback=_interrupted_rescan_actions(draft, counters, scans),
+            choose_period=lambda current: ("Last week", _period()),
+            counters=counters,
+            synthesize_callback=synthesize_recorder,
+        ),
+        input_source=keys,
+        console=console,
+    )
+
+    assert counters.get("scan", 0) == 2
+    assert len(scans) == 1
+    # The cancelled rescan must not leak an empty or partial scan into
+    # synthesis: pressing g afterwards consumes exactly the old sessions.
+    assert len(synthesized) == 1
+    assert synthesized[0] is not None
+    assert {
+        item.session.session_id for item in synthesized[0].resolved_sessions
+    } == {item.session.session_id for item in scans[0].resolved_sessions}
