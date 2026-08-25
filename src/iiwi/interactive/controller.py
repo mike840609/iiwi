@@ -928,6 +928,10 @@ def _generate(
     state.preview_offset = 0
     state.review_message = None
     state.error = None
+    # The generation notice is scoped to this attempt: cli_actions injected it
+    # as an initial warning here, so consuming it now keeps a failed earlier
+    # attempt from leaking its notice into this and every later generate.
+    state.draft.generation_notice = None
     state.screen = Screen.REPORT_RESULT
 
 
@@ -1370,6 +1374,10 @@ def _begin_outcome_review(
     # Quick Review is the LLM path, so the Narrative toggle is what opts out of
     # it. Turning it off must not still spend a synthesis run.
     if not state.draft.narrative:
+        # A plain generate never inherits a pending fallback notice: that
+        # notice belongs to the fallback attempt that set it, and this
+        # attempt decides it does not carry one.
+        state.draft.generation_notice = None
         _generate(state, actions, console, force=False)
         return
     _sync_selection(state, actions)
@@ -1782,11 +1790,12 @@ def _error_key(
         _open_daily_review(state, draft)
         return
     if choice == "Use session-based report":
+        # The notice rides into this one attempt only: _generate clears it on
+        # success and leaves it set on failure so the error screen keeps its
+        # context until the next attempt decides.
         assert state.draft is not None
         state.draft.generation_notice = _SESSION_FALLBACK_NOTICE
         _generate(state, actions, console, force=False)
-        if state.screen is not Screen.RECOVERABLE_ERROR:
-            state.draft.generation_notice = None
         return
     if choice == "Overwrite once":
         if error.retry == "outcome-write":
@@ -1798,12 +1807,6 @@ def _error_key(
             )
         else:
             _generate(state, actions, console, force=True)
-            if (
-                state.draft is not None
-                and state.draft.generation_notice is not None
-                and state.screen is not Screen.RECOVERABLE_ERROR
-            ):
-                state.draft.generation_notice = None
         return
     assert state.draft is not None
     if choice == "Change harness":

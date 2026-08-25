@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -8,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
+from iiwi.errors import OutcomeSynthesisError, ReportAlreadyExistsError
 from iiwi.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
@@ -281,3 +283,74 @@ def test_p_on_a_repository_row_does_not_open_a_preview() -> None:
 
     text = stream.getvalue()
     assert "Session Preview" not in text
+
+
+def test_stale_fallback_notice_does_not_reach_later_reports() -> None:
+    """A failed fallback attempt must not pin its notice onto later generates.
+
+    The fallback notice is scoped to one attempt: the generate it rides into
+    consumes it as an initial warning. When that attempt fails and the user
+    backs out, a later unrelated successful generate must start clean instead
+    of embedding "Outcome synthesis unavailable" without a retry ever running.
+    """
+
+    console, _stream = _console()
+    generate_notices: list[str | None] = []
+
+    def flaky_generate(
+        current: ReportDraft, scan: ScanResult, force: bool
+    ) -> InteractiveReportResult:
+        generate_notices.append(current.generation_notice)
+        if len(generate_notices) == 1:
+            raise ReportAlreadyExistsError("reports/worklog.md already exists")
+        return InteractiveReportResult(
+            output_path=Path("reports/worklog.md"),
+            content="report",
+            repository_count=1,
+            session_count=1,
+        )
+
+    def failed_synthesis(
+        draft: ReportDraft, scan: ScanResult, force: bool
+    ) -> OutcomeReviewDraft:
+        raise OutcomeSynthesisError("narration CLI failed")
+
+    actions = replace(
+        _actions(),
+        generate=flaky_generate,
+        synthesize=failed_synthesis,
+    )
+
+    run_interactive(
+        actions=actions,
+        input_source=ScriptedInput(
+            [
+                char("3"),  # Generate Report setup
+                char("r"),  # Quick Review session tree
+                char("g"),  # synthesis fails -> recoverable error screen
+                KeyPress(key=Key.DOWN),  # select "Use session-based report"
+                KeyPress(key=Key.ENTER),  # fallback generate hits output conflict
+                char("b"),  # Back to the session tree
+                char("b"),  # Back to report setup
+                KeyPress(key=Key.DOWN),
+                KeyPress(key=Key.DOWN),
+                KeyPress(key=Key.DOWN),  # cursor on "Advanced settings"
+                KeyPress(key=Key.ENTER),  # reveal the advanced rows
+                KeyPress(key=Key.DOWN),
+                KeyPress(key=Key.DOWN),
+                KeyPress(key=Key.DOWN),  # cursor on "Narrative"
+                KeyPress(key=Key.RIGHT),  # narrative off: g generates directly
+                char("r"),  # back into the session tree
+                char("g"),  # plain successful session-based generate
+                char("q"),  # result -> main menu
+                char("q"),  # exit
+            ]
+        ),
+        console=console,
+    )
+
+    assert len(generate_notices) == 2
+    assert generate_notices[0] == (
+        "Outcome synthesis unavailable; generated the session-based report."
+    )
+    assert generate_notices[1] is None
