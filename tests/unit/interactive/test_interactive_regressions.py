@@ -524,7 +524,7 @@ def test_check_setup_shows_a_recoverable_error_not_a_crash() -> None:
     state = interactive_controller._State()
 
     interactive_controller._main_key(
-        state, char("5"), _configuration_error_actions()
+        state, char("5"), _configuration_error_actions(), _console()[0]
     )
 
     assert state.screen is interactive_controller.Screen.RECOVERABLE_ERROR

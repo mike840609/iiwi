@@ -56,7 +56,7 @@ def test_all_source_error_preserves_original_window_and_offers_recovery() -> Non
     )
     state = _state()
 
-    controller._begin_daily_review(state, actions)
+    controller._begin_daily_review(state, actions, _console())
 
     assert state.screen is Screen.RECOVERABLE_ERROR
     assert state.error is not None
@@ -86,7 +86,7 @@ def test_configuration_error_from_start_daily_is_recoverable_not_fatal() -> None
     )
     state = _state()
 
-    controller._begin_daily_review(state, actions)
+    controller._begin_daily_review(state, actions, _console())
 
     assert state.screen is Screen.RECOVERABLE_ERROR
     assert state.error is not None
@@ -122,7 +122,7 @@ def test_narrative_run_error_from_start_daily_is_recoverable_not_fatal() -> None
     )
     state = _state()
 
-    controller._begin_daily_review(state, actions)
+    controller._begin_daily_review(state, actions, _console())
 
     assert state.screen is Screen.RECOVERABLE_ERROR
     assert state.error is not None
@@ -238,7 +238,7 @@ def test_daily_start_error_enter_returns_to_main_without_crash() -> None:
     )
     state = _state()
 
-    controller._begin_daily_review(state, actions)
+    controller._begin_daily_review(state, actions, _console())
 
     assert state.screen is Screen.RECOVERABLE_ERROR
     assert state.error is not None
