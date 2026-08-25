@@ -1191,6 +1191,23 @@ def _focus_daily_item(state: _State, target: DailyReviewRow) -> None:
     )
 
 
+def _focus_outcome(
+    state: _State,
+    rows: list[OutcomeReviewRow],
+    outcome_id: str,
+) -> None:
+    """Resolve focus by stable row identity after a mutation changes row order."""
+
+    state.outcome_cursor = next(
+        (
+            index
+            for index, row in enumerate(rows)
+            if row.kind == "outcome" and row.outcome_id == outcome_id
+        ),
+        min(state.outcome_cursor, max(0, len(rows) - 1)),
+    )
+
+
 def _generate_daily_review(
     state: _State,
     actions: InteractiveActions,
@@ -1589,6 +1606,7 @@ def _outcome_review_key(
     assert target.outcome_id is not None
     if key.key is Key.SPACE:
         state.outcome_review.toggle_included(target.outcome_id)
+        _focus_outcome(state, _outcome_review_rows(state), target.outcome_id)
         return
     if _exact_char(key, "v"):
         state.evidence_expansions().symmetric_difference_update({target.outcome_id})

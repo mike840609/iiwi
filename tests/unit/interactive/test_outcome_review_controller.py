@@ -19,9 +19,11 @@ from iiwi.interactive.controller import (
 )
 from iiwi.interactive.input import Key, KeyPress
 from iiwi.interactive.models import ReportDraft, Screen
+from iiwi.interactive.render import MORE_CANDIDATES_SECTION
 from iiwi.models.outcome import (
     EvidenceRef,
     Outcome,
+    OutcomeBucket,
     OutcomeOrigin,
     OutcomeReviewDraft,
     OutcomeSourceGroup,
@@ -1032,3 +1034,76 @@ def test_one_included_outcome_is_enough_to_generate(
 
     assert len(log.reviewed_calls) == 1
     assert Screen.REPORT_RESULT in screens
+
+
+def _more_outcome(identifier: str, rank: int) -> Outcome:
+    candidate = _outcome(identifier, rank)
+    candidate.included = False
+    candidate.bucket = OutcomeBucket.MORE
+    return candidate
+
+
+def _outcome_state(review: OutcomeReviewDraft) -> controller._State:
+    return controller._State(
+        screen=Screen.OUTCOME_REVIEW,
+        outcome_review=review,
+        expanded_evidence={MORE_CANDIDATES_SECTION},
+    )
+
+
+def test_toggling_a_more_candidate_keeps_the_cursor_on_it() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    review = _review(
+        _outcome("a", 0),
+        _outcome("b", 1),
+        _outcome("c", 2),
+        _outcome("d", 3),
+        _outcome("e", 4),
+        _more_outcome("candidate", 5),
+    )
+    log = ActionLog(review)
+    actions = _actions(draft, log)
+    state = _outcome_state(review)
+    rows = controller._outcome_review_rows(state)
+    candidate_index = next(
+        index
+        for index, row in enumerate(rows)
+        if row.kind == "outcome" and row.outcome_id == "candidate"
+    )
+
+    for _ in range(candidate_index):
+        controller._outcome_review_key(state, KeyPress(key=Key.DOWN), actions)
+    assert (
+        controller._outcome_review_rows(state)[state.outcome_cursor].outcome_id
+        == "candidate"
+    )
+
+    controller._outcome_review_key(state, KeyPress(key=Key.SPACE), actions)
+
+    focused = controller._outcome_review_rows(state)[state.outcome_cursor]
+    assert focused.kind == "outcome"
+    assert focused.outcome_id == "candidate"
+    assert next(
+        outcome for outcome in review.outcomes if outcome.id == "candidate"
+    ).included is True
+
+
+def test_toggling_a_primary_outcome_keeps_the_cursor_stable() -> None:
+    draft = ReportDraft(harness="opencode", period=_period())
+    review = _review(_outcome("a", 0), _outcome("b", 1))
+    log = ActionLog(review)
+    actions = _actions(draft, log)
+    state = _outcome_state(review)
+
+    controller._outcome_review_key(state, KeyPress(key=Key.DOWN), actions)
+    controller._outcome_review_key(state, KeyPress(key=Key.DOWN), actions)
+    assert (
+        controller._outcome_review_rows(state)[state.outcome_cursor].outcome_id == "b"
+    )
+
+    controller._outcome_review_key(state, KeyPress(key=Key.SPACE), actions)
+
+    focused = controller._outcome_review_rows(state)[state.outcome_cursor]
+    assert focused.kind == "outcome"
+    assert focused.outcome_id == "b"
+    assert review.outcomes[1].included is False
