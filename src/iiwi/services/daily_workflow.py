@@ -10,6 +10,7 @@ from iiwi.daily_state import cleanup_daily_state, load_daily_draft
 from iiwi.errors import OutcomeSynthesisError
 from iiwi.models.daily import DailyStandupDraft, DailyStatementSource
 from iiwi.models.outcome import OutcomeSynthesisResult
+from iiwi.progress import NullProgressReporter, ProgressReporter, ProgressStage
 from iiwi.services.daily_projection import (
     build_daily_fallback,
     daily_extraction_warning,
@@ -31,10 +32,12 @@ class DailyWorkflowService:
         scan_coordinator_factory: Callable[[DailyWindow], DailyScanCoordinator],
         outcome_service: OutcomeSynthesisService,
         now_factory: Callable[[], datetime],
+        progress: ProgressReporter | None = None,
     ) -> None:
         self._scan_coordinator_factory = scan_coordinator_factory
         self._outcome_service = outcome_service
         self._now_factory = now_factory
+        self._progress = progress or NullProgressReporter()
 
     def refresh(
         self,
@@ -101,10 +104,13 @@ class DailyWorkflowService:
         in its warnings, which the draft carries to the reader.
         """
 
+        self._progress.start(ProgressStage.SYNTHESIZING_OUTCOMES)
         try:
             return self._outcome_service.synthesize(scan, force=True)
         except OutcomeSynthesisError:
             return self._outcome_service.synthesize(scan, force=True)
+        finally:
+            self._progress.finish()
 
 
 def _supersedes_fallback(
