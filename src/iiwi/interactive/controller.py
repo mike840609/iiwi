@@ -731,7 +731,11 @@ def _settings_key(state: _State, key: KeyPress, console: Console) -> None:
         state.settings_rows,
         state.settings_cursor,
         offset=state.settings_offset,
-        capacity=settings_capacity(console.size.height, editing=state.settings_editing),
+        capacity=settings_capacity(
+            console.size.height,
+            editing=state.settings_editing,
+            terminal_width=console.size.width,
+        ),
     )
     row = state.settings_rows[state.settings_cursor]
     if row.locked:
@@ -1802,7 +1806,7 @@ def _history_key(state: _State, key: KeyPress, console: Console) -> None:
     count = len(entries)
     if not count:
         return
-    capacity = history_capacity(console.size.height)
+    capacity = history_capacity(console.size.height, console.size.width)
     page = max(1, capacity)
     state.history_cursor = _move(state.history_cursor, key, count)
     if key.key is Key.PAGE_UP:
@@ -1879,7 +1883,7 @@ def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
         state.preview_return_screen = None
         return
     lines = state.result.content.splitlines() or [""]
-    capacity = report_preview_capacity(console.size.height)
+    capacity = report_preview_capacity(console.size.height, console.size.width)
     max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
     page = max(1, capacity)
     if key.key is Key.UP or _char(key, "k"):
@@ -1903,7 +1907,7 @@ def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None
         state.preview_return_screen = None
         return
     lines = build_session_preview_lines(state.preview_session) or [""]
-    capacity = report_preview_capacity(console.size.height)
+    capacity = report_preview_capacity(console.size.height, console.size.width)
     max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
     page = max(1, capacity)
     if key.key is Key.UP or _char(key, "k"):
@@ -1931,7 +1935,7 @@ def _help_key(state: _State, key: KeyPress, console: Console) -> None:
         state.help_return_screen = None
         return
     # The reference outgrew a short terminal, so it scrolls like the previews.
-    capacity = help_capacity(console.size.height)
+    capacity = help_capacity(console.size.height, console.size.width)
     max_offset = max(0, len(help_lines(state.help_return_screen)) - capacity)
     page = max(1, capacity)
     if key.key is Key.UP or _char(key, "k"):

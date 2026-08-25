@@ -1105,7 +1105,7 @@ def test_history_scrolls_its_viewport() -> None:
 
 
 def test_history_capacity_reserves_the_footer() -> None:
-    assert history_capacity(30) == 22
+    assert history_capacity(30, 80) == 22
 def _settings_row(**overrides: object) -> SettingsRow:
     fields = dict(
         key="harnesses.opencode.enabled",
@@ -1299,14 +1299,15 @@ def test_settings_capacity_reserves_chrome_and_the_footer() -> None:
     # Chrome: title+rule (2), three blanks, the detail line, the hint bar, and
     # the terminal's final display row (8); the subtitle at >= _MIN_SUBTITLE_HEIGHT
     # and the inline editor's value line each add one more.
-    assert settings_capacity(40) == 31
-    assert settings_capacity(24) == 15
-    assert settings_capacity(20) == 11
-    assert settings_capacity(16) == 7
-    assert settings_capacity(14) == 6
-    assert settings_capacity(40, editing=True) == 30
-    assert settings_capacity(16, editing=True) == 6
-    assert settings_capacity(14, editing=True) == 5
+    # Width 80 keeps the hint bar on one line, so expected values are unchanged.
+    assert settings_capacity(40, terminal_width=80) == 31
+    assert settings_capacity(24, terminal_width=80) == 15
+    assert settings_capacity(20, terminal_width=80) == 11
+    assert settings_capacity(16, terminal_width=80) == 7
+    assert settings_capacity(14, terminal_width=80) == 6
+    assert settings_capacity(40, editing=True, terminal_width=80) == 30
+    assert settings_capacity(16, editing=True, terminal_width=80) == 6
+    assert settings_capacity(14, editing=True, terminal_width=80) == 5
 
 
 def test_settings_display_count_counts_section_headers_and_blanks() -> None:
