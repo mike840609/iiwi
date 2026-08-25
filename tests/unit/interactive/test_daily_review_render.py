@@ -238,3 +238,36 @@ def test_daily_review_redacts_raw_durable_provenance_before_display() -> None:
     assert "repository-secret" not in text
     assert "session-secret" not in text
     assert text.count("[REDACTED]") >= 2
+
+
+def test_daily_review_degrades_to_chrome_when_warnings_fill_the_budget() -> None:
+    """Many warnings plus a message can consume the whole body budget.
+
+    ``body_capacity`` floored at 1, so at the tightest height the forced body
+    row pushed the frame one line past the terminal instead of degrading to
+    header + warnings + hints.
+    """
+
+    review = _draft()
+    review.coverage_warnings = ["Codex activity could not be loaded."]
+    review.warnings = [f"Session {index} has no timestamps." for index in range(25)]
+
+    width = 100
+    hints = render._hint_lines(render._DAILY_REVIEW_HINTS, width)
+    fixed_lines = 4 + len(hints) + render._DAILY_WARNING_LINES + 1  # + message
+    height = fixed_lines + 1  # terminal_budget == fixed_lines exactly
+
+    console, stream = _console(width=width, height=height)
+    render.render_daily_review(
+        console,
+        review,
+        cursor=0,
+        expanded=set(),
+        message="Synthesis fell back to structure.",
+    )
+
+    lines = stream.getvalue().splitlines()
+    assert len(lines) <= height - 1
+    assert any("Daily Standup" in line for line in lines)
+    assert any("more warning(s) not shown" in line for line in lines)
+    assert any("g Generate" in line for line in lines)
