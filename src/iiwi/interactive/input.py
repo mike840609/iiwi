@@ -9,6 +9,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
+# Timing constants tolerate remote links, which pause far longer than local
+# terminals between bytes of one sequence. _CONTINUATION_MAX_TRIES x
+# _ESCAPE_BYTE_TIMEOUT is the ~500ms budget for an incomplete UTF-8 character;
+# _MAX_SEQUENCE_BYTES covers long reports such as xterm modifyOtherKeys and
+# SGR mouse sequences.
+_ESCAPE_BYTE_TIMEOUT = 0.05
+_CONTINUATION_MAX_TRIES = 10
+_MAX_SEQUENCE_BYTES = 16
+
 
 class Key(StrEnum):
     UP = "up"
@@ -40,6 +49,14 @@ def normalize_posix_sequence(value: str) -> KeyPress:
         "\x1b[B": Key.DOWN,
         "\x1b[D": Key.LEFT,
         "\x1b[C": Key.RIGHT,
+        # SS3 forms sent by terminals in application cursor mode (tmux, and
+        # inner TUI apps that leave DECCKM set).
+        "\x1bOA": Key.UP,
+        "\x1bOB": Key.DOWN,
+        "\x1bOD": Key.LEFT,
+        "\x1bOC": Key.RIGHT,
+        "\x1bOH": Key.HOME,
+        "\x1bOF": Key.END,
         "\x1b[5~": Key.PAGE_UP,
         "\x1b[6~": Key.PAGE_DOWN,
         "\x1b[H": Key.HOME,
@@ -57,6 +74,11 @@ def normalize_posix_sequence(value: str) -> KeyPress:
     key = mapping.get(value)
     if key is not None:
         return KeyPress(key=key)
+    if value.startswith("\x1b"):
+        # Unmapped escape-prefixed input (unknown CSI/SS3 sequences, doubled
+        # Esc) must never leak raw bytes into text inputs; one cancel press is
+        # the safe interpretation.
+        return KeyPress(key=Key.ESCAPE)
     return KeyPress(char=value)
 
 
@@ -102,6 +124,16 @@ def _utf8_character_length(lead: int) -> int:
     return 1
 
 
+def _read_byte_tolerating_delays(fd: int) -> bytes | None:
+    """Read one byte, retrying through remote-link pauses before giving up."""
+
+    for _ in range(_CONTINUATION_MAX_TRIES):
+        readable, _, _ = select.select([fd], [], [], _ESCAPE_BYTE_TIMEOUT)
+        if readable:
+            return os.read(fd, 1)
+    return None
+
+
 def _posix_read() -> str:
     fd = sys.stdin.fileno()
     first = os.read(fd, 1)
@@ -110,8 +142,8 @@ def _posix_read() -> str:
 
     if first == b"\x1b":
         sequence = "\x1b"
-        for _ in range(7):
-            readable, _, _ = select.select([fd], [], [], 0.02)
+        for _ in range(_MAX_SEQUENCE_BYTES - 1):
+            readable, _, _ = select.select([fd], [], [], _ESCAPE_BYTE_TIMEOUT)
             if not readable:
                 break
             sequence += os.read(fd, 1).decode(errors="ignore")
@@ -121,10 +153,10 @@ def _posix_read() -> str:
 
     collected = bytearray(first)
     for _ in range(_utf8_character_length(first[0]) - 1):
-        readable, _, _ = select.select([fd], [], [], 0.02)
-        if not readable:
+        byte = _read_byte_tolerating_delays(fd)
+        if byte is None:
             break
-        collected += os.read(fd, 1)
+        collected += byte
     return bytes(collected).decode(errors="ignore")
 
 
@@ -139,9 +171,16 @@ def _windows_restore(token: object) -> None:
 def _windows_read() -> str:
     import msvcrt
 
-    first = msvcrt.getwch() or ""  # type: ignore[attr-defined]
+    try:
+        first = msvcrt.getwch() or ""  # type: ignore[attr-defined]
+    except OSError:
+        # EOF on a closed console reads as empty so read_key exits gracefully.
+        return ""
     if first in {"\x00", "\xe0"}:
-        second = msvcrt.getwch() or ""  # type: ignore[attr-defined]
+        try:
+            second = msvcrt.getwch() or ""  # type: ignore[attr-defined]
+        except OSError:
+            return ""
         mapping = {
             "H": "\x1b[A",
             "P": "\x1b[B",
@@ -153,7 +192,9 @@ def _windows_read() -> str:
             "O": "\x1b[F",
             "S": "\x1b[3~",
         }
-        return mapping.get(second, second)
+        # Unknown extended codes read as empty instead of leaking the raw
+        # second character (";<=>?@ABCD", "s"/"t", ...) into text inputs.
+        return mapping.get(second, "")
     return first
 
 
@@ -194,4 +235,10 @@ class TerminalInput:
             self._token = None
 
     def read_key(self) -> KeyPress:
-        return normalize_posix_sequence(self._reader())
+        value = self._reader()
+        if value == "":
+            # Empty reads mean EOF (posix os.read -> b"", windows OSError or
+            # ignored extended code): surface Escape so idle loops exit
+            # gracefully instead of spinning on unhandled empty keypresses.
+            return KeyPress(key=Key.ESCAPE)
+        return normalize_posix_sequence(value)
