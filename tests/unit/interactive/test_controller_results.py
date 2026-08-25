@@ -10,13 +10,14 @@ from zoneinfo import ZoneInfo
 from rich.console import Console
 
 from iiwi.errors import OutcomeSynthesisError, ReportAlreadyExistsError
+from iiwi.interactive import controller as interactive_controller
 from iiwi.interactive.controller import (
     InteractiveActions,
     InteractiveReportResult,
     run_interactive,
 )
 from iiwi.interactive.input import Key, KeyPress
-from iiwi.interactive.models import ReportDraft
+from iiwi.interactive.models import ReportDraft, Screen
 from iiwi.models.outcome import (
     EvidenceRef,
     Outcome,
@@ -354,3 +355,31 @@ def test_stale_fallback_notice_does_not_reach_later_reports() -> None:
         "Outcome synthesis unavailable; generated the session-based report."
     )
     assert generate_notices[1] is None
+
+
+def test_report_preview_scroll_survives_a_session_preview_roundtrip() -> None:
+    """A session preview's scrolling must leave the report preview's offset alone."""
+    console, _ = _console()
+    state = interactive_controller._State(
+        screen=Screen.REPORT_PREVIEW,
+        result=InteractiveReportResult(
+            output_path=None,
+            content="\n".join(f"report line {i}" for i in range(60)),
+            repository_count=1,
+            session_count=1,
+        ),
+        preview_return_screen=Screen.OUTCOME_REVIEW,
+    )
+    for _ in range(5):
+        interactive_controller._preview_key(state, KeyPress(key=Key.DOWN), console)
+    assert state.preview_offset == 5
+
+    session = _scan().resolved_sessions[0].session
+    interactive_controller._open_session_preview(
+        state, session, return_screen=Screen.SESSION_REVIEW
+    )
+    assert state.screen is Screen.SESSION_PREVIEW
+    interactive_controller._session_preview_key(state, KeyPress(key=Key.DOWN), console)
+    interactive_controller._session_preview_key(state, KeyPress(key=Key.HOME), console)
+
+    assert state.preview_offset == 5

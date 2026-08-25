@@ -204,7 +204,7 @@ class _State:
     result: InteractiveReportResult | None = None
     expanded_repositories: set[str] | None = None
     preview_session: AgentSession | None = None
-    preview_offset: int = 0
+    session_preview_offset: int = 0
     preview_return_screen: Screen | None = None
     error: _ErrorState | None = None
     review_message: str | None = None
@@ -384,6 +384,7 @@ def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.review_from_main = False
     _clear_outcome_review(state)
     state.preview_offset = 0
+    state.session_preview_offset = 0
     state.preview_return_screen = None
     state.expanded_repositories = set()
     _reset_search(state)
@@ -834,7 +835,7 @@ def _open_session_preview(
     return_screen: Screen,
 ) -> None:
     state.preview_session = session
-    state.preview_offset = 0
+    state.session_preview_offset = 0
     state.preview_return_screen = return_screen
     state.screen = Screen.SESSION_PREVIEW
 
@@ -1891,6 +1892,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
         state.setup_cursor = 0
         state.setup_advanced = False
         state.preview_offset = 0
+        state.session_preview_offset = 0
         state.expanded_repositories = set()
         _reset_search(state)
         state.screen = Screen.REPORT_SETUP
@@ -1943,17 +1945,17 @@ def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None
     max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
     page = max(1, capacity)
     if key.key is Key.UP or _char(key, "k"):
-        state.preview_offset = max(0, state.preview_offset - 1)
+        state.session_preview_offset = max(0, state.session_preview_offset - 1)
     elif key.key is Key.DOWN or _char(key, "j"):
-        state.preview_offset = min(max_offset, state.preview_offset + 1)
+        state.session_preview_offset = min(max_offset, state.session_preview_offset + 1)
     elif key.key is Key.PAGE_UP:
-        state.preview_offset = max(0, state.preview_offset - page)
+        state.session_preview_offset = max(0, state.session_preview_offset - page)
     elif key.key is Key.PAGE_DOWN:
-        state.preview_offset = min(max_offset, state.preview_offset + page)
+        state.session_preview_offset = min(max_offset, state.session_preview_offset + page)
     elif key.key is Key.HOME or _exact_char(key, "g"):
-        state.preview_offset = 0
+        state.session_preview_offset = 0
     elif key.key is Key.END or _exact_char(key, "G"):
-        state.preview_offset = max_offset
+        state.session_preview_offset = max_offset
 
 
 def _help_key(state: _State, key: KeyPress, console: Console) -> None:
@@ -2038,7 +2040,7 @@ def _render_screen(state: _State, console: Console) -> None:
         render_session_preview(
             console,
             state.preview_session,
-            offset=state.preview_offset,
+            offset=state.session_preview_offset,
         )
     elif state.screen is Screen.REPORT_RESULT:
         assert state.draft is not None
