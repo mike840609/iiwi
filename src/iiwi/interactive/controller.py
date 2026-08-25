@@ -439,55 +439,87 @@ def _begin_activity_review(state: _State, actions: InteractiveActions) -> None:
     _load_activity(state, actions, draft)
 
 
+def _scan_for_review(state: _State, actions: InteractiveActions) -> ScanResult | None:
+    """Run actions.scan, routing failures to the report-source error screen."""
+
+    assert state.draft is not None
+    draft = state.draft
+    try:
+        scan = actions.scan(draft)
+    except IiwiError as exc:
+        state.error = _ErrorState(
+            kind="report-source",
+            title=f"Could not read {draft.harness} sessions",
+            detail=str(exc),
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return None
+    if scan.loaded_session_count == 0:
+        if scan.excluded_session_count > 0:
+            state.error = _ErrorState(
+                kind="report-empty",
+                title="Sessions excluded by configuration",
+                detail="All sessions matched by the selected harness and period "
+                "were excluded by configuration.",
+            )
+        else:
+            state.error = _ErrorState(
+                kind="report-empty",
+                title="No sessions found",
+                detail="No activity matched the selected harness and period.",
+            )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return None
+    return scan
+
+
 def _review(state: _State, actions: InteractiveActions) -> None:
     assert state.draft is not None
     draft = state.draft
     if draft.scan is None:
-        try:
-            scan = actions.scan(draft)
-        except IiwiError as exc:
-            state.error = _ErrorState(
-                kind="report-source",
-                title=f"Could not read {draft.harness} sessions",
-                detail=str(exc),
-            )
-            state.screen = Screen.RECOVERABLE_ERROR
-            return
-        if scan.loaded_session_count == 0:
-            if scan.excluded_session_count > 0:
-                state.error = _ErrorState(
-                    kind="report-empty",
-                    title="Sessions excluded by configuration",
-                    detail="All sessions matched by the selected harness and period "
-                    "were excluded by configuration.",
-                )
-            else:
-                state.error = _ErrorState(
-                    kind="report-empty",
-                    title="No sessions found",
-                    detail="No activity matched the selected harness and period.",
-                )
-            state.screen = Screen.RECOVERABLE_ERROR
+        scan = _scan_for_review(state, actions)
+        if scan is None:
             return
         draft.set_scan(scan)
-        restored = actions.restore_selection(
-            draft.harness, draft.period, draft.include_subagents
-        )
-        if restored is not None:
-            available = {item.session.session_id for item in scan.resolved_sessions}
-            draft.selected_session_ids = restored & available
-    cached_scan = draft.scan
-    assert cached_scan is not None
+    _finish_review_selection(state, actions, None)
+
+
+def _finish_review_selection(
+    state: _State,
+    actions: InteractiveActions,
+    previously_selected: set[str] | None,
+) -> None:
+    """Rebuild the review selection from draft.scan.
+
+    previously_selected carries a rescan's pre-scan selection: it wins over the
+    rebuilt one, intersected with what the new scan still offers. Callers that
+    only opened the review pass None and leave the restored selection in place.
+    """
+
+    assert state.draft is not None
+    draft = state.draft
+    scan = draft.scan
+    assert scan is not None
+    restored = actions.restore_selection(
+        draft.harness, draft.period, draft.include_subagents
+    )
+    if restored is not None:
+        available = {item.session.session_id for item in scan.resolved_sessions}
+        draft.selected_session_ids = restored & available
     state.selection = SelectionState.from_scan(
-        cached_scan,
+        scan,
         selected_session_ids=draft.selected_session_ids,
     )
     state.review_cursor = 0
     state.review_message = None
-    valid_repositories = set(cached_scan.sessions_by_repository)
+    valid_repositories = set(scan.sessions_by_repository)
     state.expanded_repositories = state.expansions() & valid_repositories
     _reset_search(state)
     state.screen = Screen.SESSION_REVIEW
+    if previously_selected is not None:
+        available = {item.session.session_id for item in scan.resolved_sessions}
+        state.selection.selected_session_ids = previously_selected & available
+        _sync_selection(state, actions)
 
 
 def _open_help(state: _State) -> None:
@@ -856,19 +888,23 @@ def _generate_from_setup(state: _State, actions: InteractiveActions) -> None:
 
 
 def _rescan_review(state: _State, actions: InteractiveActions) -> None:
+    """Rescan commit-on-success: a failed or cancelled scan changes nothing.
+
+    Mutating draft.scan before the scan ran left a cancelled rescan holding a
+    stale selection over a null draft, and the next generate silently built
+    from pre-rescan sessions. The scan now runs first; the current view stays
+    fully intact whenever it does not complete.
+    """
+
     assert state.draft is not None
     assert state.selection is not None
     selected = set(state.selection.selected_session_ids)
-    state.draft.scan = None
-    _clear_outcome_review(state)
-    _review(state, actions)
-    if state.screen is not Screen.SESSION_REVIEW or state.selection is None:
+    scan = _scan_for_review(state, actions)
+    if scan is None:
         return
-    available = {
-        item.session.session_id for item in state.selection.scan.resolved_sessions
-    }
-    state.selection.selected_session_ids = selected & available
-    _sync_selection(state, actions)
+    _clear_outcome_review(state)
+    state.draft.set_scan(scan)
+    _finish_review_selection(state, actions, selected)
 
 
 def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
