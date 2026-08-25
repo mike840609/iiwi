@@ -1008,6 +1008,9 @@ def _open_daily_review(state: _State, draft: DailyStandupDraft) -> None:
 def _begin_daily_review(state: _State, actions: InteractiveActions) -> None:
     """Start or refresh Daily while preserving its independent review draft."""
 
+    state.daily_message = (
+        "Scanning sessions and synthesizing outcomes… this can take a few minutes."
+    )
     try:
         draft = actions.start_daily(state.daily_review)
     except DailySourceUnavailableError as exc:

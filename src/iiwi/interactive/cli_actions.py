@@ -500,6 +500,7 @@ def _start_daily(previous: DailyStandupDraft | None) -> DailyStandupDraft:
             scan_coordinator_factory=scan_coordinator,
             outcome_service=outcome_service,
             now_factory=lambda: cli._now_in_timezone(settings.report.timezone),
+            progress=progress,
         )
         return workflow.refresh(previous)
 
