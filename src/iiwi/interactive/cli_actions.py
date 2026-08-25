@@ -71,6 +71,7 @@ def _new_draft() -> ReportDraft:
         period=period,
         period_label=label,
         report_type=settings.report.quick_review_report_type,
+        sanitize=cli._effective_sanitize(settings, harness, None),
     )
 
 

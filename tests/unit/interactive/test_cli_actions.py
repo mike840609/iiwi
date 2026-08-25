@@ -172,6 +172,59 @@ def test_new_draft_uses_saved_manager_type_and_its_brief_default(
     assert draft.detail is DetailLevel.BRIEF
 
 
+def test_new_draft_uses_configured_sanitize_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The configured sanitize default must reach interactive reports.
+
+    The CLI report command and Daily both resolve it through
+    `cli._effective_sanitize`; a user who configured sanitize-by-default
+    must not get unsanitized session evidence from Quick Review.
+    """
+
+    settings = SimpleNamespace(
+        report=SimpleNamespace(
+            timezone="Asia/Taipei",
+            quick_review_report_type=ReportType.MANAGER,
+        ),
+        harnesses=SimpleNamespace(
+            opencode=SimpleNamespace(cli=SimpleNamespace(sanitize=True)),
+        ),
+    )
+    now = datetime(2026, 8, 10, 12, tzinfo=TZ)
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
+    monkeypatch.setattr(cli, "_default_harness", lambda settings: cli.Harness.OPENCODE)
+
+    draft = cli_actions._new_draft()
+
+    assert draft.sanitize is True
+
+
+def test_new_draft_keeps_sanitize_off_when_config_leaves_it_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unset config resolves to the `False` default, so the draft stays unsanitized."""
+
+    settings = SimpleNamespace(
+        report=SimpleNamespace(
+            timezone="Asia/Taipei",
+            quick_review_report_type=ReportType.MANAGER,
+        ),
+        harnesses=SimpleNamespace(
+            opencode=SimpleNamespace(cli=SimpleNamespace(sanitize=False)),
+        ),
+    )
+    now = datetime(2026, 8, 10, 12, tzinfo=TZ)
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(cli, "_now_in_timezone", lambda timezone: now)
+    monkeypatch.setattr(cli, "_default_harness", lambda settings: cli.Harness.OPENCODE)
+
+    draft = cli_actions._new_draft()
+
+    assert draft.sanitize is False
+
+
 def test_synthesize_builds_one_narrator_for_the_draft_harness_and_uses_the_filtered_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
