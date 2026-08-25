@@ -692,6 +692,8 @@ def _outcome_review_body(
     above = Text(f"↑ {start} more", style="dim") if start > 0 else None
     below = Text(f"↓ {len(blocks) - end} more", style="dim") if end < len(blocks) else None
     window = [list(block.lines) for block in blocks[start:end]]
+    if not window:
+        return []
 
     def used() -> int:
         return (
@@ -735,7 +737,7 @@ def render_outcome_review(
     hints = _hint_lines(_OUTCOME_REVIEW_HINTS, console.size.width)
     terminal_budget = max(0, console.size.height - 1)
     fixed_lines = 2 + 2 + len(hints) + int(message is not None)
-    body_capacity = max(1, terminal_budget - fixed_lines)
+    body_capacity = max(0, terminal_budget - fixed_lines)
     indicator_floor = int(cursor > 0) + int(cursor < len(rows) - 1)
     focused_capacity = max(1, body_capacity - indicator_floor)
     blocks = _build_outcome_review_blocks(
@@ -1013,6 +1015,8 @@ def _daily_review_body(
         else None
     )
     window = [list(block.lines) for block in blocks[start:end]]
+    if not window:
+        return []
 
     def used() -> int:
         return sum(len(lines) for lines in window) + int(above is not None) + int(
@@ -1079,7 +1083,7 @@ def render_daily_review(
     terminal_budget = max(0, console.size.height - 1)
     warning_lines = _daily_warning_lines(draft)
     fixed_lines = 4 + len(hints) + len(warning_lines) + int(message is not None)
-    body_capacity = max(1, terminal_budget - fixed_lines)
+    body_capacity = max(0, terminal_budget - fixed_lines)
     focused_capacity = max(
         1,
         body_capacity - int(cursor > 0) - int(cursor < len(rows) - 1),
@@ -2077,6 +2081,12 @@ def render_report_result(
     )
 
 
+def _pad_cells(value: str, width: int) -> str:
+    """Right-align ``value`` within ``width`` display cells (CJK-safe)."""
+
+    return " " * max(0, width - cell_len(value)) + value
+
+
 def _history_entry_line(entry: HistoryEntry, *, selected: bool) -> str:
     period = f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}"
     is_daily = entry.kind is HistoryKind.DAILY_STANDUP
@@ -2085,8 +2095,8 @@ def _history_entry_line(entry: HistoryEntry, *, selected: bool) -> str:
     return (
         f"{_CURSOR if selected else ' '} "
         f"{entry.generated_at:%Y-%m-%d %H:%M}  {period}  "
-        f"{label:>10}  {entry.session_count:>3} sess "
-        f"{entry.repository_count:>2} repos  {narrative}  {entry.output_path}"
+        f"{_pad_cells(label, 10)}  {_pad_cells(str(entry.session_count), 3)} sess "
+        f"{_pad_cells(str(entry.repository_count), 2)} repos  {narrative}  {entry.output_path}"
     )
 
 
@@ -2115,11 +2125,15 @@ def render_history(
         )
         return
     end = min(len(entries), offset + capacity)
+    if offset > 0:
+        _print_viewport_line(console, f"↑ {offset} more", style="dim")
     for index in range(offset, end):
         _print_viewport_line(
             console,
             _history_entry_line(entries[index], selected=index == selected),
         )
+    if end < len(entries):
+        _print_viewport_line(console, f"↓ {len(entries) - end} more", style="dim")
     console.print()
     _print_hints(console, _HISTORY_HINTS)
 
@@ -2131,7 +2145,12 @@ def render_report_preview(console: Console, *, content: str, offset: int) -> Non
     console.print()
     lines = content.splitlines() or [""]
     capacity = report_preview_capacity(console.size.height, console.size.width)
-    max_start = max(0, len(lines) - capacity) if capacity else len(lines)
+    if capacity <= 0:
+        _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
+        _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
+        _print_hints(console, _PREVIEW_HINTS)
+        return
+    max_start = max(0, len(lines) - capacity)
     start = min(max(offset, 0), max_start)
     end = min(len(lines), start + capacity)
     if start:
@@ -2198,7 +2217,12 @@ def render_session_preview(
     console.print()
     lines = build_session_preview_lines(session) or [""]
     capacity = report_preview_capacity(console.size.height, console.size.width)
-    max_start = max(0, len(lines) - capacity) if capacity else len(lines)
+    if capacity <= 0:
+        _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
+        _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
+        _print_hints(console, _PREVIEW_HINTS)
+        return
+    max_start = max(0, len(lines) - capacity)
     start = min(max(offset, 0), max_start)
     end = min(len(lines), start + capacity)
     if start:
