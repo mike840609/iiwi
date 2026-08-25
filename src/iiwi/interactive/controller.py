@@ -183,6 +183,9 @@ class _ErrorState:
     selected: int = 0
     detail_offset: int = 0
     daily_source_error: DailySourceUnavailableError | None = None
+    # Screen the error was raised from. Set only by raisers that can fire from
+    # more than one screen; _error_back_screen falls back to the kind prefix.
+    back: Screen | None = None
 
 
 @dataclass
@@ -467,6 +470,9 @@ def _scan_for_review(state: _State, actions: InteractiveActions) -> ScanResult |
 
     assert state.draft is not None
     draft = state.draft
+    # A failed rescan interrupts Session Review itself: Back mirrors where the
+    # review's own Back key goes rather than always assuming Report Setup.
+    back = state.screen if state.review_from_main else Screen.REPORT_SETUP
     try:
         scan = actions.scan(draft)
     except IiwiError as exc:
@@ -474,6 +480,7 @@ def _scan_for_review(state: _State, actions: InteractiveActions) -> ScanResult |
             kind="report-source",
             title=f"Could not read {draft.harness} sessions",
             detail=str(exc),
+            back=back,
         )
         state.screen = Screen.RECOVERABLE_ERROR
         return None
@@ -484,12 +491,14 @@ def _scan_for_review(state: _State, actions: InteractiveActions) -> ScanResult |
                 title="Sessions excluded by configuration",
                 detail="All sessions matched by the selected harness and period "
                 "were excluded by configuration.",
+                back=back,
             )
         else:
             state.error = _ErrorState(
                 kind="report-empty",
                 title="No sessions found",
                 detail="No activity matched the selected harness and period.",
+                back=back,
             )
         state.screen = Screen.RECOVERABLE_ERROR
         return None
@@ -1195,6 +1204,23 @@ def _focus_daily_item(state: _State, target: DailyReviewRow) -> None:
     )
 
 
+def _focus_outcome(
+    state: _State,
+    rows: list[OutcomeReviewRow],
+    outcome_id: str,
+) -> None:
+    """Resolve focus by stable row identity after a mutation changes row order."""
+
+    state.outcome_cursor = next(
+        (
+            index
+            for index, row in enumerate(rows)
+            if row.kind == "outcome" and row.outcome_id == outcome_id
+        ),
+        min(state.outcome_cursor, max(0, len(rows) - 1)),
+    )
+
+
 def _generate_daily_review(
     state: _State,
     actions: InteractiveActions,
@@ -1597,6 +1623,7 @@ def _outcome_review_key(
     assert target.outcome_id is not None
     if key.key is Key.SPACE:
         state.outcome_review.toggle_included(target.outcome_id)
+        _focus_outcome(state, _outcome_review_rows(state), target.outcome_id)
         return
     if _exact_char(key, "v"):
         state.evidence_expansions().symmetric_difference_update({target.outcome_id})
@@ -1666,6 +1693,8 @@ def _error_options(error: _ErrorState) -> list[str]:
 
 
 def _error_back_screen(error: _ErrorState) -> Screen:
+    if error.back is not None:
+        return error.back
     if error.kind == "exclude-source":
         return Screen.SESSION_REVIEW
     if error.kind == "report-path":
