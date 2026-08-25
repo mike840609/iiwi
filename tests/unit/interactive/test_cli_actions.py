@@ -556,6 +556,102 @@ def test_choose_harness_keeps_only_available_value(monkeypatch: pytest.MonkeyPat
     assert cli_actions._choose_harness("codex") == "codex"
 
 
+def _doctor_settings() -> SimpleNamespace:
+    """Harness settings whose CLI timeouts differ per harness.
+
+    Distinct numbers per section let a test tell exactly which section
+    `_doctor` read when it built its `CommandRunner`.
+    """
+
+    return SimpleNamespace(
+        harnesses=SimpleNamespace(
+            opencode=SimpleNamespace(
+                enabled=True,
+                cli=SimpleNamespace(timeout_seconds=30.0),
+            ),
+            claude_code=SimpleNamespace(
+                enabled=True,
+                cli=SimpleNamespace(timeout_seconds=99.0),
+            ),
+            codex=SimpleNamespace(
+                enabled=True,
+                cli=SimpleNamespace(timeout_seconds=77.0),
+            ),
+        ),
+    )
+
+
+def _pin_doctor_seams(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: SimpleNamespace,
+    constructed_timeouts: list[float],
+) -> None:
+    """Stub everything `_doctor` touches except the runner construction under test."""
+
+    def recording_runner(*, timeout_seconds: float) -> object:
+        constructed_timeouts.append(timeout_seconds)
+        return object()
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(cli_actions, "CommandRunner", recording_runner)
+    monkeypatch.setattr(cli, "_describe_narrator", lambda settings, harness: object())
+    monkeypatch.setattr(
+        cli,
+        "run_doctor",
+        lambda *args, **kwargs: SimpleNamespace(checks=[]),
+    )
+
+
+def test_doctor_times_claude_code_checks_with_claude_codes_own_cli_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Doctoring a harness must apply that harness's own timeout budget.
+
+    `_doctor` handed every check OpenCode's `timeout_seconds`, so doctoring
+    Claude Code ran under OpenCode's budget and flagged spurious ERRORs on
+    slower setups no matter what Claude Code's own configuration said.
+    """
+
+    constructed: list[float] = []
+    _pin_doctor_seams(monkeypatch, _doctor_settings(), constructed)
+
+    cli_actions._doctor("claude-code")
+
+    assert constructed == [99.0]
+
+
+def test_doctor_times_codex_checks_with_codexs_own_cli_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Codex doctor checks are timed by Codex's configured CLI timeout too."""
+
+    constructed: list[float] = []
+    _pin_doctor_seams(monkeypatch, _doctor_settings(), constructed)
+
+    cli_actions._doctor("codex")
+
+    assert constructed == [77.0]
+
+
+def test_doctor_falls_back_to_opencodes_cli_timeout_when_the_harness_has_no_cli_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A harness section without a CLI block still yields a usable timeout.
+
+    Claude Code and Codex expose no `cli.timeout_seconds` today; doctoring
+    them must fall back to OpenCode's budget rather than raise.
+    """
+
+    settings = _doctor_settings()
+    settings.harnesses.claude_code = SimpleNamespace(enabled=True)
+    constructed: list[float] = []
+    _pin_doctor_seams(monkeypatch, settings, constructed)
+
+    cli_actions._doctor("claude-code")
+
+    assert constructed == [30.0]
+
+
 def test_choose_period_reaches_every_named_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
