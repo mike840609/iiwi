@@ -304,7 +304,17 @@ def test_report_generation_paints_pending_line_before_generate_blocks() -> None:
 
 def test_pending_line_names_ctrl_c_and_renders_dim_below_the_frame() -> None:
     stream = StringIO()
-    console = Console(file=stream, force_terminal=True, width=100, height=40)
+    # Pin the color system explicitly: rich caches parsed styles process-wide
+    # and freezes their ANSI codes on first render, so an auto-detected console
+    # here would leak whatever this machine guessed into every later test that
+    # renders the same styles (the wordmark's scarlet included).
+    console = Console(
+        file=stream,
+        color_system="truecolor",
+        force_terminal=True,
+        width=100,
+        height=40,
+    )
 
     controller._paint_pending(controller._State(), console, SYNTHESIS_PENDING)
 
