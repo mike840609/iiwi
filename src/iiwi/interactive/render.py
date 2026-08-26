@@ -1548,10 +1548,7 @@ def _settings_value_text(row: SettingsRow, *, muted: bool = False) -> Text:
     """The value column: every choice with the active one highlighted, or the
     current value — never blank. A muted row drops the active choice's
     highlight so nothing on the line draws the eye."""
-    active = "" if muted else _ACTIVE_CHOICE_STYLE
-    # Hybrid rows (preset choices but editable) render the full slash-joined
-    # list like closed sets, even though show_all is False — the list is small
-    # and the current choice is highlighted in a distinct colour.
+    active = "dim" if muted else _ACTIVE_CHOICE_STYLE
     if row.show_all or (row.key in _HYBRID_DISPLAY_KEYS and row.choices):
         parts: list[Text] = []
         for index, choice in enumerate(row.choices):
