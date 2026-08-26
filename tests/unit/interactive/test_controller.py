@@ -171,9 +171,7 @@ def _actions(
         synthesize=lambda draft, scan, force: OutcomeReviewDraft(
             outcomes=_synthesized_outcomes(), report_type=draft.report_type
         ),
-        generate_reviewed=lambda draft, scan, review, force: generate(
-            draft, scan, force
-        ),
+        generate_reviewed=lambda draft, scan, review, force: generate(draft, scan, force),
         edit_outcome=lambda outcome: outcome,
         add_outcome=lambda: None,
         edit_gap=lambda label, current: current,
@@ -321,15 +319,13 @@ def test_failed_rescan_returns_to_session_review_when_entered_from_main() -> Non
             scan_callback=_rescan_fails_after_first_scan(),
             counters=counters,
         ),
-        input_source=ScriptedInput(
-            [char("1"), char("R"), char("b"), char("q"), char("q")]
-        ),
+        input_source=ScriptedInput([char("1"), char("R"), char("b"), char("q"), char("q")]),
         console=console,
     )
 
     assert counters["scan"] == 2
     text = console.file.getvalue()
-    after_error = text[text.index("Could not read opencode sessions"):]
+    after_error = text[text.index("Could not read opencode sessions") :]
     assert "Review Sessions" in after_error
     # The main menu also carries a "Generate Report" row label; match the
     # setup screen's header-plus-rule instead.
@@ -353,7 +349,7 @@ def test_failed_rescan_still_returns_to_report_setup_when_entered_from_new_repor
 
     assert counters["scan"] == 2
     text = console.file.getvalue()
-    after_error = text[text.index("Could not read opencode sessions"):]
+    after_error = text[text.index("Could not read opencode sessions") :]
     assert "Generate Report\n══" in after_error
     assert "Review Sessions" not in after_error
 
@@ -543,7 +539,10 @@ def test_setup_horizontal_keys_on_the_action_row_do_not_generate() -> None:
 def test_review_escape_clears_a_committed_search_and_stays_on_review() -> None:
     stream = StringIO()
     console = Console(
-        file=stream, color_system=None, force_terminal=False, width=100,
+        file=stream,
+        color_system=None,
+        force_terminal=False,
+        width=100,
     )
     input_source = ScriptedInput(
         [
@@ -572,7 +571,7 @@ def test_review_escape_clears_a_committed_search_and_stays_on_review() -> None:
     text = stream.getvalue()
     assert "Search: 0" in text
     assert "Session Preview" in text
-    assert "Search:" not in text[text.rfind("Review Sessions"):]
+    assert "Search:" not in text[text.rfind("Review Sessions") :]
 
 
 def _history_entry(output_path: str) -> HistoryEntry:
@@ -600,7 +599,9 @@ def test_main_menu_history_opens_and_returns(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
-    append_history(_history_entry("reports/worklog.md"))
+    report = tmp_path / "worklog.md"
+    report.write_text("x", encoding="utf-8")
+    append_history(_history_entry(str(report)))
     console = _console()
 
     run_interactive(
@@ -618,7 +619,9 @@ def test_history_enter_shows_the_recorded_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
-    append_history(_history_entry("/history-fixture/reports/worklog.md"))
+    report = tmp_path / "worklog.md"
+    report.write_text("# worklog preview\nhello", encoding="utf-8")
+    append_history(_history_entry(str(report)))
     console = _console()
 
     run_interactive(
@@ -630,17 +633,20 @@ def test_history_enter_shows_the_recorded_path(
     )
 
     text = console.file.getvalue()
-    assert "Report path" in text
-    # Too long for a list row, so only the path screen can show it in full.
-    assert "/history-fixture/reports/worklog.md" in text
+    assert "Report Preview" in text
+    assert "worklog preview" in text
 
 
 def test_history_enter_shows_the_cursor_row_not_the_first_row(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
-    append_history(_history_entry("/history-fixture/reports/first.md"))
-    append_history(_history_entry("/history-fixture/reports/second.md"))
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("first-content", encoding="utf-8")
+    second.write_text("second-content", encoding="utf-8")
+    append_history(_history_entry(str(first)))
+    append_history(_history_entry(str(second)))
     console = _console()
 
     run_interactive(
@@ -659,13 +665,9 @@ def test_history_enter_shows_the_cursor_row_not_the_first_row(
     )
 
     text = console.file.getvalue()
-    # The history list rows truncate long absolute paths, so the only place
-    # a stored path appears in full is the path screen's detail. Newest
-    # first: index 0 is second.md, cursor moves to index 1 = first.md. The
-    # path screen must show the cursor's row.
-    first_title = text.index("Report path")
-    assert text.rindex("/history-fixture/reports/first.md") > first_title
-    assert "/history-fixture/reports/second.md" not in text
+    assert "Report Preview" in text
+    assert "first-content" in text
+    assert "second-content" not in text
 
 
 def test_history_g_and_G_jump_follow_the_viewport(
@@ -673,14 +675,25 @@ def test_history_g_and_G_jump_follow_the_viewport(
 ) -> None:
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
     for index in range(20):
-        append_history(_history_entry(f"/history-fixture/reports/{index}.md"))
+        report = tmp_path / f"{index}.md"
+        report.write_text(f"content-{index}", encoding="utf-8")
+        append_history(_history_entry(str(report)))
     console = _console()
 
     run_interactive(
         actions=_actions(),
         input_source=ScriptedInput(
-            [char("4"), char("G"), KeyPress(key=Key.ENTER), char("b"),
-             char("g"), KeyPress(key=Key.ENTER), char("b"), char("b"), char("q")]
+            [
+                char("4"),
+                char("G"),
+                KeyPress(key=Key.ENTER),
+                char("b"),
+                char("g"),
+                KeyPress(key=Key.ENTER),
+                char("b"),
+                char("b"),
+                char("q"),
+            ]
         ),
         console=console,
     )
@@ -689,14 +702,12 @@ def test_history_g_and_G_jump_follow_the_viewport(
     # 20 entries exceed the test console's ~17-row viewport, so G clamps the
     # offset; Enter on the bottom row shows the oldest entry, then g jumps
     # back to the top and Enter shows the newest.
-    oldest = text.rindex("/history-fixture/reports/0.md")
-    assert oldest > text.index("Report path")
-    assert text.rindex("/history-fixture/reports/19.md") > oldest
+    assert "content-0" in text
+    assert "content-19" in text
+    assert "Report Preview" in text
 
 
-def test_history_empty_state_ignores_enter(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_history_empty_state_ignores_enter(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
     console = _console()
 
@@ -817,9 +828,7 @@ def test_q_on_session_preview_returns_to_review_screen() -> None:
         console=console,
     )
 
-    assert stream.getvalue().rindex("Review Sessions") > stream.getvalue().rindex(
-        "Session Preview"
-    )
+    assert stream.getvalue().rindex("Review Sessions") > stream.getvalue().rindex("Session Preview")
 
 
 def test_q_on_report_preview_returns_to_quick_review() -> None:
@@ -862,10 +871,15 @@ def test_history_q_and_escape_return_to_the_main_menu(
     text = console.file.getvalue()
     assert text.count("Past Reports") == 1
     assert text.rstrip().endswith("q Quit")
+
+
 def test_question_mark_types_into_search_input() -> None:
     stream = StringIO()
     console = Console(
-        file=stream, color_system=None, force_terminal=False, width=100,
+        file=stream,
+        color_system=None,
+        force_terminal=False,
+        width=100,
     )
     input_source = ScriptedInput(
         [
@@ -894,7 +908,10 @@ def test_question_mark_types_into_search_input() -> None:
 def test_space_key_types_into_search_input() -> None:
     stream = StringIO()
     console = Console(
-        file=stream, color_system=None, force_terminal=False, width=100,
+        file=stream,
+        color_system=None,
+        force_terminal=False,
+        width=100,
     )
     input_source = ScriptedInput(
         [
@@ -919,4 +936,3 @@ def test_space_key_types_into_search_input() -> None:
 
     text = stream.getvalue()
     assert "Search: a b" in text
-

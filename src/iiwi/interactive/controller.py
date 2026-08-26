@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import os
+import shlex
+import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +51,7 @@ from iiwi.interactive.render import (
     render_daily_review,
     render_help,
     render_history,
+    render_history_preview,
     render_main_menu,
     render_outcome_review,
     render_recoverable_error,
@@ -155,21 +160,19 @@ class InteractiveActions:
     restore_selection: Callable[[str, DateRange, bool], set[str] | None]
     save_selection: Callable[[str, DateRange, bool, set[str]], None]
     exclude_repository: Callable[[str, str], str]
-    start_daily: Callable[
-        [DailyStandupDraft | None], DailyStandupDraft
-    ] = _daily_start_not_configured
+    start_daily: Callable[[DailyStandupDraft | None], DailyStandupDraft] = (
+        _daily_start_not_configured
+    )
     continue_daily_empty: Callable[
         [DailySourceUnavailableError, DailyStandupDraft | None], DailyStandupDraft
     ] = _daily_continue_not_configured
-    persist_daily: Callable[
-        [DailyStandupDraft], str | None
-    ] = _daily_persist_not_configured
-    preview_daily: Callable[
-        [DailyStandupDraft], InteractiveReportResult
-    ] = _daily_report_not_configured
-    generate_daily: Callable[
-        [DailyStandupDraft], InteractiveReportResult
-    ] = _daily_report_not_configured
+    persist_daily: Callable[[DailyStandupDraft], str | None] = _daily_persist_not_configured
+    preview_daily: Callable[[DailyStandupDraft], InteractiveReportResult] = (
+        _daily_report_not_configured
+    )
+    generate_daily: Callable[[DailyStandupDraft], InteractiveReportResult] = (
+        _daily_report_not_configured
+    )
     edit_daily_statement: Callable[[str], str | None] = _daily_edit_not_configured
     add_daily_statement: Callable[[DailySection], str | None] = _daily_add_not_configured
 
@@ -430,9 +433,7 @@ def _load_activity(
         state.screen = Screen.RECOVERABLE_ERROR
         return
     draft.set_scan(scan)
-    restored = actions.restore_selection(
-        draft.harness, draft.period, draft.include_subagents
-    )
+    restored = actions.restore_selection(draft.harness, draft.period, draft.include_subagents)
     if restored is not None:
         available = {item.session.session_id for item in scan.resolved_sessions}
         draft.selected_session_ids = restored & available
@@ -536,9 +537,7 @@ def _finish_review_selection(
     draft = state.draft
     scan = draft.scan
     assert scan is not None
-    restored = actions.restore_selection(
-        draft.harness, draft.period, draft.include_subagents
-    )
+    restored = actions.restore_selection(draft.harness, draft.period, draft.include_subagents)
     if restored is not None:
         available = {item.session.session_id for item in scan.resolved_sessions}
         draft.selected_session_ids = restored & available
@@ -1039,8 +1038,9 @@ def _review_key(
             try:
                 message = actions.exclude_repository(
                     row.repository_id,
-                    state.selection.scan.sessions_by_repository[row.repository_id][0]
-                    .repository.display_name,
+                    state.selection.scan.sessions_by_repository[row.repository_id][
+                        0
+                    ].repository.display_name,
                 )
             except IiwiError as exc:
                 state.error = _ErrorState(
@@ -1055,9 +1055,7 @@ def _review_key(
             _clear_outcome_review(state)
             _sync_selection(state, actions)
             rows = _tree_rows(state.selection.scan, state)
-            state.review_cursor = min(
-                state.review_cursor, max(0, len(rows) - 1)
-            )
+            state.review_cursor = min(state.review_cursor, max(0, len(rows) - 1))
             state.review_message = message
         return
     if key.key is Key.SPACE and rows:
@@ -1118,9 +1116,7 @@ def _begin_daily_review(
 ) -> None:
     """Start or refresh Daily while preserving its independent review draft."""
 
-    message = (
-        "Scanning sessions and synthesizing outcomes… this can take a few minutes."
-    )
+    message = "Scanning sessions and synthesizing outcomes… this can take a few minutes."
     state.daily_message = message
     _paint_pending(state, console, message)
     try:
@@ -1183,8 +1179,7 @@ def _move_daily_item(
         return False
     assert neighbour.work_item_id is not None
     section_items = {
-        work_item.id: item
-        for work_item, item in state.daily_review.ordered_items(target.section)
+        work_item.id: item for work_item, item in state.daily_review.ordered_items(target.section)
     }
     item = section_items[target.work_item_id]
     neighbour_item = section_items[neighbour.work_item_id]
@@ -1241,9 +1236,7 @@ def _generate_daily_review(
     except IiwiError as exc:
         state.error = _ErrorState(
             kind="daily-preview" if preview else "daily-write",
-            title="Could not preview Daily Standup"
-            if preview
-            else "Could not write Daily Standup",
+            title="Could not preview Daily Standup" if preview else "Could not write Daily Standup",
             detail=str(exc),
             retry="daily-preview" if preview else None,
         )
@@ -1393,10 +1386,7 @@ def _begin_outcome_review(
     # The cache short-circuit comes first. A review only exists because this
     # selection already cleared the guard, and synthesizing again re-extracts
     # every session — the whole cost this screen switch exists to avoid.
-    if (
-        state.outcome_review is not None
-        and state.outcome_review_selection_key == selection_key
-    ):
+    if state.outcome_review is not None and state.outcome_review_selection_key == selection_key:
         state.outcome_cursor = min(
             state.outcome_cursor,
             max(0, len(_outcome_review_rows(state)) - 1),
@@ -1515,9 +1505,7 @@ def _cycle_report_type(state: _State, actions: InteractiveActions) -> None:
     assert state.outcome_review is not None
     review = state.outcome_review
     report_type = (
-        ReportType.ENGINEERING
-        if review.report_type is ReportType.MANAGER
-        else ReportType.MANAGER
+        ReportType.ENGINEERING if review.report_type is ReportType.MANAGER else ReportType.MANAGER
     )
     review.set_report_type(report_type)
     assert review.detail is not None
@@ -1535,8 +1523,7 @@ def _cycle_report_type(state: _State, actions: InteractiveActions) -> None:
         actions.save_report_type(report_type)
     except ConfigurationError as exc:
         state.outcome_message = (
-            "Report type changed, but the preference could not be remembered: "
-            f"{exc}"
+            f"Report type changed, but the preference could not be remembered: {exc}"
         )
 
 
@@ -1594,9 +1581,7 @@ def _outcome_review_key(
             )
             rows = _outcome_review_rows(state)
             state.outcome_cursor = next(
-                index
-                for index, row in enumerate(rows)
-                if row.outcome_id == created.id
+                index for index, row in enumerate(rows) if row.outcome_id == created.id
             )
         return
     if target.kind != "outcome":
@@ -1634,9 +1619,7 @@ def _outcome_review_key(
         return
     if _exact_char(key, "e"):
         outcome = next(
-            item
-            for item in state.outcome_review.outcomes
-            if item.id == target.outcome_id
+            item for item in state.outcome_review.outcomes if item.id == target.outcome_id
         )
         edited = actions.edit_outcome(outcome.model_copy(deep=True))
         state.outcome_review.edit(
@@ -1669,7 +1652,7 @@ def _error_options(error: _ErrorState) -> list[str]:
         return ["Back", "Main menu"]
     if error.kind == "report-path":
         return ["Back"]
-    if error.kind == "history-path":
+    if error.kind in {"history-path", "history-missing", "history-open", "history-preview"}:
         return ["Back"]
     if error.kind == "daily-path":
         return ["Back"]
@@ -1703,7 +1686,7 @@ def _error_back_screen(error: _ErrorState) -> Screen:
         return Screen.SESSION_REVIEW
     if error.kind == "report-path":
         return Screen.REPORT_RESULT
-    if error.kind == "history-path":
+    if error.kind in {"history-path", "history-missing", "history-open", "history-preview"}:
         return Screen.HISTORY
     if error.kind == "daily-path":
         return Screen.DAILY_RESULT
@@ -1843,12 +1826,46 @@ def _filtered_history(
     return visible, len(entries) - len(visible)
 
 
+def _open_history_entry(entry: HistoryEntry) -> None:
+    path = entry.output_path
+    if not path.exists():
+        raise FileNotFoundError(f"{path} — file no longer exists")
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or ""
+    if editor:
+        cmd = [*shlex.split(editor), str(path)]
+    elif sys.platform == "darwin":
+        cmd = ["open", str(path)]
+    else:
+        cmd = ["xdg-open", str(path)]
+    subprocess.run(cmd, check=True)
+
+
 def _history_key(state: _State, key: KeyPress, console: Console) -> None:
     if key.key is Key.ESCAPE or _char(key, "q") or _char(key, "b"):
         state.screen = Screen.MAIN
         return
-    entries = _history_entries()
-    count = len(entries)
+    if _exact_char(key, "h"):
+        state.history_show_missing = not state.history_show_missing
+        # clamp cursor/offset to new visible size
+        entries = _history_entries()
+        visible, _ = _filtered_history(entries, state.history_show_missing)
+        count = len(visible)
+        if count == 0:
+            state.history_cursor = 0
+            state.history_offset = 0
+        else:
+            cap = history_capacity(console.size.height, console.size.width)
+            state.history_cursor = min(state.history_cursor, count - 1)
+            state.history_offset = min(state.history_offset, max(0, count - cap))
+            if state.history_cursor < state.history_offset:
+                state.history_offset = state.history_cursor
+            if state.history_cursor >= state.history_offset + cap:
+                state.history_offset = max(0, state.history_cursor - cap + 1)
+        return
+    # Resolve visible entries for navigation
+    all_entries = _history_entries()
+    visible, hidden = _filtered_history(all_entries, state.history_show_missing)
+    count = len(visible)
     if not count:
         return
     capacity = history_capacity(console.size.height, console.size.width)
@@ -1867,16 +1884,45 @@ def _history_key(state: _State, key: KeyPress, console: Console) -> None:
         state.history_offset = state.history_cursor
     if state.history_cursor >= state.history_offset + capacity:
         state.history_offset = max(0, state.history_cursor - capacity + 1)
-    if key.key is not Key.ENTER:
+    # Actions on visible entry
+    if _exact_char(key, "o"):
+        entry = visible[state.history_cursor]
+        try:
+            _open_history_entry(entry)
+        except FileNotFoundError as exc:
+            state.error = _ErrorState(
+                kind="history-missing", title="File not found", detail=str(exc)
+            )
+            state.screen = Screen.RECOVERABLE_ERROR
+        except (OSError, subprocess.CalledProcessError) as exc:
+            state.error = _ErrorState(
+                kind="history-open", title="Could not open report", detail=str(exc)
+            )
+            state.screen = Screen.RECOVERABLE_ERROR
         return
-
-    entry = entries[state.history_cursor]
-    state.error = _ErrorState(
-        kind="history-path",
-        title="Report path",
-        detail=str(entry.output_path),
-    )
-    state.screen = Screen.RECOVERABLE_ERROR
+    if key.key is Key.ENTER or _exact_char(key, "p"):
+        entry = visible[state.history_cursor]
+        if not entry.output_path.exists():
+            state.error = _ErrorState(
+                kind="history-missing",
+                title="File not found",
+                detail=f"{entry.output_path} — file no longer exists",
+            )
+            state.screen = Screen.RECOVERABLE_ERROR
+            return
+        try:
+            # Read to validate before switching screen so error stays on History
+            entry.output_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            state.error = _ErrorState(
+                kind="history-preview", title="Could not preview report", detail=str(exc)
+            )
+            state.screen = Screen.RECOVERABLE_ERROR
+            return
+        state.history_preview_entry = entry
+        state.history_preview_offset = 0
+        state.screen = Screen.HISTORY_PREVIEW
+        return
 
 
 def _result_key(state: _State, key: KeyPress) -> None:
@@ -1968,6 +2014,49 @@ def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None
         state.session_preview_offset = 0
     elif key.key is Key.END or _exact_char(key, "G"):
         state.session_preview_offset = max_offset
+
+
+def _history_preview_key(state: _State, key: KeyPress, console: Console) -> None:
+    assert state.history_preview_entry is not None
+    if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
+        state.screen = Screen.HISTORY
+        return
+    if _exact_char(key, "o"):
+        try:
+            _open_history_entry(state.history_preview_entry)
+        except FileNotFoundError as exc:
+            state.error = _ErrorState(
+                kind="history-missing", title="File not found", detail=str(exc)
+            )
+            state.screen = Screen.RECOVERABLE_ERROR
+        except (OSError, subprocess.CalledProcessError) as exc:
+            state.error = _ErrorState(
+                kind="history-open", title="Could not open report", detail=str(exc)
+            )
+            state.screen = Screen.RECOVERABLE_ERROR
+        return
+    try:
+        content = state.history_preview_entry.output_path.read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        content = ""
+    lines = content.splitlines() or [""]
+    capacity = report_preview_capacity(console.size.height, console.size.width)
+    max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
+    page = max(1, capacity)
+    if key.key is Key.UP or _char(key, "k"):
+        state.history_preview_offset = max(0, state.history_preview_offset - 1)
+    elif key.key is Key.DOWN or _char(key, "j"):
+        state.history_preview_offset = min(max_offset, state.history_preview_offset + 1)
+    elif key.key is Key.PAGE_UP:
+        state.history_preview_offset = max(0, state.history_preview_offset - page)
+    elif key.key is Key.PAGE_DOWN:
+        state.history_preview_offset = min(max_offset, state.history_preview_offset + page)
+    elif key.key is Key.HOME or _exact_char(key, "g"):
+        state.history_preview_offset = 0
+    elif key.key is Key.END or _exact_char(key, "G"):
+        state.history_preview_offset = max_offset
 
 
 def _help_key(state: _State, key: KeyPress, console: Console) -> None:
@@ -2074,11 +2163,29 @@ def _render_screen(state: _State, console: Console) -> None:
             selected=state.daily_result_cursor,
         )
     elif state.screen is Screen.HISTORY:
+        all_entries = _history_entries()
+        visible, hidden = _filtered_history(all_entries, state.history_show_missing)
         render_history(
             console,
-            entries=_history_entries(),
+            entries=visible,
             selected=state.history_cursor,
             offset=state.history_offset,
+            hidden_count=hidden,
+        )
+    elif state.screen is Screen.HISTORY_PREVIEW:
+        assert state.history_preview_entry is not None
+        # File validated on Enter/p, but read again for display; guard OSError
+        try:
+            content = state.history_preview_entry.output_path.read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError as exc:
+            content = f"Could not read report: {exc}"
+        render_history_preview(
+            console,
+            content=content,
+            offset=state.history_preview_offset,
+            file_name=state.history_preview_entry.output_path.name,
         )
     elif state.screen is Screen.REPORT_PREVIEW:
         assert state.result is not None
@@ -2124,6 +2231,8 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
         Screen.HISTORY,
     }:
         state.screen = Screen.MAIN
+    elif state.screen is Screen.HISTORY_PREVIEW:
+        state.screen = Screen.HISTORY
     elif state.screen is Screen.REPORT_PREVIEW:
         state.screen = state.preview_return_screen or Screen.REPORT_RESULT
         state.preview_return_screen = None
@@ -2169,6 +2278,8 @@ def _dispatch(
         _daily_result_key(state, key)
     elif state.screen is Screen.HISTORY:
         _history_key(state, key, console)
+    elif state.screen is Screen.HISTORY_PREVIEW:
+        _history_preview_key(state, key, console)
     elif state.screen is Screen.REPORT_PREVIEW:
         _preview_key(state, key, console)
     elif state.screen is Screen.SESSION_PREVIEW:
