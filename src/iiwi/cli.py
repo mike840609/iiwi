@@ -11,7 +11,6 @@ from enum import StrEnum
 from functools import partial
 from pathlib import Path
 from typing import Annotated
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 
@@ -26,6 +25,7 @@ from iiwi.config import (
     DEFAULT_NARRATOR_TIMEOUT_SECONDS,
     AppSettings,
     OpenCodeCliSettings,
+    system_zone,
 )
 from iiwi.errors import (
     ConfigurationError,
@@ -173,23 +173,18 @@ def _load_settings() -> AppSettings:
     return settings
 
 
-def _now_in_timezone(timezone: str) -> datetime:
-    try:
-        return datetime.now(ZoneInfo(timezone))
-    except ZoneInfoNotFoundError as exc:
-        raise ConfigurationError(f"unknown timezone: {timezone}") from exc
+def _now_in_timezone(timezone: str | None = None) -> datetime:
+    return datetime.now(system_zone())
 
 
-def _parse_iso_datetime(value: str, *, timezone: str) -> datetime:
+def _parse_iso_datetime(value: str, *, timezone: str | None = None) -> datetime:
+    tz = system_zone()
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise typer.BadParameter(f"invalid ISO datetime: {value}") from exc
     if parsed.tzinfo is None:
-        try:
-            parsed = parsed.replace(tzinfo=ZoneInfo(timezone))
-        except ZoneInfoNotFoundError as exc:
-            raise ConfigurationError(f"unknown timezone: {timezone}") from exc
+        parsed = parsed.replace(tzinfo=tz)
     return parsed
 
 
@@ -199,7 +194,7 @@ def _resolve_period(
     period: str | None,
     since: str | None,
     until: str | None,
-    timezone: str,
+    timezone: str | None = None,
     now: datetime,
 ) -> DateRange:
     """Resolve the requested period against a single clock read for the command."""
@@ -1291,8 +1286,24 @@ def _ask_harness(settings: AppSettings) -> Harness:
         typer.echo(f"  choose from: {', '.join(names)}")
 
 
-def _ask_period(timezone: str, now: datetime) -> DateRange:
+def _ask_period(*args, **kwargs) -> DateRange:
     """Ask which window to report; Enter chooses the last full week."""
+
+    # Compatibility shim: accept both _ask_period(timezone, now) and _ask_period(now)
+    if len(args) == 2:
+        timezone, now = args
+    elif len(args) == 1:
+        if isinstance(args[0], datetime):
+            now = args[0]
+            timezone = kwargs.get("timezone")
+        else:
+            timezone = args[0]
+            now = kwargs.get("now")
+    else:
+        now = kwargs.get("now")
+        timezone = kwargs.get("timezone")
+    if not isinstance(now, datetime):
+        raise TypeError("missing required argument: 'now'")
 
     while True:
         answer = _prompt("Period [1=last week, 2=last N days, 3=custom range]")
@@ -1412,7 +1423,7 @@ def run(
             else False
         )
         include_children = _ask_yes("Include child/subagent sessions?", default=True)
-        period = _ask_period(settings.report.timezone, now)
+        period = _ask_period(now)
         detail = detail or _ask_detail()
         # `report`'s default is the narrative review, so the wizard's default is
         # too. Answering no is what `--no-llm` does: the deterministic structured

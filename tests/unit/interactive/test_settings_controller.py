@@ -92,7 +92,7 @@ def _console(height: int | None = None) -> tuple[Console, StringIO]:
 
 
 def _viewport_settings_rows() -> list[SettingsRow]:
-    """Sixteen rows across the four real sections, as the editor builds them."""
+    """Fifteen rows across the four real sections, as the editor builds them."""
     keys = [
         "harnesses.opencode.enabled",
         "harnesses.opencode.source",
@@ -105,7 +105,6 @@ def _viewport_settings_rows() -> list[SettingsRow]:
         "harnesses.claude_code.projects_directory",
         "harnesses.codex.enabled",
         "harnesses.codex.home_directory",
-        "report.timezone",
         "report.output_directory",
         "report.exclude_repositories",
         "report.quick_review_report_type",
@@ -123,7 +122,6 @@ def _viewport_settings_rows() -> list[SettingsRow]:
         "Claude Code",
         "Codex",
         "Codex",
-        "General",
         "General",
         "General",
         "General",
@@ -204,7 +202,7 @@ def test_cycling_a_choice_writes_through_config_store(
 def test_cycling_back_restores_the_original_value(config_file: Path) -> None:
     config_store.set_value("report.quick_review_report_type", "engineering")
     console, _ = _console()
-    downs = [KeyPress(key=Key.DOWN)] * 14  # cursor 0 -> 14 (report.quick_review_report_type)
+    downs = [KeyPress(key=Key.DOWN)] * 13  # cursor 0 -> 13 (report.quick_review_report_type)
 
     run_interactive(
         actions=_actions(),
@@ -249,7 +247,7 @@ def test_editing_a_free_text_row_writes_the_value(config_file: Path) -> None:
 
 def test_editing_with_an_empty_value_restores_the_default(config_file: Path) -> None:
     config_store.set_value("report.output_directory", "out")
-    downs = [KeyPress(key=Key.DOWN)] * 12  # cursor 0 -> 12 (report.output_directory)
+    downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.output_directory)
     console, _ = _console()
 
     run_interactive(
@@ -327,72 +325,12 @@ def test_an_invalid_value_keeps_the_old_value_and_shows_the_error(
     assert "invalid value" in stream.getvalue()
 
 
-def test_an_invalid_timezone_keeps_the_old_value_and_shows_the_error(
-    config_file: Path,
-) -> None:
-    config_store.set_value("report.timezone", "Asia/Taipei")
-    downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)
-    console, stream = _console()
-
-    run_interactive(
-        actions=_actions(),
-        input_source=ScriptedInput(
-            _open_settings(
-                [
-                    *downs,
-                    KeyPress(key=Key.ENTER),
-                    *[char(c) for c in "Mars/Olympus"],
-                    KeyPress(key=Key.ENTER),  # validation fails; editor stays open
-                    KeyPress(key=Key.ESCAPE),  # cancel the still-open editor
-                    char("q"),
-                    char("q"),
-                ]
-            )
-        ),
-        console=console,
-    )
-
-    assert config_store.stored_values(config_file) == {
-        "IIWI_REPORT__TIMEZONE": "Asia/Taipei"
-    }
-    assert "unknown timezone" in stream.getvalue()
-
-
-def test_editing_the_timezone_row_to_a_known_zone_writes_it(config_file: Path) -> None:
-    downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)
-    console, _ = _console()
-
-    run_interactive(
-        actions=_actions(),
-        input_source=ScriptedInput(
-            _open_settings(
-                [
-                    *downs,
-                    KeyPress(key=Key.ENTER),
-                    # The editor prefills the current "Asia/Taipei"; clear it
-                    # before typing, like the empty-value test does.
-                    *([KeyPress(key=Key.BACKSPACE)] * 11),
-                    *[char(c) for c in "America/New_York"],
-                    KeyPress(key=Key.ENTER),
-                    char("q"),
-                    char("q"),
-                ]
-            )
-        ),
-        console=console,
-    )
-
-    assert config_store.stored_values(config_file) == {
-        "IIWI_REPORT__TIMEZONE": "America/New_York"
-    }
-
-
 @pytest.mark.parametrize("typed", ["0", "-1"])
 def test_a_too_small_evidence_budget_is_not_written_and_shows_the_error(
     config_file: Path, typed: str
 ) -> None:
-    # cursor 0 -> 15 (report.quick_review_max_evidence_bytes), the last row
-    downs = [KeyPress(key=Key.DOWN)] * 15
+    # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row
+    downs = [KeyPress(key=Key.DOWN)] * 14  # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row
     console, stream = _console()
 
     run_interactive(
@@ -423,8 +361,8 @@ def test_a_too_small_evidence_budget_is_not_written_and_shows_the_error(
 def test_editing_the_evidence_budget_row_to_the_smallest_budget_writes_it(
     config_file: Path,
 ) -> None:
-    # cursor 0 -> 15 (report.quick_review_max_evidence_bytes), the last row
-    downs = [KeyPress(key=Key.DOWN)] * 15
+    # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row
+    downs = [KeyPress(key=Key.DOWN)] * 14  # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row
     console, _ = _console()
 
     run_interactive(
@@ -451,8 +389,8 @@ def test_editing_the_evidence_budget_row_to_the_smallest_budget_writes_it(
 
 
 def test_environment_rows_are_locked(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("IIWI_REPORT__TIMEZONE", "UTC")
-    downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.timezone)
+    monkeypatch.setenv("IIWI_REPORT__OUTPUT_DIRECTORY", "/tmp/out")
+    downs = [KeyPress(key=Key.DOWN)] * 11  # cursor 0 -> 11 (report.output_directory)
     console, stream = _console()
 
     run_interactive(

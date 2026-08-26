@@ -34,7 +34,7 @@ from iiwi.interactive.render import (
     settings_display_index,
 )
 from iiwi.interactive.selection import SelectionState
-from iiwi.interactive.settings import TIMEZONE_CHOICES, SettingsRow
+from iiwi.interactive.settings import SettingsRow
 from iiwi.models.repository import (
     RepositoryIdentity,
     RepositoryIdentityType,
@@ -1242,11 +1242,11 @@ def test_settings_renders_section_headers() -> None:
             section="OpenCode",
         ),
         _settings_row(
-            key="report.timezone",
-            label="timezone",
-            value="UTC",
+            key="report.output_directory",
+            label="report.output_directory",
+            value="/tmp/reports",
             default="Asia/Taipei",
-            choices=TIMEZONE_CHOICES,
+            choices=(),
             show_all=False,
             locked=True,
             section="General",
@@ -1261,7 +1261,7 @@ def test_settings_renders_section_headers() -> None:
     assert text.count("OpenCode") == 1
     assert text.count("General") == 1
     assert text.index("  OpenCode") < text.index("opencode.enabled")
-    assert text.index("  General") < text.index("timezone")
+    assert text.index("  General") < text.index("report.output_directory")
     assert "\n\n  General" in text
 
 
@@ -1323,10 +1323,10 @@ def test_settings_marks_environment_rows_as_locked() -> None:
         rows=[
             _settings_row(locked=True),
             _settings_row(
-                key="report.timezone",
-                label="timezone",
-                value="UTC",
-                choices=TIMEZONE_CHOICES,
+                key="report.output_directory",
+                label="report.output_directory",
+                value="/tmp/reports",
+                choices=(),
                 show_all=False,
                 locked=True,
             ),
@@ -1338,7 +1338,7 @@ def test_settings_marks_environment_rows_as_locked() -> None:
     text = stream.getvalue()
     choice_line = next(line for line in text.splitlines() if "true / false" in line)
     assert "[environment]" in choice_line
-    value_line = next(line for line in text.splitlines() if "UTC" in line)
+    value_line = next(line for line in text.splitlines() if "/tmp/reports" in line)
     assert "[environment]" in value_line
 
 
@@ -1420,7 +1420,7 @@ def test_settings_display_count_counts_section_headers_and_blanks() -> None:
     rows = [
         _settings_row(section="OpenCode"),
         _settings_row(key="harnesses.opencode.cli.model", section="OpenCode"),
-        _settings_row(key="report.timezone", section="General"),
+        _settings_row(key="report.output_directory", section="General"),
         _settings_row(key="report.output_directory", section="General"),
     ]
     assert settings_display_count(rows) == 7  # 4 rows + 2 headers + 1 separator
@@ -1432,7 +1432,7 @@ def test_settings_display_index_lands_on_the_row_not_the_header() -> None:
     rows = [
         _settings_row(section="OpenCode"),
         _settings_row(key="harnesses.opencode.cli.model", section="OpenCode"),
-        _settings_row(key="report.timezone", section="General"),
+        _settings_row(key="report.output_directory", section="General"),
         _settings_row(key="report.output_directory", section="General"),
     ]
     # Display: [OpenCode, row0, row1, blank, General, row2, row3]
@@ -1460,7 +1460,7 @@ def _settings_viewport_rows() -> list[SettingsRow]:
         "harnesses.claude_code.projects_directory",
         "harnesses.codex.enabled",
         "harnesses.codex.home_directory",
-        "report.timezone",
+        "report.output_directory",
         "report.output_directory",
         "report.exclude_repositories",
         "report.quick_review_report_type",

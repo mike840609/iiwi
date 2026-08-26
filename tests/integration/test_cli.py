@@ -1266,7 +1266,7 @@ def _answer_for_run(
 
     monkeypatch.setattr(cli, "_ask_yes", ask_yes)
     monkeypatch.setattr(cli, "_ask_harness", ask_harness)
-    monkeypatch.setattr(cli, "_ask_period", lambda settings_tz, now: period)
+    monkeypatch.setattr(cli, "_ask_period", lambda *args, **kwargs: period)
     monkeypatch.setattr(cli, "_ask_detail", ask_detail)
     monkeypatch.setattr(cli, "_ask_output_path", ask_output_path)
     _as_a_terminal(monkeypatch)
@@ -1442,7 +1442,7 @@ def test_run_detail_flags_keep_session_reports_and_bypass_outcome_synthesis(
     outputs = iter([tmp_path / "brief.md", tmp_path / "full.md"])
     monkeypatch.setattr(cli, "_ask_yes", ask_yes)
     monkeypatch.setattr(cli, "_ask_harness", lambda settings: cli.Harness.OPENCODE)
-    monkeypatch.setattr(cli, "_ask_period", lambda timezone, now: period)
+    monkeypatch.setattr(cli, "_ask_period", lambda *args, **kwargs: period)
     monkeypatch.setattr(
         cli,
         "_ask_detail",

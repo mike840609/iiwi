@@ -133,7 +133,6 @@ _SETTINGS_HELP = {
     ),
     "harnesses.codex.enabled": "False forbids reading ~/.codex.",
     "harnesses.codex.home_directory": "Directory holding the Codex state database and sessions.",
-    "report.timezone": "Calendar-week and timestamp timezone; Enter types any IANA zone.",
     "report.output_directory": (
         "Default Markdown output directory; relative paths resolve against "
         "where Iiwi runs."

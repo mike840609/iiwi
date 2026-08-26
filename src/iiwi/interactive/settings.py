@@ -108,7 +108,6 @@ def _choices_for(annotation: type, key: str) -> tuple[str, ...]:
 
 _HYBRID_CHOICE_KEYS = frozenset(
     {
-        "report.timezone",
         "harnesses.opencode.cli.timeout_seconds",
         "harnesses.opencode.cli.run_timeout_seconds",
         "narrator.timeout_seconds",
@@ -120,7 +119,7 @@ _HYBRID_CHOICE_KEYS = frozenset(
 
 def _show_all(key: str, choices: tuple[str, ...]) -> bool:
     """Which rows render every choice: closed sets yes, hybrid/open rows no."""
-    return bool(choices) and key not in _HYBRID_CHOICE_KEYS
+    return bool(choices) and key not in _HYBRID_CHOICE_KEYS and key != "report.timezone"
 
 
 def build_settings_rows() -> list[SettingsRow]:
@@ -131,6 +130,8 @@ def build_settings_rows() -> list[SettingsRow]:
     values = {row.key: row.value for row in described}
     rows = []
     for row in described:
+        if row.key == "report.timezone":
+            continue
         setting = keys[row.key]
         choices = _choices_for(setting.annotation, row.key)
         value = row.value

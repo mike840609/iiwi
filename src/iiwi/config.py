@@ -1,5 +1,6 @@
 """Application configuration models."""
 
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -7,6 +8,26 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from iiwi.models.report_options import ReportType
+
+
+def system_zone() -> ZoneInfo:
+    """System local timezone as a ZoneInfo, falling back to UTC."""
+
+    tzinfo = datetime.now().astimezone().tzinfo
+    if isinstance(tzinfo, ZoneInfo):
+        return tzinfo
+    if tzinfo is not None:
+        try:
+            return ZoneInfo(str(tzinfo))
+        except Exception:
+            pass
+        key = getattr(tzinfo, "key", None)
+        if isinstance(key, str):
+            try:
+                return ZoneInfo(key)
+            except Exception:
+                pass
+    return ZoneInfo("UTC")
 
 # ponytail: one `opencode run`, one payload, so the ceiling is what a single
 # model call can still answer with strict JSON. Measured against a real
