@@ -166,7 +166,7 @@ _MARK_STYLES = {
     SelectionMark.PARTIAL: "yellow",
 }
 _CURSOR_STYLE = "bold cyan"
-_ACTIVE_CHOICE_STYLE = "bold magenta"
+_ACTIVE_CHOICE_STYLE = "bold green"
 # The cursor row takes the cursor's own colour, so where the cursor sits reads as
 # one thing. The action keeps its role colour when it is not the cursor row.
 _ACTION_STYLE = "cyan"
