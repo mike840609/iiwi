@@ -748,7 +748,7 @@ def _settings_key(state: _State, key: KeyPress, console: Console) -> None:
         ),
     )
     row = state.settings_rows[state.settings_cursor]
-    if row.locked:
+    if row.locked or row.disabled_reason:
         return
     right = key.key is Key.RIGHT or _char(key, "l")
     left = key.key is Key.LEFT or _char(key, "h")

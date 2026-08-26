@@ -1522,22 +1522,27 @@ def render_report_setup(
     )
 
 
-def _settings_value_text(row: SettingsRow) -> Text:
+def _settings_value_text(row: SettingsRow, *, muted: bool = False) -> Text:
     """The value column: every choice with the active one highlighted, or the
-    current value — never blank."""
+    current value — never blank. A muted row drops the active choice's
+    highlight so nothing on the line draws the eye."""
+    active = "" if muted else _CURSOR_STYLE
     if row.show_all:
         parts: list[Text] = []
         for index, choice in enumerate(row.choices):
             if index:
-                parts.append(Text(" / "))
+                parts.append(Text(" / ", style="dim" if muted else ""))
             parts.append(
-                Text(choice, style=_CURSOR_STYLE if choice == row.value else "dim")
+                Text(choice, style=active if choice == row.value else "dim")
             )
         text = Text.assemble(*parts)
         if row.locked:
             return Text.assemble(text, ("  [environment]", "dim"))
         return text
-    value = Text(row.value) if row.value else Text("(default)", style="dim")
+    if row.value:
+        value = Text(row.value, style="dim" if muted else "")
+    else:
+        value = Text("(default)", style="dim")
     if row.locked:
         return Text.assemble(value, ("  [environment]", "dim"))
     return value
@@ -1652,9 +1657,11 @@ def _settings_display_items(
             items.append(Text(f"  {row.section}", style="bright_black"))
             previous_section = row.section
         focused = selected == index
-        lead = Text(_CURSOR if focused else " ", style=_CURSOR_STYLE if focused else "")
-        label = Text(f"{row.label:<{label_cells}}", style=_CURSOR_STYLE if focused else "")
-        items.append(Text.assemble(lead, " ", label, "  ", _settings_value_text(row)))
+        style = _CURSOR_STYLE if focused else ("dim" if row.disabled_reason else "")
+        lead = Text(_CURSOR if focused else " ", style=style)
+        label = Text(f"{row.label:<{label_cells}}", style=style)
+        value = _settings_value_text(row, muted=bool(row.disabled_reason) and not focused)
+        items.append(Text.assemble(lead, " ", label, "  ", value))
     return items
 
 
@@ -1739,7 +1746,7 @@ def render_settings(
         detail = error or (
             f"Set by the {row.variable} environment variable."
             if row.locked
-            else _SETTINGS_HELP.get(row.key, "")
+            else row.disabled_reason or _SETTINGS_HELP.get(row.key, "")
         )
         _print_viewport_line(console, f"  {detail}", style="dim")
     console.print()

@@ -600,3 +600,52 @@ def test_settings_editing_hint_does_not_advertise_help() -> None:
     assert "Esc Cancel" in output
     assert "? Help" not in output
 
+
+def test_a_disabled_harness_row_refuses_cycle_and_edit(
+    config_file: Path,
+) -> None:
+    config_store.set_value("harnesses.claude_code.enabled", "false")
+    downs = [KeyPress(key=Key.DOWN)] * 8  # cursor 0 -> 8 (projects_directory)
+    console, stream = _console()
+
+    run_interactive(
+        actions=_actions(),
+        input_source=ScriptedInput(
+            _open_settings(
+                [
+                    *downs,
+                    KeyPress(key=Key.RIGHT),
+                    KeyPress(key=Key.ENTER),
+                    char("q"),
+                    char("q"),
+                ]
+            )
+        ),
+        console=console,
+    )
+
+    assert config_store.stored_values(config_file) == {
+        "IIWI_HARNESSES__CLAUDE_CODE__ENABLED": "false"
+    }
+    assert "Claude Code is disabled" in stream.getvalue()
+
+
+def test_enabling_the_harness_restores_editability(config_file: Path) -> None:
+    config_store.set_value("harnesses.claude_code.enabled", "false")
+    state = _State(screen=Screen.SETTINGS, settings_rows=build_settings_rows())
+    console, _ = _console()
+
+    state.settings_cursor = 8  # harnesses.claude_code.projects_directory
+    _settings_key(state, KeyPress(key=Key.ENTER), console)
+    assert state.settings_editing is False  # refused while disabled
+
+    state.settings_cursor = 7  # harnesses.claude_code.enabled
+    _settings_key(state, KeyPress(key=Key.RIGHT), console)  # cycles false -> true
+    assert state.settings_cursor == 7
+    assert state.settings_rows[7].value == "true"
+
+    state.settings_cursor = 8
+    _settings_key(state, KeyPress(key=Key.ENTER), console)
+    assert state.settings_editing is True
+    assert state.settings_rows[8].key == "harnesses.claude_code.projects_directory"
+
