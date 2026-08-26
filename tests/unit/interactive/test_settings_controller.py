@@ -329,8 +329,8 @@ def test_an_invalid_value_keeps_the_old_value_and_shows_the_error(
 def test_a_too_small_evidence_budget_is_not_written_and_shows_the_error(
     config_file: Path, typed: str
 ) -> None:
-    # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row
-    downs = [KeyPress(key=Key.DOWN)] * 14  # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row
+    # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row  # noqa: E501
+    downs = [KeyPress(key=Key.DOWN)] * 14  # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row  # noqa: E501
     console, stream = _console()
 
     run_interactive(
@@ -361,8 +361,8 @@ def test_a_too_small_evidence_budget_is_not_written_and_shows_the_error(
 def test_editing_the_evidence_budget_row_to_the_smallest_budget_writes_it(
     config_file: Path,
 ) -> None:
-    # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row
-    downs = [KeyPress(key=Key.DOWN)] * 14  # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row
+    # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row  # noqa: E501
+    downs = [KeyPress(key=Key.DOWN)] * 14  # cursor 0 -> 14 (report.quick_review_max_evidence_bytes), the last row  # noqa: E501
     console, _ = _console()
 
     run_interactive(
