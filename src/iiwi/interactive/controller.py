@@ -2035,12 +2035,17 @@ def _history_preview_key(state: _State, key: KeyPress, console: Console) -> None
             )
             state.screen = Screen.RECOVERABLE_ERROR
         return
+    content = ""
     try:
         content = state.history_preview_entry.output_path.read_text(
             encoding="utf-8", errors="replace"
         )
-    except OSError:
-        content = ""
+    except OSError as exc:
+        state.error = _ErrorState(
+            kind="history-preview", title="Could not preview report", detail=str(exc)
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return
     lines = content.splitlines() or [""]
     capacity = report_preview_capacity(console.size.height, console.size.width)
     max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
@@ -2174,13 +2179,22 @@ def _render_screen(state: _State, console: Console) -> None:
         )
     elif state.screen is Screen.HISTORY_PREVIEW:
         assert state.history_preview_entry is not None
-        # File validated on Enter/p, but read again for display; guard OSError
         try:
             content = state.history_preview_entry.output_path.read_text(
                 encoding="utf-8", errors="replace"
             )
         except OSError as exc:
-            content = f"Could not read report: {exc}"
+            state.error = _ErrorState(
+                kind="history-preview", title="Could not preview report", detail=str(exc)
+            )
+            render_recoverable_error(
+                console,
+                title=state.error.title,
+                detail=state.error.detail,
+                options=_error_options(state.error),
+                selected=state.error.selected,
+            )
+            return
         render_history_preview(
             console,
             content=content,

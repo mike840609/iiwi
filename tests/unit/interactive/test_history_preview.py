@@ -90,3 +90,40 @@ def test_open_history_entry_invokes_editor(tmp_path, monkeypatch):
 
         _open_history_entry(entry)
     assert "cmd" in called
+
+
+def test_history_preview_scroll_and_open(tmp_path):
+    from rich.console import Console
+
+    from iiwi.interactive.controller import _history_preview_key, _State
+    from iiwi.interactive.input import Key, KeyPress
+    from iiwi.interactive.models import Screen
+
+    exists = tmp_path / "exists.md"
+    exists.write_text("\n".join([f"line {i}" for i in range(30)]))
+    entry = _entry(exists)
+    s = _State(screen=Screen.HISTORY_PREVIEW, history_preview_entry=entry, history_preview_offset=0)
+    console = Console(file=io.StringIO(), force_terminal=True, width=80, height=24)
+    _history_preview_key(s, KeyPress(key=Key.DOWN), console)
+    assert s.history_preview_offset == 1
+    _history_preview_key(s, KeyPress(key=Key.PAGE_DOWN), console)
+    assert s.history_preview_offset > 1
+    _history_preview_key(s, KeyPress(char="g"), console)
+    assert s.history_preview_offset == 0
+    _history_preview_key(s, KeyPress(char="b"), console)
+    assert s.screen == Screen.HISTORY
+
+
+def test_history_preview_open_missing_returns_error(tmp_path):
+    from rich.console import Console
+
+    from iiwi.interactive.controller import _history_preview_key, _State
+    from iiwi.interactive.input import KeyPress
+    from iiwi.interactive.models import Screen
+
+    missing = tmp_path / "gone.md"
+    entry = _entry(missing)
+    s = _State(screen=Screen.HISTORY_PREVIEW, history_preview_entry=entry)
+    console = Console(file=io.StringIO(), force_terminal=True, width=80, height=24)
+    _history_preview_key(s, KeyPress(char="o"), console)
+    assert s.screen == Screen.RECOVERABLE_ERROR
