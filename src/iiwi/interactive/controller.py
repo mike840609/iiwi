@@ -198,6 +198,9 @@ class _State:
     result_cursor: int = 0
     history_cursor: int = 0
     history_offset: int = 0
+    history_show_missing: bool = False
+    history_preview_entry: HistoryEntry | None = None
+    history_preview_offset: int = 0
     preview_offset: int = 0
     draft: ReportDraft | None = None
     selection: SelectionState | None = None
@@ -1829,6 +1832,15 @@ def _history_entries() -> list[HistoryEntry]:
     """The generated-report log, newest first, as the history screen shows it."""
 
     return list(reversed(read_history()))
+
+
+def _filtered_history(
+    entries: list[HistoryEntry], show_missing: bool
+) -> tuple[list[HistoryEntry], int]:
+    if show_missing:
+        return entries, 0
+    visible = [e for e in entries if e.output_path.exists()]
+    return visible, len(entries) - len(visible)
 
 
 def _history_key(state: _State, key: KeyPress, console: Console) -> None:

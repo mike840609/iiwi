@@ -1627,3 +1627,18 @@ def test_hybrid_rows_render_single_value_not_inline_choices() -> None:
     assert "\x1b[2m15\x1b[0m" in text
     assert "\x1b[2m60\x1b[0m" in text
     assert "\x1b[2m120\x1b[0m" in text
+
+
+def test_history_preview_screen_exists() -> None:
+    from iiwi.interactive.models import Screen
+
+    assert Screen.HISTORY_PREVIEW == "history_preview"
+
+
+def test_history_state_has_preview_fields() -> None:
+    from iiwi.interactive.controller import _State
+
+    s = _State()
+    assert s.history_show_missing is False
+    assert s.history_preview_entry is None
+    assert s.history_preview_offset == 0
