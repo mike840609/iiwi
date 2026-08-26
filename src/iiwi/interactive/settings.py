@@ -26,6 +26,11 @@ TIMEZONE_CHOICES = (
 _KEY_CHOICES = {
     "harnesses.opencode.source": ("cli",),
     "report.timezone": TIMEZONE_CHOICES,
+    "harnesses.opencode.cli.timeout_seconds": ("15", "30", "60", "120"),
+    "harnesses.opencode.cli.run_timeout_seconds": ("300", "600", "1200"),
+    "narrator.timeout_seconds": ("300", "600", "1200"),
+    "report.quick_review_max_evidence_bytes": ("20000", "40000", "80000"),
+    "narrator.provider": ("", "claude", "codex"),
 }
 
 # Display names for the editor's section headers, keyed by the dotted prefix
@@ -101,9 +106,21 @@ def _choices_for(annotation: type, key: str) -> tuple[str, ...]:
     return ()
 
 
+_HYBRID_CHOICE_KEYS = frozenset(
+    {
+        "report.timezone",
+        "harnesses.opencode.cli.timeout_seconds",
+        "harnesses.opencode.cli.run_timeout_seconds",
+        "narrator.timeout_seconds",
+        "report.quick_review_max_evidence_bytes",
+        "narrator.provider",
+    }
+)
+
+
 def _show_all(key: str, choices: tuple[str, ...]) -> bool:
-    """Which rows render every choice: enum/bool rows yes, timezone no."""
-    return key != "report.timezone" and bool(choices)
+    """Which rows render every choice: closed sets yes, hybrid/open rows no."""
+    return bool(choices) and key not in _HYBRID_CHOICE_KEYS
 
 
 def build_settings_rows() -> list[SettingsRow]:
@@ -116,11 +133,21 @@ def build_settings_rows() -> list[SettingsRow]:
     for row in described:
         setting = keys[row.key]
         choices = _choices_for(setting.annotation, row.key)
+        value = row.value
+        if setting.annotation is float and value:
+            try:
+                parsed = float(value)
+                if parsed.is_integer():  # noqa: SIM108
+                    value = str(int(parsed))
+                else:
+                    value = str(parsed)
+            except ValueError:
+                pass
         rows.append(
             SettingsRow(
                 key=row.key,
                 label=_label(row.key),
-                value=row.value,
+                value=value,
                 source=row.source,
                 default=row.default,
                 choices=choices,

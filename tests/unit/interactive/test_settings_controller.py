@@ -649,3 +649,52 @@ def test_enabling_the_harness_restores_editability(config_file: Path) -> None:
     assert state.settings_editing is True
     assert state.settings_rows[8].key == "harnesses.claude_code.projects_directory"
 
+
+def test_hybrid_row_left_right_cycles_preset(config_file: Path) -> None:
+    key = "harnesses.opencode.cli.timeout_seconds"
+    config_store.set_value(key, "30")
+    console, _ = _console()
+    from iiwi.interactive.controller import _settings_key, _State
+
+    state = _State(screen=Screen.SETTINGS, settings_rows=build_settings_rows())
+    idx = next(i for i, r in enumerate(state.settings_rows) if r.key == key)
+    state.settings_cursor = idx
+    _settings_key(state, KeyPress(key=Key.RIGHT), console)
+    stored = config_store.stored_values(config_file)
+    assert stored["IIWI_HARNESSES__OPENCODE__CLI__TIMEOUT_SECONDS"] == "60"
+
+
+def test_hybrid_row_enter_opens_editor_for_custom_value(config_file: Path) -> None:
+    console, _ = _console()
+    from iiwi.interactive.controller import _settings_key, _State
+
+    key = "harnesses.opencode.cli.timeout_seconds"
+    state = _State(screen=Screen.SETTINGS, settings_rows=build_settings_rows())
+    idx = next(i for i, r in enumerate(state.settings_rows) if r.key == key)
+    state.settings_cursor = idx
+    _settings_key(state, KeyPress(key=Key.ENTER), console)
+    assert state.settings_editing is True
+    for _ in range(len(state.settings_edit_value)):
+        _settings_key(state, KeyPress(key=Key.BACKSPACE), console)
+    for ch in "999":
+        _settings_key(state, KeyPress(char=ch), console)
+    _settings_key(state, KeyPress(key=Key.ENTER), console)
+    stored = config_store.stored_values(config_file)
+    assert stored["IIWI_HARNESSES__OPENCODE__CLI__TIMEOUT_SECONDS"] == "999"
+
+
+def test_locked_hybrid_row_refuses_cycle_and_edit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IIWI_HARNESSES__OPENCODE__CLI__TIMEOUT_SECONDS", "30")
+    console, _ = _console()
+    from iiwi.interactive.controller import _settings_key, _State
+
+    key = "harnesses.opencode.cli.timeout_seconds"
+    state = _State(screen=Screen.SETTINGS, settings_rows=build_settings_rows())
+    idx = next(i for i, r in enumerate(state.settings_rows) if r.key == key)
+    state.settings_cursor = idx
+    assert state.settings_rows[idx].locked is True
+    _settings_key(state, KeyPress(key=Key.RIGHT), console)
+    assert state.settings_editing is False
+    _settings_key(state, KeyPress(key=Key.ENTER), console)
+    assert state.settings_editing is False
+
