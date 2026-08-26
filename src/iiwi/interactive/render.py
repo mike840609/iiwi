@@ -166,6 +166,7 @@ _MARK_STYLES = {
     SelectionMark.PARTIAL: "yellow",
 }
 _CURSOR_STYLE = "bold cyan"
+_ACTIVE_CHOICE_STYLE = "bold yellow"
 # The cursor row takes the cursor's own colour, so where the cursor sits reads as
 # one thing. The action keeps its role colour when it is not the cursor row.
 _ACTION_STYLE = "cyan"
@@ -1532,18 +1533,33 @@ def render_report_setup(
     )
 
 
+_HYBRID_DISPLAY_KEYS = frozenset(
+    {
+        "harnesses.opencode.cli.timeout_seconds",
+        "harnesses.opencode.cli.run_timeout_seconds",
+        "narrator.timeout_seconds",
+        "report.quick_review_max_evidence_bytes",
+        "narrator.provider",
+    }
+)
+
+
 def _settings_value_text(row: SettingsRow, *, muted: bool = False) -> Text:
     """The value column: every choice with the active one highlighted, or the
     current value — never blank. A muted row drops the active choice's
     highlight so nothing on the line draws the eye."""
-    active = "" if muted else _CURSOR_STYLE
-    if row.show_all:
+    active = "" if muted else _ACTIVE_CHOICE_STYLE
+    # Hybrid rows (preset choices but editable) render the full slash-joined
+    # list like closed sets, even though show_all is False — the list is small
+    # and the current choice is highlighted in a distinct colour.
+    if row.show_all or (row.key in _HYBRID_DISPLAY_KEYS and row.choices):
         parts: list[Text] = []
         for index, choice in enumerate(row.choices):
             if index:
                 parts.append(Text(" / ", style="dim" if muted else ""))
+            display = choice if choice else "(default)"
             parts.append(
-                Text(choice, style=active if choice == row.value else "dim")
+                Text(display, style=active if choice == row.value else "dim")
             )
         text = Text.assemble(*parts)
         if row.locked:
