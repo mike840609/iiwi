@@ -1597,3 +1597,32 @@ def test_settings_shows_the_disabled_reason_on_the_detail_line() -> None:
     # render.py:110): "False makes --harness opencode fail with a
     # configuration error."
     assert "False makes --harness opencode fail" not in text
+
+
+def test_hybrid_settings_help_mentions_presets() -> None:
+    from iiwi.interactive.render import _SETTINGS_HELP
+
+    assert "15/30/60/120" in _SETTINGS_HELP["harnesses.opencode.cli.timeout_seconds"]
+    assert "300/600/1200" in _SETTINGS_HELP["harnesses.opencode.cli.run_timeout_seconds"]
+    assert "300/600/1200" in _SETTINGS_HELP["narrator.timeout_seconds"]
+    assert "20000/40000/80000" in _SETTINGS_HELP["report.quick_review_max_evidence_bytes"]
+    assert "claude/codex" in _SETTINGS_HELP["narrator.provider"]
+
+
+def test_hybrid_rows_render_single_value_not_inline_choices() -> None:
+    rows = [
+        _settings_row(
+            key="harnesses.opencode.cli.timeout_seconds",
+            label="opencode.cli.timeout_seconds",
+            value="30",
+            choices=("15", "30", "60", "120"),
+            show_all=False,
+            section="OpenCode",
+        )
+    ]
+    console, stream = _color_console()
+    render_settings(console, rows=rows, selected=0, file_path="/tmp/config.env")
+    text = stream.getvalue()
+    # Hybrid rows show just the current value, not the slash-joined list
+    assert "30" in text
+    assert "15 / 30 / 60 / 120" not in text
