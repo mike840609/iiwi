@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file.
 
 ## 0.15.2 - 2026-08-26
 
+- Settings rows under a disabled harness (e.g. `harnesses.codex.*` while
+  `harnesses.codex.enabled` is `false`) are now shown dimmed in the
+  interactive settings editor with a reason, and Enter/←→ no longer edit
+  them — previously they looked and behaved like any other live setting even
+  though changing them had no effect.
 - Session preview and report preview now track separate scroll offsets, so
   paging through a session preview no longer leaves the report preview
   scrolled to the same position, and vice versa.
