@@ -1354,7 +1354,9 @@ def report_preview_capacity(terminal_height: int, terminal_width: int) -> int:
 
 _HISTORY_HINTS = [
     "↑↓ jk Scroll",
-    "Enter Path",
+    "Enter/p Preview",
+    "o Open",
+    "h Toggle missing",
     "PgUp/PgDn",
     "g/G Top/Bottom",
     "? Help",
@@ -2121,11 +2123,13 @@ def _history_entry_line(entry: HistoryEntry, *, selected: bool) -> str:
     is_daily = entry.kind is HistoryKind.DAILY_STANDUP
     label = "Daily Standup" if is_daily else (entry.harness or "")
     narrative = "—" if is_daily else ("narrative" if entry.narrative else "structure")
+    missing_suffix = "  · missing" if not Path(entry.output_path).exists() else ""
     return (
         f"{_CURSOR if selected else ' '} "
         f"{entry.generated_at:%Y-%m-%d %H:%M}  {period}  "
         f"{_pad_cells(label, 10)}  {_pad_cells(str(entry.session_count), 3)} sess "
-        f"{_pad_cells(str(entry.repository_count), 2)} repos  {narrative}  {entry.output_path}"
+        f"{_pad_cells(str(entry.repository_count), 2)} repos  "
+        f"{narrative}  {entry.output_path}{missing_suffix}"
     )
 
 
@@ -2135,6 +2139,7 @@ def render_history(
     entries: Sequence[HistoryEntry],
     selected: int,
     offset: int,
+    hidden_count: int = 0,
 ) -> None:
     """Render the generated-report log, newest first, as a scrollable list.
 
@@ -2144,6 +2149,12 @@ def render_history(
 
     _print_header(console, "Past Reports")
     console.print()
+    if hidden_count:
+        _print_viewport_line(
+            console,
+            f"{hidden_count} hidden (missing) — press h to show",
+            style="dim",
+        )
     capacity = history_capacity(console.size.height, console.size.width)
     if not entries:
         _print_viewport_line(console, "No reports generated yet.", style="dim")
@@ -2165,6 +2176,36 @@ def render_history(
         _print_viewport_line(console, f"↓ {len(entries) - end} more", style="dim")
     console.print()
     _print_hints(console, _HISTORY_HINTS)
+
+
+def _history_preview_file_name(entry: HistoryEntry) -> str:
+    return Path(entry.output_path).name or str(entry.output_path)
+
+
+def render_history_preview(console: Console, *, content: str, offset: int, file_name: str) -> None:
+    title = f"Report Preview — {file_name}" if file_name else "Report Preview"
+    _print_header(console, title)
+    console.print()
+    lines = content.splitlines() or [""]
+    capacity = report_preview_capacity(console.size.height, console.size.width)
+    if capacity <= 0:
+        _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
+        _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
+        _print_hints(console, _PREVIEW_HINTS)
+        return
+    max_start = max(0, len(lines) - capacity)
+    start = min(max(offset, 0), max_start)
+    end = min(len(lines), start + capacity)
+    if start:
+        _print_viewport_line(console, f"↑ {start} more", style="dim")
+    for line in lines[start:end]:
+        _print_viewport_line(console, line)
+    if end < len(lines):
+        _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
+    _print_hints(
+        console,
+        ["↑↓ jk Scroll", "PgUp/PgDn", "g/G Top/Bottom", "o Open", "? Help", "b Back"],
+    )
 
 
 def render_report_preview(console: Console, *, content: str, offset: int) -> None:

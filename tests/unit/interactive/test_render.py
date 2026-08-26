@@ -61,7 +61,7 @@ def _console(width: int = 100, height: int | None = None) -> tuple[Console, Stri
     )
 
 
-def _color_console(width: int = 100) -> tuple[Console, StringIO]:
+def _color_console(width: int = 100, height: int = 25) -> tuple[Console, StringIO]:
     stream = StringIO()
     return (
         Console(
@@ -69,7 +69,7 @@ def _color_console(width: int = 100) -> tuple[Console, StringIO]:
             color_system="truecolor",
             force_terminal=True,
             width=width,
-            height=25,
+            height=height,
         ),
         stream,
     )
@@ -1098,7 +1098,7 @@ def test_history_renders_empty_state_when_there_are_no_entries() -> None:
 
 
 def test_history_scrolls_its_viewport() -> None:
-    console, stream = _console()
+    console, stream = _console(width=130)
     entries = [_history_entry(i, f"reports/{i}.md") for i in range(20)]
 
     render_history(console, entries=entries, selected=19, offset=10)
@@ -1110,7 +1110,7 @@ def test_history_scrolls_its_viewport() -> None:
 
 
 def test_history_capacity_reserves_the_footer() -> None:
-    assert history_capacity(30, 80) == 22
+    assert history_capacity(30, 80) == 21
 
 
 def test_history_prints_scroll_indicators_like_the_previews() -> None:
@@ -1203,12 +1203,13 @@ def test_history_entry_keeps_the_ascii_layout_byte_for_byte() -> None:
     render_history(console, entries=[entry], selected=1, offset=0)
 
     line = _row(stream.getvalue(), "reports/a.md")
+    missing_suffix = "  · missing" if not entry.output_path.exists() else ""
     expected = (
         f"{' '} "
         f"{entry.generated_at:%Y-%m-%d %H:%M}  "
         f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}  "
         f"{entry.harness:>10}  {entry.session_count:>3} sess "
-        f"{entry.repository_count:>2} repos  narrative  reports/a.md"
+        f"{entry.repository_count:>2} repos  narrative  reports/a.md{missing_suffix}"
     )
     assert line == expected
 
@@ -1642,3 +1643,64 @@ def test_history_state_has_preview_fields() -> None:
     assert s.history_show_missing is False
     assert s.history_preview_entry is None
     assert s.history_preview_offset == 0
+
+
+def test_history_renders_hidden_banner_and_missing_dim(tmp_path) -> None:
+    from datetime import UTC, datetime
+
+    from iiwi.history import HistoryEntry, HistoryKind
+
+    missing = tmp_path / "gone.md"
+    existing = tmp_path / "exists.md"
+    existing.write_text("# hello", encoding="utf-8")
+    now = datetime(2026, 8, 27, 12, 0, tzinfo=UTC)
+    e1 = HistoryEntry(
+        generated_at=now,
+        since=now,
+        until=now,
+        output_path=existing,
+        repository_count=2,
+        session_count=5,
+        kind=HistoryKind.REPORT,
+        harness="opencode",
+        narrative=True,
+        detail="full",
+    )
+    e2 = HistoryEntry(
+        generated_at=now,
+        since=now,
+        until=now,
+        output_path=missing,
+        repository_count=1,
+        session_count=1,
+        kind=HistoryKind.REPORT,
+        harness="opencode",
+        narrative=False,
+        detail="brief",
+    )
+    from iiwi.interactive.render import render_history
+
+    console, stream = _color_console(height=24, width=120)
+    render_history(console, entries=[e1], selected=0, offset=0, hidden_count=1)
+    text = stream.getvalue()
+    assert "hidden" in text.lower()
+    assert "press h to show" in text.lower()
+
+    console2, stream2 = _color_console(height=24, width=120)
+    render_history(console2, entries=[e1, e2], selected=1, offset=0, hidden_count=0)
+    text2 = stream2.getvalue()
+    assert "missing" in text2.lower()
+
+
+def test_history_preview_renders_and_scrolls() -> None:
+    from iiwi.interactive.render import render_history_preview
+
+    content = "\n".join([f"line {i}" for i in range(30)])
+    console, stream = _color_console(height=24, width=80)
+    render_history_preview(
+        console, content=content, offset=0, file_name="worklog-2026-08-26.md"
+    )
+    text = stream.getvalue()
+    assert "Report Preview" in text
+    assert "worklog-2026-08-26.md" in text
+    assert "line 0" in text

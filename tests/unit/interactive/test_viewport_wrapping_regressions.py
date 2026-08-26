@@ -473,7 +473,7 @@ def test_history_capacity_counts_a_wrapping_hint_bar() -> None:
     narrow terminal the frame's footer cost one row more than the reservation.
     """
 
-    assert render.history_capacity(24, 100) == 16
+    assert render.history_capacity(24, 100) == 15
     assert render.history_capacity(24, 60) == 15
 
     console, stream = _console(width=60, height=24)
@@ -524,6 +524,12 @@ def test_report_preview_capacity_counts_a_wrapping_hint_bar() -> None:
     console, stream = _console(width=50, height=24)
     render_report_preview(console, content=content, offset=10)
     assert len(_display_lines(stream)) <= console.size.height - 1
+
+
+def test_history_capacity_counts_hidden_banner() -> None:
+    import iiwi.interactive.render as render
+
+    assert render.history_capacity(24, 100) == 15
 
 
 def test_session_preview_capacity_counts_a_wrapping_hint_bar() -> None:
