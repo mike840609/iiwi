@@ -1308,10 +1308,10 @@ def test_settings_highlights_only_the_active_choice() -> None:
     )
 
     text = stream.getvalue()
-    # Active choices are bright_green; the rest are dim.
-    assert "\x1b[92mfalse\x1b[0m" in text
+    # Active choices are bold cyan; the rest are dim.
+    assert "\x1b[1;36mfalse\x1b[0m" in text
     assert "\x1b[2mtrue\x1b[0m" in text
-    assert "\x1b[92mengineering\x1b[0m" in text
+    assert "\x1b[1;36mengineering\x1b[0m" in text
     assert "\x1b[2mmanager\x1b[0m" in text
 
 
@@ -1562,7 +1562,7 @@ def test_settings_dims_an_unfocused_disabled_row() -> None:
     # inside the escape pair.
     assert "\x1b[2mopencode.enabled    \x1b[0m" in text
     # …its active choice loses the highlight entirely…
-    assert "\x1b[92mtrue\x1b[0m" not in text
+    assert "\x1b[1;36mtrue\x1b[0m" not in text
     # …and its inactive choice is already dim.
     assert "\x1b[2mfalse\x1b[0m" in text
 
@@ -1578,7 +1578,7 @@ def test_a_focused_disabled_row_keeps_the_cursor_highlight() -> None:
     )
 
     text = stream.getvalue()
-    assert "\x1b[92mtrue\x1b[0m" in text
+    assert "\x1b[1;36mtrue\x1b[0m" in text
 
 
 def test_settings_shows_the_disabled_reason_on_the_detail_line() -> None:
@@ -1623,7 +1623,7 @@ def test_hybrid_rows_render_single_value_not_inline_choices() -> None:
     console, stream = _color_console()
     render_settings(console, rows=rows, selected=0, file_path="/tmp/config.env")
     text = stream.getvalue()
-    assert "\x1b[92m30\x1b[0m" in text
+    assert "\x1b[1;36m30\x1b[0m" in text
     assert "\x1b[2m15\x1b[0m" in text
     assert "\x1b[2m60\x1b[0m" in text
     assert "\x1b[2m120\x1b[0m" in text
