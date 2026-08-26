@@ -228,9 +228,9 @@ def test_fixed_screens_do_not_wrap_in_narrow_terminal() -> None:
 
 
 def test_preview_capacity_reserves_final_terminal_line() -> None:
-    assert interactive_render.report_preview_capacity(20) == 12
-    assert interactive_render.report_preview_capacity(9) == 1
-    assert interactive_render.report_preview_capacity(8) == 0
+    assert interactive_render.report_preview_capacity(20, 80) == 12
+    assert interactive_render.report_preview_capacity(9, 80) == 1
+    assert interactive_render.report_preview_capacity(8, 80) == 0
 
 
 def test_posix_navigation_sequences_include_horizontal_and_paging_keys() -> None:
@@ -524,7 +524,7 @@ def test_check_setup_shows_a_recoverable_error_not_a_crash() -> None:
     state = interactive_controller._State()
 
     interactive_controller._main_key(
-        state, char("5"), _configuration_error_actions()
+        state, char("5"), _configuration_error_actions(), _console()[0]
     )
 
     assert state.screen is interactive_controller.Screen.RECOVERABLE_ERROR

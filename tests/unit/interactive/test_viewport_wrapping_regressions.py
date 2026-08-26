@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from rich.console import Console
 
+from iiwi.history import HistoryEntry, HistoryKind
 from iiwi.interactive import render
 from iiwi.interactive.render import (
     build_visible_rows,
@@ -13,6 +14,7 @@ from iiwi.interactive.render import (
     render_session_review,
 )
 from iiwi.interactive.selection import SelectionState
+from iiwi.interactive.settings import SettingsRow
 from iiwi.models.daily import (
     DailySectionItem,
     DailyStandupDraft,
@@ -32,7 +34,7 @@ from iiwi.models.repository import (
     RepositoryIdentityType,
     ResolvedSession,
 )
-from iiwi.models.session import AgentSession
+from iiwi.models.session import ActivityType, AgentSession, SessionActivity
 from iiwi.models.time_range import DateRange
 from iiwi.services.scan import ScanResult
 
@@ -410,3 +412,126 @@ def test_outcome_review_fits_width_height_and_focus_matrix() -> None:
                 assert any(
                     "p Preview" in line or "g Generate" in line for line in lines
                 ), (width, height, cursor)
+
+
+def _history_entries(count: int) -> list[HistoryEntry]:
+    return [
+        HistoryEntry(
+            generated_at=datetime(2026, 8, 20, 10, 0, tzinfo=TZ),
+            since=datetime(2026, 8, 11, tzinfo=TZ),
+            until=datetime(2026, 8, 18, tzinfo=TZ),
+            kind=HistoryKind.REPORT,
+            harness="opencode",
+            narrative=False,
+            session_count=12,
+            repository_count=3,
+            output_path="/tmp/report.md",
+        )
+        for _ in range(count)
+    ]
+
+
+def _settings_rows(count: int) -> list[SettingsRow]:
+    return [
+        SettingsRow(
+            key=f"key-{index}",
+            label=f"Setting {index}",
+            value="value",
+            source="file",
+            default="default",
+            choices=(),
+            show_all=False,
+            locked=False,
+            variable=f"VARIABLE_{index}",
+            section="Section",
+        )
+        for index in range(count)
+    ]
+
+
+def _busy_session() -> AgentSession:
+    return AgentSession(
+        harness="opencode",
+        session_id="ses-preview",
+        title="Preview wrap regression",
+        working_directory="/tmp/repo-a",
+        activities=[
+            SessionActivity(
+                activity_id=f"act-{index}",
+                activity_type=ActivityType.USER_MESSAGE,
+                content=f"Message {index}\nsecond transcript line {index}",
+            )
+            for index in range(30)
+        ],
+    )
+
+
+def test_history_capacity_counts_a_wrapping_hint_bar() -> None:
+    """The history hint bar wraps below 72 columns; capacity must reserve it.
+
+    history_capacity subtracted a single hint row regardless of width, so on a
+    narrow terminal the frame's footer cost one row more than the reservation.
+    """
+
+    assert render.history_capacity(24, 100) == 16
+    assert render.history_capacity(24, 60) == 15
+
+    console, stream = _console(width=60, height=24)
+    render.render_history(
+        console, entries=_history_entries(40), selected=0, offset=0
+    )
+    assert len(_display_lines(stream)) <= console.size.height - 1
+
+
+def test_settings_capacity_counts_a_wrapping_hint_bar() -> None:
+    """The settings hint bar wraps below 47 columns and used to overflow.
+
+    At 40x24 the wrapped second hint line pushed the frame to the terminal's
+    last row, stealing the row every screen reserves.
+    """
+
+    assert render.settings_capacity(24, terminal_width=80) == 15
+    assert render.settings_capacity(24, terminal_width=40) == 14
+
+    console, stream = _console(width=40, height=24)
+    render.render_settings(
+        console,
+        rows=_settings_rows(30),
+        selected=0,
+        file_path="/tmp/settings.toml",
+    )
+    assert len(_display_lines(stream)) <= console.size.height - 1
+
+
+def test_help_capacity_counts_a_wrapping_hint_bar() -> None:
+    """The help hint bar wraps below 35 columns and used to overflow."""
+
+    assert render.help_capacity(24, 80) == 18
+    assert render.help_capacity(24, 30) == 17
+
+    console, stream = _console(width=30, height=24)
+    render.render_help(console)
+    assert len(_display_lines(stream)) <= console.size.height - 1
+
+
+def test_report_preview_capacity_counts_a_wrapping_hint_bar() -> None:
+    """The preview hint bar wraps below 59 columns; capacity must reserve it."""
+
+    assert render.report_preview_capacity(24, 80) == 16
+    assert render.report_preview_capacity(24, 50) == 15
+
+    content = "\n".join(f"Line {index}" for index in range(60))
+    console, stream = _console(width=50, height=24)
+    render_report_preview(console, content=content, offset=10)
+    assert len(_display_lines(stream)) <= console.size.height - 1
+
+
+def test_session_preview_capacity_counts_a_wrapping_hint_bar() -> None:
+    """The session preview shares the preview hints, so it reserves them too."""
+
+    assert render.report_preview_capacity(24, 80) == 16
+    assert render.report_preview_capacity(24, 50) == 15
+
+    console, stream = _console(width=50, height=24)
+    render.render_session_preview(console, _busy_session(), offset=10)
+    assert len(_display_lines(stream)) <= console.size.height - 1

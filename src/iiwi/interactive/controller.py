@@ -10,6 +10,7 @@ from typing import Protocol, Self
 
 import typer
 from rich.console import Console
+from rich.text import Text
 
 from iiwi import config_store
 from iiwi.errors import (
@@ -182,6 +183,9 @@ class _ErrorState:
     selected: int = 0
     detail_offset: int = 0
     daily_source_error: DailySourceUnavailableError | None = None
+    # Screen the error was raised from. Set only by raisers that can fire from
+    # more than one screen; _error_back_screen falls back to the kind prefix.
+    back: Screen | None = None
 
 
 @dataclass
@@ -200,7 +204,7 @@ class _State:
     result: InteractiveReportResult | None = None
     expanded_repositories: set[str] | None = None
     preview_session: AgentSession | None = None
-    preview_offset: int = 0
+    session_preview_offset: int = 0
     preview_return_screen: Screen | None = None
     error: _ErrorState | None = None
     review_message: str | None = None
@@ -317,6 +321,28 @@ def _paint(console: Console, frame: str, previous: list[str] | None) -> list[str
     return lines
 
 
+def _paint_pending(state: _State, console: Console, message: str) -> None:
+    """Paint the current frame plus one dim progress line before a long op blocks.
+
+    Handlers assign their status message before the blocking action runs, but
+    that message only reaches the screen on the next loop iteration — minutes
+    later. Painting here gives immediate feedback, and the next regular paint's
+    erase-below removes the line once the action returns.
+    """
+
+    line = f"⏳ {message}  (Ctrl-C to cancel)"
+    if not console.is_terminal:
+        _render_screen(state, console)
+        console.print(Text(line, style="dim"))
+        return
+    with console.capture() as capture:
+        _render_screen(state, console)
+        console.print(Text(line, style="dim"))
+    # previous=None forces one absolute-positioned repaint: the pending line
+    # lands below the frame rows, where the next cycle's erase-below finds it.
+    _paint(console, capture.get(), None)
+
+
 def _reset_search(state: _State) -> None:
     state.search_query = ""
     state.searching = False
@@ -358,6 +384,7 @@ def _new_report(state: _State, actions: InteractiveActions) -> None:
     state.review_from_main = False
     _clear_outcome_review(state)
     state.preview_offset = 0
+    state.session_preview_offset = 0
     state.preview_return_screen = None
     state.expanded_repositories = set()
     _reset_search(state)
@@ -439,55 +466,93 @@ def _begin_activity_review(state: _State, actions: InteractiveActions) -> None:
     _load_activity(state, actions, draft)
 
 
+def _scan_for_review(state: _State, actions: InteractiveActions) -> ScanResult | None:
+    """Run actions.scan, routing failures to the report-source error screen."""
+
+    assert state.draft is not None
+    draft = state.draft
+    # A failed rescan interrupts Session Review itself: Back mirrors where the
+    # review's own Back key goes rather than always assuming Report Setup.
+    back = state.screen if state.review_from_main else Screen.REPORT_SETUP
+    try:
+        scan = actions.scan(draft)
+    except IiwiError as exc:
+        state.error = _ErrorState(
+            kind="report-source",
+            title=f"Could not read {draft.harness} sessions",
+            detail=str(exc),
+            back=back,
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return None
+    if scan.loaded_session_count == 0:
+        if scan.excluded_session_count > 0:
+            state.error = _ErrorState(
+                kind="report-empty",
+                title="Sessions excluded by configuration",
+                detail="All sessions matched by the selected harness and period "
+                "were excluded by configuration.",
+                back=back,
+            )
+        else:
+            state.error = _ErrorState(
+                kind="report-empty",
+                title="No sessions found",
+                detail="No activity matched the selected harness and period.",
+                back=back,
+            )
+        state.screen = Screen.RECOVERABLE_ERROR
+        return None
+    return scan
+
+
 def _review(state: _State, actions: InteractiveActions) -> None:
     assert state.draft is not None
     draft = state.draft
     if draft.scan is None:
-        try:
-            scan = actions.scan(draft)
-        except IiwiError as exc:
-            state.error = _ErrorState(
-                kind="report-source",
-                title=f"Could not read {draft.harness} sessions",
-                detail=str(exc),
-            )
-            state.screen = Screen.RECOVERABLE_ERROR
-            return
-        if scan.loaded_session_count == 0:
-            if scan.excluded_session_count > 0:
-                state.error = _ErrorState(
-                    kind="report-empty",
-                    title="Sessions excluded by configuration",
-                    detail="All sessions matched by the selected harness and period "
-                    "were excluded by configuration.",
-                )
-            else:
-                state.error = _ErrorState(
-                    kind="report-empty",
-                    title="No sessions found",
-                    detail="No activity matched the selected harness and period.",
-                )
-            state.screen = Screen.RECOVERABLE_ERROR
+        scan = _scan_for_review(state, actions)
+        if scan is None:
             return
         draft.set_scan(scan)
-        restored = actions.restore_selection(
-            draft.harness, draft.period, draft.include_subagents
-        )
-        if restored is not None:
-            available = {item.session.session_id for item in scan.resolved_sessions}
-            draft.selected_session_ids = restored & available
-    cached_scan = draft.scan
-    assert cached_scan is not None
+    _finish_review_selection(state, actions, None)
+
+
+def _finish_review_selection(
+    state: _State,
+    actions: InteractiveActions,
+    previously_selected: set[str] | None,
+) -> None:
+    """Rebuild the review selection from draft.scan.
+
+    previously_selected carries a rescan's pre-scan selection: it wins over the
+    rebuilt one, intersected with what the new scan still offers. Callers that
+    only opened the review pass None and leave the restored selection in place.
+    """
+
+    assert state.draft is not None
+    draft = state.draft
+    scan = draft.scan
+    assert scan is not None
+    restored = actions.restore_selection(
+        draft.harness, draft.period, draft.include_subagents
+    )
+    if restored is not None:
+        available = {item.session.session_id for item in scan.resolved_sessions}
+        draft.selected_session_ids = restored & available
     state.selection = SelectionState.from_scan(
-        cached_scan,
+        scan,
         selected_session_ids=draft.selected_session_ids,
     )
     state.review_cursor = 0
     state.review_message = None
-    valid_repositories = set(cached_scan.sessions_by_repository)
+    valid_repositories = set(scan.sessions_by_repository)
     state.expanded_repositories = state.expansions() & valid_repositories
     _reset_search(state)
     state.screen = Screen.SESSION_REVIEW
+    if previously_selected is not None:
+        available = {item.session.session_id for item in scan.resolved_sessions}
+        state.selection.selected_session_ids = previously_selected & available
+        _sync_selection(state, actions)
 
 
 def _open_help(state: _State) -> None:
@@ -496,7 +561,12 @@ def _open_help(state: _State) -> None:
     state.screen = Screen.HELP
 
 
-def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
+def _main_key(
+    state: _State,
+    key: KeyPress,
+    actions: InteractiveActions,
+    console: Console,
+) -> None:
     options = main_menu_options()
     state.main_cursor = _move(state.main_cursor, key, len(options))
     if key.key is Key.ESCAPE or _char(key, "q"):
@@ -513,7 +583,7 @@ def _main_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None
     if state.main_cursor == 0:
         _begin_activity_review(state, actions)
     elif state.main_cursor == 1:
-        _begin_daily_review(state, actions)
+        _begin_daily_review(state, actions, console)
     elif state.main_cursor == 2:
         _new_report(state, actions)
     elif state.main_cursor == 3:
@@ -579,7 +649,12 @@ def _edit_setup_field(state: _State, actions: InteractiveActions, *, field: str)
     _clear_expansions_if_scan_was_invalidated(state, draft, had_scan=had_scan)
 
 
-def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
+def _setup_key(
+    state: _State,
+    key: KeyPress,
+    actions: InteractiveActions,
+    console: Console,
+) -> None:
     rows = report_setup_rows(advanced=state.setup_advanced)
     state.setup_cursor = _move(state.setup_cursor, key, len(rows))
     if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
@@ -592,14 +667,14 @@ def _setup_key(state: _State, key: KeyPress, actions: InteractiveActions) -> Non
         _review(state, actions)
         return
     if _char(key, "g"):
-        _generate_from_setup(state, actions)
+        _generate_from_setup(state, actions, console)
         return
     row = rows[state.setup_cursor]
     if row == report_generate_row():
         # Actions answer to Enter alone. Left/right remains reserved for changing
         # settings, so scrolling across an action can never execute it by accident.
         if key.key is Key.ENTER:
-            _generate_from_setup(state, actions)
+            _generate_from_setup(state, actions, console)
         return
     horizontal_edit = key.key in {Key.LEFT, Key.RIGHT} or _char(key, "h") or _char(key, "l")
     if key.key is not Key.ENTER and not horizontal_edit:
@@ -666,7 +741,11 @@ def _settings_key(state: _State, key: KeyPress, console: Console) -> None:
         state.settings_rows,
         state.settings_cursor,
         offset=state.settings_offset,
-        capacity=settings_capacity(console.size.height, editing=state.settings_editing),
+        capacity=settings_capacity(
+            console.size.height,
+            editing=state.settings_editing,
+            terminal_width=console.size.width,
+        ),
     )
     row = state.settings_rows[state.settings_cursor]
     if row.locked or row.disabled_reason:
@@ -756,7 +835,7 @@ def _open_session_preview(
     return_screen: Screen,
 ) -> None:
     state.preview_session = session
-    state.preview_offset = 0
+    state.session_preview_offset = 0
     state.preview_return_screen = return_screen
     state.screen = Screen.SESSION_PREVIEW
 
@@ -803,7 +882,13 @@ def _sync_selection(state: _State, actions: InteractiveActions) -> None:
         )
 
 
-def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> None:
+def _generate(
+    state: _State,
+    actions: InteractiveActions,
+    console: Console,
+    *,
+    force: bool,
+) -> None:
     assert state.draft is not None
     assert state.selection is not None
     if state.selection.selected_count == 0:
@@ -812,6 +897,7 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
         return
     _sync_selection(state, actions)
     filtered_scan = state.selection.filtered_scan()
+    _paint_pending(state, console, "Generating report…")
     try:
         result = actions.generate(state.draft, filtered_scan, force)
     except ReportAlreadyExistsError as exc:
@@ -843,35 +929,52 @@ def _generate(state: _State, actions: InteractiveActions, *, force: bool) -> Non
     state.preview_offset = 0
     state.review_message = None
     state.error = None
+    # The generation notice is scoped to this attempt: cli_actions injected it
+    # as an initial warning here, so consuming it now keeps a failed earlier
+    # attempt from leaking its notice into this and every later generate.
+    state.draft.generation_notice = None
     state.screen = Screen.REPORT_RESULT
 
 
-def _generate_from_setup(state: _State, actions: InteractiveActions) -> None:
+def _generate_from_setup(
+    state: _State,
+    actions: InteractiveActions,
+    console: Console,
+) -> None:
     """Route the setup action to Quick Review before writing output."""
     assert state.draft is not None
     state.review_from_main = False
     _review(state, actions)
     if state.screen is Screen.SESSION_REVIEW:
-        _begin_outcome_review(state, actions)
+        _begin_outcome_review(state, actions, console)
 
 
 def _rescan_review(state: _State, actions: InteractiveActions) -> None:
+    """Rescan commit-on-success: a failed or cancelled scan changes nothing.
+
+    Mutating draft.scan before the scan ran left a cancelled rescan holding a
+    stale selection over a null draft, and the next generate silently built
+    from pre-rescan sessions. The scan now runs first; the current view stays
+    fully intact whenever it does not complete.
+    """
+
     assert state.draft is not None
     assert state.selection is not None
     selected = set(state.selection.selected_session_ids)
-    state.draft.scan = None
-    _clear_outcome_review(state)
-    _review(state, actions)
-    if state.screen is not Screen.SESSION_REVIEW or state.selection is None:
+    scan = _scan_for_review(state, actions)
+    if scan is None:
         return
-    available = {
-        item.session.session_id for item in state.selection.scan.resolved_sessions
-    }
-    state.selection.selected_session_ids = selected & available
-    _sync_selection(state, actions)
+    _clear_outcome_review(state)
+    state.draft.set_scan(scan)
+    _finish_review_selection(state, actions, selected)
 
 
-def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> None:
+def _review_key(
+    state: _State,
+    key: KeyPress,
+    actions: InteractiveActions,
+    console: Console,
+) -> None:
     assert state.draft is not None
     assert state.selection is not None
     if _search_input(state, key, "review_cursor"):
@@ -908,7 +1011,7 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         state.review_message = None
         return
     if _exact_char(key, "g"):
-        _begin_outcome_review(state, actions)
+        _begin_outcome_review(state, actions, console)
         return
     if _exact_char(key, "G"):
         # The guard's way out. Synthesis groups what it can carry and leaves
@@ -916,7 +1019,7 @@ def _review_key(state: _State, key: KeyPress, actions: InteractiveActions) -> No
         # what an over-budget selection produced before the guard existed.
         # A byte counter refusing the work outright is the same editorial call
         # the guard was added to stop it from making.
-        _begin_outcome_review(state, actions, force=True)
+        _begin_outcome_review(state, actions, console, force=True)
         return
     if _exact_char(key, "p"):
         _preview_from_row(
@@ -1005,12 +1108,18 @@ def _open_daily_review(state: _State, draft: DailyStandupDraft) -> None:
     state.screen = Screen.DAILY_REVIEW
 
 
-def _begin_daily_review(state: _State, actions: InteractiveActions) -> None:
+def _begin_daily_review(
+    state: _State,
+    actions: InteractiveActions,
+    console: Console,
+) -> None:
     """Start or refresh Daily while preserving its independent review draft."""
 
-    state.daily_message = (
+    message = (
         "Scanning sessions and synthesizing outcomes… this can take a few minutes."
     )
+    state.daily_message = message
+    _paint_pending(state, console, message)
     try:
         draft = actions.start_daily(state.daily_review)
     except DailySourceUnavailableError as exc:
@@ -1093,6 +1202,23 @@ def _focus_daily_item(state: _State, target: DailyReviewRow) -> None:
         if row.kind == "item"
         and row.section is target.section
         and row.work_item_id == target.work_item_id
+    )
+
+
+def _focus_outcome(
+    state: _State,
+    rows: list[OutcomeReviewRow],
+    outcome_id: str,
+) -> None:
+    """Resolve focus by stable row identity after a mutation changes row order."""
+
+    state.outcome_cursor = next(
+        (
+            index
+            for index, row in enumerate(rows)
+            if row.kind == "outcome" and row.outcome_id == outcome_id
+        ),
+        min(state.outcome_cursor, max(0, len(rows) - 1)),
     )
 
 
@@ -1236,6 +1362,7 @@ def _daily_result_key(state: _State, key: KeyPress) -> None:
 def _begin_outcome_review(
     state: _State,
     actions: InteractiveActions,
+    console: Console,
     *,
     force: bool = False,
 ) -> None:
@@ -1248,7 +1375,11 @@ def _begin_outcome_review(
     # Quick Review is the LLM path, so the Narrative toggle is what opts out of
     # it. Turning it off must not still spend a synthesis run.
     if not state.draft.narrative:
-        _generate(state, actions, force=False)
+        # A plain generate never inherits a pending fallback notice: that
+        # notice belongs to the fallback attempt that set it, and this
+        # attempt decides it does not carry one.
+        state.draft.generation_notice = None
+        _generate(state, actions, console, force=False)
         return
     _sync_selection(state, actions)
     filtered_scan = state.selection.filtered_scan()
@@ -1272,6 +1403,7 @@ def _begin_outcome_review(
         state.screen = Screen.OUTCOME_REVIEW
         return
     try:
+        _paint_pending(state, console, "Synthesizing outcomes…")
         state.outcome_review = actions.synthesize(state.draft, filtered_scan, force)
     except SynthesisBudgetExceededError as exc:
         # Synthesis measured the selection on the extraction pass it was going to
@@ -1492,6 +1624,7 @@ def _outcome_review_key(
     assert target.outcome_id is not None
     if key.key is Key.SPACE:
         state.outcome_review.toggle_included(target.outcome_id)
+        _focus_outcome(state, _outcome_review_rows(state), target.outcome_id)
         return
     if _exact_char(key, "v"):
         state.evidence_expansions().symmetric_difference_update({target.outcome_id})
@@ -1561,6 +1694,8 @@ def _error_options(error: _ErrorState) -> list[str]:
 
 
 def _error_back_screen(error: _ErrorState) -> Screen:
+    if error.back is not None:
+        return error.back
     if error.kind == "exclude-source":
         return Screen.SESSION_REVIEW
     if error.kind == "report-path":
@@ -1639,11 +1774,11 @@ def _error_key(
         return
     if choice == "Retry":
         if error.retry == "daily-source":
-            _begin_daily_review(state, actions)
+            _begin_daily_review(state, actions, console)
         elif error.retry == "daily-preview":
             _generate_daily_review(state, actions, preview=True)
         elif error.retry == "outcome-synthesis":
-            _begin_outcome_review(state, actions)
+            _begin_outcome_review(state, actions, console)
         elif error.retry == "outcome-preview":
             _generate_outcome_review(state, actions, preview=True)
         return
@@ -1656,11 +1791,12 @@ def _error_key(
         _open_daily_review(state, draft)
         return
     if choice == "Use session-based report":
+        # The notice rides into this one attempt only: _generate clears it on
+        # success and leaves it set on failure so the error screen keeps its
+        # context until the next attempt decides.
         assert state.draft is not None
         state.draft.generation_notice = _SESSION_FALLBACK_NOTICE
-        _generate(state, actions, force=False)
-        if state.screen is not Screen.RECOVERABLE_ERROR:
-            state.draft.generation_notice = None
+        _generate(state, actions, console, force=False)
         return
     if choice == "Overwrite once":
         if error.retry == "outcome-write":
@@ -1671,13 +1807,7 @@ def _error_key(
                 force=True,
             )
         else:
-            _generate(state, actions, force=True)
-            if (
-                state.draft is not None
-                and state.draft.generation_notice is not None
-                and state.screen is not Screen.RECOVERABLE_ERROR
-            ):
-                state.draft.generation_notice = None
+            _generate(state, actions, console, force=True)
         return
     assert state.draft is not None
     if choice == "Change harness":
@@ -1709,7 +1839,7 @@ def _history_key(state: _State, key: KeyPress, console: Console) -> None:
     count = len(entries)
     if not count:
         return
-    capacity = history_capacity(console.size.height)
+    capacity = history_capacity(console.size.height, console.size.width)
     page = max(1, capacity)
     state.history_cursor = _move(state.history_cursor, key, count)
     if key.key is Key.PAGE_UP:
@@ -1762,6 +1892,7 @@ def _result_key(state: _State, key: KeyPress) -> None:
         state.setup_cursor = 0
         state.setup_advanced = False
         state.preview_offset = 0
+        state.session_preview_offset = 0
         state.expanded_repositories = set()
         _reset_search(state)
         state.screen = Screen.REPORT_SETUP
@@ -1786,7 +1917,7 @@ def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
         state.preview_return_screen = None
         return
     lines = state.result.content.splitlines() or [""]
-    capacity = report_preview_capacity(console.size.height)
+    capacity = report_preview_capacity(console.size.height, console.size.width)
     max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
     page = max(1, capacity)
     if key.key is Key.UP or _char(key, "k"):
@@ -1810,21 +1941,21 @@ def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None
         state.preview_return_screen = None
         return
     lines = build_session_preview_lines(state.preview_session) or [""]
-    capacity = report_preview_capacity(console.size.height)
+    capacity = report_preview_capacity(console.size.height, console.size.width)
     max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
     page = max(1, capacity)
     if key.key is Key.UP or _char(key, "k"):
-        state.preview_offset = max(0, state.preview_offset - 1)
+        state.session_preview_offset = max(0, state.session_preview_offset - 1)
     elif key.key is Key.DOWN or _char(key, "j"):
-        state.preview_offset = min(max_offset, state.preview_offset + 1)
+        state.session_preview_offset = min(max_offset, state.session_preview_offset + 1)
     elif key.key is Key.PAGE_UP:
-        state.preview_offset = max(0, state.preview_offset - page)
+        state.session_preview_offset = max(0, state.session_preview_offset - page)
     elif key.key is Key.PAGE_DOWN:
-        state.preview_offset = min(max_offset, state.preview_offset + page)
+        state.session_preview_offset = min(max_offset, state.session_preview_offset + page)
     elif key.key is Key.HOME or _exact_char(key, "g"):
-        state.preview_offset = 0
+        state.session_preview_offset = 0
     elif key.key is Key.END or _exact_char(key, "G"):
-        state.preview_offset = max_offset
+        state.session_preview_offset = max_offset
 
 
 def _help_key(state: _State, key: KeyPress, console: Console) -> None:
@@ -1838,7 +1969,7 @@ def _help_key(state: _State, key: KeyPress, console: Console) -> None:
         state.help_return_screen = None
         return
     # The reference outgrew a short terminal, so it scrolls like the previews.
-    capacity = help_capacity(console.size.height)
+    capacity = help_capacity(console.size.height, console.size.width)
     max_offset = max(0, len(help_lines(state.help_return_screen)) - capacity)
     page = max(1, capacity)
     if key.key is Key.UP or _char(key, "k"):
@@ -1909,7 +2040,7 @@ def _render_screen(state: _State, console: Console) -> None:
         render_session_preview(
             console,
             state.preview_session,
-            offset=state.preview_offset,
+            offset=state.session_preview_offset,
         )
     elif state.screen is Screen.REPORT_RESULT:
         assert state.draft is not None
@@ -2009,13 +2140,13 @@ def _dispatch(
         _open_help(state)
         return
     if state.screen is Screen.MAIN:
-        _main_key(state, key, actions)
+        _main_key(state, key, actions, console)
     elif state.screen is Screen.REPORT_SETUP:
-        _setup_key(state, key, actions)
+        _setup_key(state, key, actions, console)
     elif state.screen is Screen.SETTINGS:
         _settings_key(state, key, console)
     elif state.screen is Screen.SESSION_REVIEW:
-        _review_key(state, key, actions)
+        _review_key(state, key, actions, console)
     elif state.screen is Screen.OUTCOME_REVIEW:
         _outcome_review_key(state, key, actions)
     elif state.screen is Screen.DAILY_REVIEW:
@@ -2062,7 +2193,10 @@ def run_interactive(
 
     state = _State(screen=initial_screen)
     if initial_screen is Screen.DAILY_REVIEW:
-        _begin_daily_review(state, actions)
+        # The Daily screen cannot render until start_daily returns a draft, so
+        # the pending line paints over the main menu while the scan blocks.
+        state.screen = Screen.MAIN
+        _begin_daily_review(state, actions, console)
     previous_frame: list[str] | None = None
     while state.screen is not Screen.EXIT:
         previous_frame = _render(state, console, previous_frame)

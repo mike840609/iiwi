@@ -71,6 +71,7 @@ def _new_draft() -> ReportDraft:
         period=period,
         period_label=label,
         report_type=settings.report.quick_review_report_type,
+        sanitize=cli._effective_sanitize(settings, harness, None),
     )
 
 
@@ -365,9 +366,14 @@ def _doctor(harness_name: str) -> list[str]:
     settings = cli._load_settings()
     harness = cli.Harness(harness_name)
     cli._require_enabled_harness(settings, harness)
-    runner = CommandRunner(
-        timeout_seconds=settings.harnesses.opencode.cli.timeout_seconds
-    )
+    # Time the checks with the checked harness's own CLI budget. Sections
+    # without a `cli` block (claude code and codex today) fall back to
+    # OpenCode's so the runner always receives a finite positive timeout.
+    section = getattr(settings.harnesses, harness.name.lower())
+    timeout_seconds = getattr(getattr(section, "cli", None), "timeout_seconds", None)
+    if timeout_seconds is None:
+        timeout_seconds = settings.harnesses.opencode.cli.timeout_seconds
+    runner = CommandRunner(timeout_seconds=timeout_seconds)
     narrator = cli._describe_narrator(settings, harness)
     result = cli.run_doctor(
         settings, runner=runner, harness=harness.value, narrator=narrator

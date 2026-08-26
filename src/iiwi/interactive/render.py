@@ -692,6 +692,8 @@ def _outcome_review_body(
     above = Text(f"↑ {start} more", style="dim") if start > 0 else None
     below = Text(f"↓ {len(blocks) - end} more", style="dim") if end < len(blocks) else None
     window = [list(block.lines) for block in blocks[start:end]]
+    if not window:
+        return []
 
     def used() -> int:
         return (
@@ -735,7 +737,7 @@ def render_outcome_review(
     hints = _hint_lines(_OUTCOME_REVIEW_HINTS, console.size.width)
     terminal_budget = max(0, console.size.height - 1)
     fixed_lines = 2 + 2 + len(hints) + int(message is not None)
-    body_capacity = max(1, terminal_budget - fixed_lines)
+    body_capacity = max(0, terminal_budget - fixed_lines)
     indicator_floor = int(cursor > 0) + int(cursor < len(rows) - 1)
     focused_capacity = max(1, body_capacity - indicator_floor)
     blocks = _build_outcome_review_blocks(
@@ -1013,6 +1015,8 @@ def _daily_review_body(
         else None
     )
     window = [list(block.lines) for block in blocks[start:end]]
+    if not window:
+        return []
 
     def used() -> int:
         return sum(len(lines) for lines in window) + int(above is not None) + int(
@@ -1079,7 +1083,7 @@ def render_daily_review(
     terminal_budget = max(0, console.size.height - 1)
     warning_lines = _daily_warning_lines(draft)
     fixed_lines = 4 + len(hints) + len(warning_lines) + int(message is not None)
-    body_capacity = max(1, terminal_budget - fixed_lines)
+    body_capacity = max(0, terminal_budget - fixed_lines)
     focused_capacity = max(
         1,
         body_capacity - int(cursor > 0) - int(cursor < len(rows) - 1),
@@ -1317,16 +1321,47 @@ def report_result_options() -> list[str]:
     return list(_RESULT_OPTIONS)
 
 
-def report_preview_capacity(terminal_height: int) -> int:
-    """Content lines available while reserving the terminal's final display row."""
+_PREVIEW_HINTS = [
+    "↑↓ jk Scroll",
+    "PgUp/PgDn",
+    "g/G Top/Bottom",
+    "? Help",
+    "b Back",
+]
 
-    return max(0, terminal_height - 8)
+
+def report_preview_capacity(terminal_height: int, terminal_width: int) -> int:
+    """Content lines available while reserving the terminal's final display row.
+
+    The hint bar wraps onto a second line on a narrow terminal, so the footer
+    reservation is derived from these hints at the given width.
+    """
+
+    return max(
+        0, terminal_height - 7 - len(_hint_lines(_PREVIEW_HINTS, terminal_width))
+    )
 
 
-def history_capacity(terminal_height: int) -> int:
-    """History rows that fit while reserving the header, blanks, and hints."""
+_HISTORY_HINTS = [
+    "↑↓ jk Scroll",
+    "Enter Path",
+    "PgUp/PgDn",
+    "g/G Top/Bottom",
+    "? Help",
+    "b Back",
+]
 
-    return max(0, terminal_height - 8)
+
+def history_capacity(terminal_height: int, terminal_width: int) -> int:
+    """History rows that fit while reserving the header, blanks, and hints.
+
+    Like every capacity helper, the hint-bar reservation is width-aware: the
+    bar wraps onto a second line when the hints exceed ``terminal_width``.
+    """
+
+    return max(
+        0, terminal_height - 7 - len(_hint_lines(_HISTORY_HINTS, terminal_width))
+    )
 
 
 def _print_wordmark(console: Console) -> None:
@@ -1513,16 +1548,32 @@ def _settings_value_text(row: SettingsRow, *, muted: bool = False) -> Text:
     return value
 
 
-def settings_capacity(terminal_height: int, *, editing: bool = False) -> int:
+_SETTINGS_HINTS = ["↑↓ jk", "←→ Cycle", "Enter Edit", "? Help", "b Back"]
+_SETTINGS_EDITING_HINTS = ["Enter Keep", "Esc Cancel"]
+
+
+def settings_capacity(
+    terminal_height: int,
+    *,
+    editing: bool = False,
+    terminal_width: int,
+) -> int:
     """Settings display lines that fit while the footer stays on screen.
 
     Chrome: title and rule (2), a blank before and after the list, the detail
-    line (1, or 2 while editing), a blank before the hints, the hint bar, and
-    the terminal's final display row. The subtitle adds one line at the height
-    that shows it, and the inline editor's value line adds one more.
+    line (1, or 2 while editing), a blank before the hints, the hint bar (which
+    wraps onto a second line on a narrow terminal), and the terminal's final
+    display row. The subtitle adds one line at the height that shows it, and
+    the inline editor's value line adds one more.
     """
 
-    chrome = 8 + (1 if terminal_height >= _MIN_SUBTITLE_HEIGHT else 0) + (1 if editing else 0)
+    hints = _SETTINGS_EDITING_HINTS if editing else _SETTINGS_HINTS
+    chrome = (
+        7
+        + len(_hint_lines(hints, terminal_width))
+        + (1 if terminal_height >= _MIN_SUBTITLE_HEIGHT else 0)
+        + (1 if editing else 0)
+    )
     return max(0, terminal_height - chrome)
 
 
@@ -1663,7 +1714,11 @@ def render_settings(
         )
     console.print()
     label_cells = max((cell_len(row.label) for row in rows), default=0)
-    capacity = settings_capacity(console.size.height, editing=editing)
+    capacity = settings_capacity(
+        console.size.height,
+        editing=editing,
+        terminal_width=console.size.width,
+    )
     offset = settings_display_offset(rows, selected, offset=offset, capacity=capacity)
     display = _settings_display_items(rows, selected=selected, label_cells=label_cells)
     visible, hidden_above, hidden_below = _settings_window(
@@ -1695,12 +1750,7 @@ def render_settings(
         )
         _print_viewport_line(console, f"  {detail}", style="dim")
     console.print()
-    _print_hints(
-        console,
-        ["Enter Keep", "Esc Cancel"]
-        if editing
-        else ["↑↓ jk", "←→ Cycle", "Enter Edit", "? Help", "b Back"],
-    )
+    _print_hints(console, _SETTINGS_EDITING_HINTS if editing else _SETTINGS_HINTS)
 
 
 def _session_recency(session: AgentSession) -> datetime:
@@ -2038,6 +2088,12 @@ def render_report_result(
     )
 
 
+def _pad_cells(value: str, width: int) -> str:
+    """Right-align ``value`` within ``width`` display cells (CJK-safe)."""
+
+    return " " * max(0, width - cell_len(value)) + value
+
+
 def _history_entry_line(entry: HistoryEntry, *, selected: bool) -> str:
     period = f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}"
     is_daily = entry.kind is HistoryKind.DAILY_STANDUP
@@ -2046,8 +2102,8 @@ def _history_entry_line(entry: HistoryEntry, *, selected: bool) -> str:
     return (
         f"{_CURSOR if selected else ' '} "
         f"{entry.generated_at:%Y-%m-%d %H:%M}  {period}  "
-        f"{label:>10}  {entry.session_count:>3} sess "
-        f"{entry.repository_count:>2} repos  {narrative}  {entry.output_path}"
+        f"{_pad_cells(label, 10)}  {_pad_cells(str(entry.session_count), 3)} sess "
+        f"{_pad_cells(str(entry.repository_count), 2)} repos  {narrative}  {entry.output_path}"
     )
 
 
@@ -2066,7 +2122,7 @@ def render_history(
 
     _print_header(console, "Past Reports")
     console.print()
-    capacity = history_capacity(console.size.height)
+    capacity = history_capacity(console.size.height, console.size.width)
     if not entries:
         _print_viewport_line(console, "No reports generated yet.", style="dim")
         console.print()
@@ -2076,16 +2132,17 @@ def render_history(
         )
         return
     end = min(len(entries), offset + capacity)
+    if offset > 0:
+        _print_viewport_line(console, f"↑ {offset} more", style="dim")
     for index in range(offset, end):
         _print_viewport_line(
             console,
             _history_entry_line(entries[index], selected=index == selected),
         )
+    if end < len(entries):
+        _print_viewport_line(console, f"↓ {len(entries) - end} more", style="dim")
     console.print()
-    _print_hints(
-        console,
-        ["↑↓ jk Scroll", "Enter Path", "PgUp/PgDn", "g/G Top/Bottom", "? Help", "b Back"],
-    )
+    _print_hints(console, _HISTORY_HINTS)
 
 
 def render_report_preview(console: Console, *, content: str, offset: int) -> None:
@@ -2094,8 +2151,13 @@ def render_report_preview(console: Console, *, content: str, offset: int) -> Non
     _print_header(console, "Report Preview")
     console.print()
     lines = content.splitlines() or [""]
-    capacity = report_preview_capacity(console.size.height)
-    max_start = max(0, len(lines) - capacity) if capacity else len(lines)
+    capacity = report_preview_capacity(console.size.height, console.size.width)
+    if capacity <= 0:
+        _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
+        _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
+        _print_hints(console, _PREVIEW_HINTS)
+        return
+    max_start = max(0, len(lines) - capacity)
     start = min(max(offset, 0), max_start)
     end = min(len(lines), start + capacity)
     if start:
@@ -2104,16 +2166,7 @@ def render_report_preview(console: Console, *, content: str, offset: int) -> Non
         _print_viewport_line(console, line)
     if end < len(lines):
         _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
-    _print_hints(
-        console,
-        [
-            "↑↓ jk Scroll",
-            "PgUp/PgDn",
-            "g/G Top/Bottom",
-            "? Help",
-            "b Back",
-        ],
-    )
+    _print_hints(console, _PREVIEW_HINTS)
 
 
 _ACTIVITY_LABELS = {
@@ -2170,8 +2223,13 @@ def render_session_preview(
     _print_header(console, "Session Preview")
     console.print()
     lines = build_session_preview_lines(session) or [""]
-    capacity = report_preview_capacity(console.size.height)
-    max_start = max(0, len(lines) - capacity) if capacity else len(lines)
+    capacity = report_preview_capacity(console.size.height, console.size.width)
+    if capacity <= 0:
+        _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
+        _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
+        _print_hints(console, _PREVIEW_HINTS)
+        return
+    max_start = max(0, len(lines) - capacity)
     start = min(max(offset, 0), max_start)
     end = min(len(lines), start + capacity)
     if start:
@@ -2180,16 +2238,7 @@ def render_session_preview(
         _print_viewport_line(console, line)
     if end < len(lines):
         _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
-    _print_hints(
-        console,
-        [
-            "↑↓ jk Scroll",
-            "PgUp/PgDn",
-            "g/G Top/Bottom",
-            "? Help",
-            "b Back",
-        ],
-    )
+    _print_hints(console, _PREVIEW_HINTS)
 
 
 def _detail_window(
@@ -2317,16 +2366,16 @@ def help_lines(screen: Screen | None = None) -> list[str]:
     return list(_HELP_LINES)
 
 
-def help_capacity(terminal_height: int) -> int:
+def help_capacity(terminal_height: int, terminal_width: int) -> int:
     """Reference lines available beside the help screen's own fixed chrome.
 
     The list outgrew a short terminal once Quick Review joined it, so it scrolls
-    like the previews rather than spilling past the terminal's last row. Six
-    lines of chrome: title, rule, two blanks, one hint bar, and the row this
-    screen leaves free.
+    like the previews rather than spilling past the terminal's last row. Chrome:
+    title, rule, two blanks, the hint bar (wrapped as needed at this width), and
+    the row this screen leaves free.
     """
 
-    return max(0, terminal_height - 6)
+    return max(0, terminal_height - 5 - len(_hint_lines(_HELP_HINTS, terminal_width)))
 
 
 def render_help(
@@ -2342,7 +2391,7 @@ def render_help(
     visible, hidden_above, hidden_below = _detail_window(
         help_lines(screen),
         offset=offset,
-        capacity=help_capacity(console.size.height),
+        capacity=help_capacity(console.size.height, console.size.width),
     )
     if hidden_above:
         _print_viewport_line(console, f"↑ {hidden_above} more", style="dim")

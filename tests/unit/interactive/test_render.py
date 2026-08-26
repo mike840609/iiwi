@@ -13,16 +13,20 @@ import iiwi.history as history_module
 from iiwi.history import HistoryEntry
 from iiwi.interactive.models import ReportDraft
 from iiwi.interactive.render import (
+    build_session_preview_lines,
     build_visible_rows,
     history_capacity,
     render_history,
     render_main_menu,
     render_recoverable_error,
+    render_report_preview,
     render_report_result,
     render_report_setup,
+    render_session_preview,
     render_session_review,
     render_settings,
     report_generate_row,
+    report_preview_capacity,
     report_result_options,
     report_setup_rows,
     settings_capacity,
@@ -1100,12 +1104,114 @@ def test_history_scrolls_its_viewport() -> None:
     render_history(console, entries=entries, selected=19, offset=10)
 
     lines = stream.getvalue().splitlines()
-    assert "reports/10.md" in lines[3]
-    assert "reports/0.md" not in lines[3]
+    assert "↑ 10 more" in lines[3]
+    assert "reports/10.md" in lines[4]
+    assert "reports/0.md" not in lines[4]
 
 
 def test_history_capacity_reserves_the_footer() -> None:
-    assert history_capacity(30) == 22
+    assert history_capacity(30, 80) == 22
+
+
+def test_history_prints_scroll_indicators_like_the_previews() -> None:
+    """A clipped history window says how much it hides, as the previews do."""
+
+    entries = [_history_entry(index, f"reports/{index}.md") for index in range(30)]
+    console, stream = _console(width=100, height=12)
+
+    render_history(console, entries=entries, selected=6, offset=5)
+
+    text = stream.getvalue()
+    end = min(len(entries), 5 + history_capacity(12, 100))
+    assert "↑ 5 more" in text
+    assert f"↓ {len(entries) - end} more" in text
+    assert len(text.splitlines()) <= 12 - 1
+
+
+def test_preview_at_zero_capacity_says_the_terminal_is_too_short() -> None:
+    """Capacity 0 shows a taller-terminal notice, not a bogus `↑ N more`."""
+
+    content = "\n".join(f"Line {index}" for index in range(30))
+    console, stream = _console(width=100, height=8)
+    assert report_preview_capacity(8, 100) == 0
+
+    render_report_preview(console, content=content, offset=0)
+
+    text = stream.getvalue()
+    assert "Content needs a taller terminal." in text
+    assert "↓ 30 more" in text
+    assert "↑ " not in text  # the hint bar's `↑↓` is not an indicator
+
+    # A scrolled offset used to print `↑ 3 more` above the empty body.
+    console, stream = _console(width=100, height=8)
+    render_report_preview(console, content=content, offset=3)
+
+    text = stream.getvalue()
+    assert "Content needs a taller terminal." in text
+    assert "↓ 30 more" in text
+    assert "↑ " not in text
+
+    session = AgentSession(
+        harness="opencode",
+        session_id="ses-short",
+        title="Short terminal session",
+        working_directory="/tmp/repo-a",
+    )
+    console, stream = _console(width=100, height=8)
+    render_session_preview(console, session, offset=0)
+
+    text = stream.getvalue()
+    assert "Content needs a taller terminal." in text
+    assert f"↓ {len(build_session_preview_lines(session))} more" in text
+    assert "↑ " not in text
+
+
+def test_history_entry_columns_align_by_cells_for_wide_labels() -> None:
+    """Wide harness labels pad by display cells so the path column stays put.
+
+    ``{label:>10}`` pads by characters, so a two-character CJK label (four
+    cells wide) drifted every later column two cells to the right of an ASCII
+    twin row.
+    """
+
+    def path_cell_offset(harness: str) -> int:
+        entry = HistoryEntry(
+            generated_at=datetime(2026, 8, 12, 9, 30, tzinfo=TZ),
+            harness=harness,
+            since=datetime(2026, 8, 3, tzinfo=TZ),
+            until=datetime(2026, 8, 10, tzinfo=TZ),
+            output_path=Path("reports/a.md"),
+            repository_count=2,
+            session_count=7,
+            narrative=True,
+            detail="full",
+        )
+        console, stream = _console(width=200)
+        render_history(console, entries=[entry], selected=0, offset=0)
+        line = _row(stream.getvalue(), "reports/a.md")
+        return cell_len(line[: line.index("reports/a.md")])
+
+    assert cell_len("專案") > len("專案")  # the label really is wide
+    assert path_cell_offset("專案") == path_cell_offset("opencode")
+
+
+def test_history_entry_keeps_the_ascii_layout_byte_for_byte() -> None:
+    """Cell-aware padding must not disturb plain-ASCII rows."""
+
+    entry = _history_entry(0, "reports/a.md")
+    console, stream = _console(width=200)
+    render_history(console, entries=[entry], selected=1, offset=0)
+
+    line = _row(stream.getvalue(), "reports/a.md")
+    expected = (
+        f"{' '} "
+        f"{entry.generated_at:%Y-%m-%d %H:%M}  "
+        f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}  "
+        f"{entry.harness:>10}  {entry.session_count:>3} sess "
+        f"{entry.repository_count:>2} repos  narrative  reports/a.md"
+    )
+    assert line == expected
+
 def _settings_row(**overrides: object) -> SettingsRow:
     fields = dict(
         key="harnesses.opencode.enabled",
@@ -1299,14 +1405,15 @@ def test_settings_capacity_reserves_chrome_and_the_footer() -> None:
     # Chrome: title+rule (2), three blanks, the detail line, the hint bar, and
     # the terminal's final display row (8); the subtitle at >= _MIN_SUBTITLE_HEIGHT
     # and the inline editor's value line each add one more.
-    assert settings_capacity(40) == 31
-    assert settings_capacity(24) == 15
-    assert settings_capacity(20) == 11
-    assert settings_capacity(16) == 7
-    assert settings_capacity(14) == 6
-    assert settings_capacity(40, editing=True) == 30
-    assert settings_capacity(16, editing=True) == 6
-    assert settings_capacity(14, editing=True) == 5
+    # Width 80 keeps the hint bar on one line, so expected values are unchanged.
+    assert settings_capacity(40, terminal_width=80) == 31
+    assert settings_capacity(24, terminal_width=80) == 15
+    assert settings_capacity(20, terminal_width=80) == 11
+    assert settings_capacity(16, terminal_width=80) == 7
+    assert settings_capacity(14, terminal_width=80) == 6
+    assert settings_capacity(40, editing=True, terminal_width=80) == 30
+    assert settings_capacity(16, editing=True, terminal_width=80) == 6
+    assert settings_capacity(14, editing=True, terminal_width=80) == 5
 
 
 def test_settings_display_count_counts_section_headers_and_blanks() -> None:

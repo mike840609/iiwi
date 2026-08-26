@@ -359,3 +359,30 @@ def test_controller_outcome_review_state_renders_quick_review_with_focus() -> No
     assert "Quick Review" in text
     assert "▶" in text
     assert "Shipped the evidence-first review" in text
+
+
+def test_outcome_review_degrades_to_chrome_when_the_body_budget_hits_zero() -> None:
+    """At the tightest height the body must vanish, not overflow by one line.
+
+    ``body_capacity`` floored at 1, so when the fixed chrome exactly filled
+    ``height - 1`` the forced body row pushed the frame past the terminal
+    instead of degrading to header + hints like every other screen.
+    """
+
+    width = 100
+    hints = render._hint_lines(render._OUTCOME_REVIEW_HINTS, width)
+    fixed_lines = 4 + len(hints)  # title, rule, two blanks; no message
+    height = fixed_lines + 1  # terminal_budget == fixed_lines exactly
+
+    console, stream = _console(width=width, height=height)
+    render.render_outcome_review(
+        console,
+        _review(),
+        cursor=0,
+        expanded_evidence=set(),
+    )
+
+    lines = stream.getvalue().splitlines()
+    assert len(lines) <= height - 1
+    assert any("Quick Review" in line for line in lines)
+    assert any("g Generate" in line for line in lines)

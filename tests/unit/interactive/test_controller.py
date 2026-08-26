@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -298,6 +298,64 @@ def test_zero_sessions_is_recoverable_by_changing_period() -> None:
 
     assert counters["scan"] == 1
     assert counters["choose_period"] == 1
+
+
+def _rescan_fails_after_first_scan() -> Callable[[ReportDraft], ScanResult]:
+    scans = {"count": 0}
+
+    def scan(draft: ReportDraft) -> ScanResult:
+        scans["count"] += 1
+        if scans["count"] > 1:
+            raise HarnessSourceError("session store missing")
+        return _setup_populated_scan(draft)
+
+    return scan
+
+
+def test_failed_rescan_returns_to_session_review_when_entered_from_main() -> None:
+    counters: dict[str, int] = {}
+    console = _console()
+
+    run_interactive(
+        actions=_actions(
+            scan_callback=_rescan_fails_after_first_scan(),
+            counters=counters,
+        ),
+        input_source=ScriptedInput(
+            [char("1"), char("R"), char("b"), char("q"), char("q")]
+        ),
+        console=console,
+    )
+
+    assert counters["scan"] == 2
+    text = console.file.getvalue()
+    after_error = text[text.index("Could not read opencode sessions"):]
+    assert "Review Sessions" in after_error
+    # The main menu also carries a "Generate Report" row label; match the
+    # setup screen's header-plus-rule instead.
+    assert "Generate Report\n══" not in after_error
+
+
+def test_failed_rescan_still_returns_to_report_setup_when_entered_from_new_report() -> None:
+    counters: dict[str, int] = {}
+    console = _console()
+
+    run_interactive(
+        actions=_actions(
+            scan_callback=_rescan_fails_after_first_scan(),
+            counters=counters,
+        ),
+        input_source=ScriptedInput(
+            [char("3"), char("r"), char("R"), char("b"), char("q"), char("q")]
+        ),
+        console=console,
+    )
+
+    assert counters["scan"] == 2
+    text = console.file.getvalue()
+    after_error = text[text.index("Could not read opencode sessions"):]
+    assert "Generate Report\n══" in after_error
+    assert "Review Sessions" not in after_error
 
 
 def test_setup_g_enters_quick_review_then_generate_writes() -> None:

@@ -527,7 +527,7 @@ def test_question_mark_types_into_inline_editor(config_file: Path) -> None:
 def test_settings_offset_follows_the_cursor_and_saturates_at_the_end() -> None:
     rows = _viewport_settings_rows()
     count = settings_display_count(rows)
-    capacity = settings_capacity(16)
+    capacity = settings_capacity(16, terminal_width=80)
     body = max(1, capacity - 2)  # the ↑/↓ indicators each take a display slot
     assert count > capacity  # height 16 really clips
 
