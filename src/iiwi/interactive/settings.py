@@ -52,6 +52,9 @@ class SettingsRow:
     locked: bool
     variable: str
     section: str = ""
+    # Why Enter and ←→ must ignore this row right now, or "" while it may be
+    # changed. Non-empty only under a harness whose `enabled` is false.
+    disabled_reason: str = ""
 
     @property
     def editable(self) -> bool:
@@ -69,6 +72,22 @@ def _section_for(key: str) -> str:
     for prefix, label in _SECTION_LABELS.items():
         if key.startswith(prefix):
             return label
+    return ""
+
+
+def _disabled_reason(key: str, values: dict[str, str]) -> str:
+    """Why the editor refuses to touch this row, or "" while it stays live."""
+
+    for prefix, label in _SECTION_LABELS.items():
+        if not key.startswith(prefix):
+            continue
+        enabled_key = f"{prefix}enabled"
+        if key == enabled_key or values.get(enabled_key) != "false":
+            break
+        return (
+            f"{label} is disabled; enable {enabled_key}"
+            " to make this take effect."
+        )
     return ""
 
 
@@ -91,8 +110,10 @@ def build_settings_rows() -> list[SettingsRow]:
     """Build editor rows from the same source `config list` uses."""
 
     keys = {setting.key: setting for setting in config_store.setting_keys()}
+    described = config_store.describe_settings()
+    values = {row.key: row.value for row in described}
     rows = []
-    for row in config_store.describe_settings():
+    for row in described:
         setting = keys[row.key]
         choices = _choices_for(setting.annotation, row.key)
         rows.append(
@@ -107,6 +128,7 @@ def build_settings_rows() -> list[SettingsRow]:
                 locked=row.source == "environment",
                 variable=setting.variable,
                 section=_section_for(row.key),
+                disabled_reason=_disabled_reason(row.key, values),
             )
         )
     return rows

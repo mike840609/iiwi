@@ -134,3 +134,35 @@ def test_write_setting_rejects_an_invalid_value(config_file: Path) -> None:
     with pytest.raises(ConfigurationError):
         write_setting("harnesses.opencode.cli.timeout_seconds", "abc")
     assert not config_file.exists()
+
+
+def test_a_disabled_harness_mutes_its_other_rows(config_file: Path) -> None:
+    config_store.set_value("harnesses.claude_code.enabled", "false")
+    rows = {row.key: row for row in build_settings_rows()}
+    assert rows["harnesses.claude_code.projects_directory"].disabled_reason == (
+        "Claude Code is disabled; enable harnesses.claude_code.enabled"
+        " to make this take effect."
+    )
+
+
+def test_the_enabled_row_itself_is_never_disabled(config_file: Path) -> None:
+    config_store.set_value("harnesses.claude_code.enabled", "false")
+    rows = {row.key: row for row in build_settings_rows()}
+    assert rows["harnesses.claude_code.enabled"].disabled_reason == ""
+
+
+def test_disabling_opencode_reaches_its_nested_cli_rows(config_file: Path) -> None:
+    config_store.set_value("harnesses.opencode.enabled", "false")
+    rows = {row.key: row for row in build_settings_rows()}
+    reason = rows["harnesses.opencode.cli.executable"].disabled_reason
+    assert reason.startswith("OpenCode is disabled;")
+
+
+def test_non_harness_rows_are_never_disabled(config_file: Path) -> None:
+    config_store.set_value("harnesses.claude_code.enabled", "false")
+    rows = {row.key: row for row in build_settings_rows()}
+    assert rows["report.timezone"].disabled_reason == ""
+
+
+def test_no_row_is_disabled_while_every_harness_is_enabled() -> None:
+    assert all(row.disabled_reason == "" for row in build_settings_rows())
