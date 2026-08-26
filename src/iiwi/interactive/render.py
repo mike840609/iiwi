@@ -110,21 +110,29 @@ _SETTINGS_HELP = {
     "harnesses.opencode.enabled": "False makes --harness opencode fail with a configuration error.",
     "harnesses.opencode.source": "Source identifier; only cli is implemented.",
     "harnesses.opencode.cli.executable": "The opencode executable name or path.",
-    "harnesses.opencode.cli.timeout_seconds": "Timeout for opencode commands.",
-    "harnesses.opencode.cli.run_timeout_seconds": "Deprecated; use narrator.timeout_seconds.",
+    "harnesses.opencode.cli.timeout_seconds": (
+        "Timeout for opencode commands; \u2190\u2192 cycles 15/30/60/120."
+    ),
+    "harnesses.opencode.cli.run_timeout_seconds": (
+        "Deprecated; use narrator.timeout_seconds; \u2190\u2192 cycles 300/600/1200."
+    ),
     "harnesses.opencode.cli.model": "Deprecated; use narrator.model.",
     "harnesses.opencode.cli.sanitize": "Ask opencode export to redact session content.",
-    "narrator.provider": "Which CLI writes the prose; empty follows the harness.",
+    "narrator.provider": (
+        "Which CLI writes the prose; empty follows the harness; "
+        "\u2190\u2192 cycles claude/codex."
+    ),
     "narrator.executable": "Path to the narration CLI; empty uses the provider's name.",
     "narrator.model": "Model passed to the narration CLI; empty uses its default.",
-    "narrator.timeout_seconds": "Timeout for one narration run.",
+    "narrator.timeout_seconds": (
+        "Timeout for one narration run; \u2190\u2192 cycles 300/600/1200."
+    ),
     "harnesses.claude_code.enabled": "False forbids reading ~/.claude/projects.",
     "harnesses.claude_code.projects_directory": (
         "Directory holding Claude Code session transcripts."
     ),
     "harnesses.codex.enabled": "False forbids reading ~/.codex.",
     "harnesses.codex.home_directory": "Directory holding the Codex state database and sessions.",
-    "report.timezone": "Calendar-week and timestamp timezone; Enter types any IANA zone.",
     "report.output_directory": (
         "Default Markdown output directory; relative paths resolve against "
         "where Iiwi runs."
@@ -132,7 +140,8 @@ _SETTINGS_HELP = {
     "report.exclude_repositories": "Comma-separated repository ids left out of every scan.",
     "report.quick_review_report_type": "Default Quick Review audience.",
     "report.quick_review_max_evidence_bytes": (
-        "Largest evidence payload one Quick Review run may send."
+        "Largest evidence payload one Quick Review run may send; "
+        "\u2190\u2192 cycles 20000/40000/80000."
     ),
 }
 _RESULT_OPTIONS = ["Back to main menu", "Generate another report", "Print report path"]
@@ -156,6 +165,7 @@ _MARK_STYLES = {
     SelectionMark.PARTIAL: "yellow",
 }
 _CURSOR_STYLE = "bold cyan"
+_ACTIVE_CHOICE_STYLE = _CURSOR_STYLE
 # The cursor row takes the cursor's own colour, so where the cursor sits reads as
 # one thing. The action keeps its role colour when it is not the cursor row.
 _ACTION_STYLE = "cyan"
@@ -1522,18 +1532,30 @@ def render_report_setup(
     )
 
 
+_HYBRID_DISPLAY_KEYS = frozenset(
+    {
+        "harnesses.opencode.cli.timeout_seconds",
+        "harnesses.opencode.cli.run_timeout_seconds",
+        "narrator.timeout_seconds",
+        "report.quick_review_max_evidence_bytes",
+        "narrator.provider",
+    }
+)
+
+
 def _settings_value_text(row: SettingsRow, *, muted: bool = False) -> Text:
     """The value column: every choice with the active one highlighted, or the
     current value — never blank. A muted row drops the active choice's
     highlight so nothing on the line draws the eye."""
-    active = "" if muted else _CURSOR_STYLE
-    if row.show_all:
+    active = "dim" if muted else _ACTIVE_CHOICE_STYLE
+    if row.show_all or (row.key in _HYBRID_DISPLAY_KEYS and row.choices):
         parts: list[Text] = []
         for index, choice in enumerate(row.choices):
             if index:
                 parts.append(Text(" / ", style="dim" if muted else ""))
+            display = choice if choice else "(default)"
             parts.append(
-                Text(choice, style=active if choice == row.value else "dim")
+                Text(display, style=active if choice == row.value else "dim")
             )
         text = Text.assemble(*parts)
         if row.locked:

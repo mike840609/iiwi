@@ -971,19 +971,19 @@ def test_version_flag_prints_the_installed_version() -> None:
 
 
 def _resolve_custom_range(since: str, until: str | None = None) -> DateRange:
-    """Resolve a `--since/--until` range against a fixed clock in Asia/Taipei."""
+    """Resolve a `--since/--until` range against a fixed clock in the system timezone."""
+
     from datetime import datetime
-    from zoneinfo import ZoneInfo
 
     from iiwi.cli import _resolve_period
+    from iiwi.config import system_zone
 
     return _resolve_period(
         days=None,
         period=None,
         since=since,
         until=until,
-        timezone="Asia/Taipei",
-        now=datetime(2026, 8, 15, 12, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+        now=datetime(2026, 8, 15, 12, 0, tzinfo=system_zone()),
     )
 
 
@@ -1014,12 +1014,14 @@ def test_resolve_period_rejects_a_since_in_the_future() -> None:
 
 def test_resolve_period_attaches_the_timezone_to_a_naive_range() -> None:
     from datetime import datetime
-    from zoneinfo import ZoneInfo
 
+    from iiwi.config import system_zone
+
+    zone = system_zone()
     result = _resolve_custom_range(since="2026-08-01T00:00:00", until="2026-08-08T00:00:00")
 
-    assert result.since == datetime(2026, 8, 1, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
-    assert result.until == datetime(2026, 8, 8, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert result.since == datetime(2026, 8, 1, 0, 0, tzinfo=zone)
+    assert result.until == datetime(2026, 8, 8, 0, 0, tzinfo=zone)
 
 
 def test_resolve_period_keeps_an_aware_range_unchanged() -> None:
