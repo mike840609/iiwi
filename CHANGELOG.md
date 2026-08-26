@@ -4,6 +4,90 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 0.15.2 - 2026-08-26
+
+- Settings rows under a disabled harness (e.g. `harnesses.codex.*` while
+  `harnesses.codex.enabled` is `false`) are now shown dimmed in the
+  interactive settings editor with a reason, and Enter/←→ no longer edit
+  them — previously they looked and behaved like any other live setting even
+  though changing them had no effect.
+- Session preview and report preview now track separate scroll offsets, so
+  paging through a session preview no longer leaves the report preview
+  scrolled to the same position, and vice versa.
+- A stale "session-based report" fallback notice no longer leaks into later,
+  unrelated reports — it is cleared at the start of every generation attempt
+  and only survives on screen while the attempt that set it is still active.
+- A failed rescan's error screen now sends **Back** to the screen the rescan
+  was launched from (Session Review or Report Setup) instead of always
+  assuming Report Setup.
+- Toggling a candidate as MORE in Outcome Review keeps the cursor on that
+  candidate instead of losing its place when the toggle reorders the list.
+- Hardened terminal key decoding: SS3 arrow/home/end sequences — sent by tmux
+  and other apps that leave application cursor mode set — are now recognized,
+  byte reads tolerate the longer pauses between bytes that remote links
+  introduce, and any unrecognized escape sequence is now treated as a single
+  Escape instead of leaking raw bytes into text inputs.
+- The interactive UI no longer misrenders on very short terminals: screens
+  whose body no longer fits now render an empty body instead of forcing a
+  minimum row count that overflows the terminal.
+- Every screen's capacity calculation (settings, history, report preview) now
+  accounts for hint bars that wrap onto multiple lines at the current
+  terminal width, instead of assuming a single-line hint bar and overflowing.
+- `doctor` now times each harness's checks with that harness's own configured
+  CLI timeout instead of always using OpenCode's, regardless of which harness
+  was actually being checked.
+- Daily Standup's scan and synthesis steps now show progress feedback as they
+  run, and other long-running interactive operations show pending feedback
+  before they block the UI.
+- Session Review: a rescan that fails or errors partway through no longer
+  discards the previous scan's results before the new one succeeds — the
+  review keeps showing what it had until the new scan actually completes.
+- New Quick Review drafts now honor the configured sanitize default instead
+  of always starting unsanitized regardless of `report.sanitize`.
+- `?` and Space now type correctly into the session search box and the
+  settings inline editor, Delete now works in the settings inline editor
+  alongside Backspace, and `?` no longer opens Help while either is active.
+- Excluding a repository that fails now routes the error back to Session
+  Review instead of the generic report-source error path, and a failed
+  Daily Standup start now returns to Back/Main menu without tripping a draft
+  assertion. A new **G** "Force" shortcut is shown in the Session Review hint
+  bar.
+- Claude Code: `stderr_empty` now requires stderr to be an explicit non-empty
+  string, so a tool result with no stderr field at all is no longer read as
+  clean.
+- Codex: usage deltas are now computed per field instead of all-or-nothing —
+  previously, any single field dropping below its previous value (a
+  compaction reset) made every field fall back to its raw value instead of a
+  delta, inflating totals for fields that had not actually reset.
+- Outcome synthesis: `NarrativeRunError` is now caught in
+  `OutcomeSynthesisService.synthesize` alongside `OSError` instead of
+  propagating, and title grounding verification now checks CJK and other
+  non-Latin characters individually instead of only matching ASCII words —
+  a proposed title made of non-Latin text no longer falls back to the
+  default title for lack of any matchable word.
+- Security redaction now matches `Bearer`/`Basic` tokens and
+  `password=`/`secret=`/etc. assignments even when quoted, recognizes
+  `github_pat_` tokens alongside the existing `gh_`-prefixed ones, and no
+  longer swallows a trailing quote or brace when redacting a quoted or
+  JSON-embedded value.
+- Settings (`.env`) writes are now atomic: `config set` and the interactive
+  settings editor write to a temporary file in the same directory and
+  rename it into place, so a write interrupted partway can no longer leave
+  a truncated settings file.
+- The console scan result table now redacts `repository_id`, matching the
+  redaction already applied to the repository's display name.
+- `DateRange.current_week` now returns the previous week when invoked
+  exactly at Monday midnight, instead of a zero-length range spanning
+  `now` to `now`.
+- Claude Code: subagent metadata parsing now guards against non-UTF-8 bytes
+  and malformed values instead of failing the whole session.
+- Codex: timestamp conversion now guards against overflow and handles
+  millisecond-resolution timestamps, and `archived_sessions` is now scanned
+  recursively so rollout files nested in subdirectories are no longer
+  missed.
+- Transcript and report services now guard against an empty repository
+  session list instead of erroring.
+
 ## 0.15.1 - 2026-08-23
 
 - A session cache that fails mid-run — locked or corrupted by another process —
