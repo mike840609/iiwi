@@ -1,6 +1,6 @@
 [project]
 name = "iiwi"
-version = "0.15.1"
+version = "0.15.2"
 description = "Agent Session Intelligence for engineering work"
 readme = "README.md"
 license = { text = "MIT" }
