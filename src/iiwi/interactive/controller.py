@@ -591,6 +591,9 @@ def _main_key(
     elif state.main_cursor == 3:
         state.history_cursor = 0
         state.history_offset = 0
+        state.history_show_missing = False
+        state.history_preview_entry = None
+        state.history_preview_offset = 0
         state.screen = Screen.HISTORY
     elif state.main_cursor == 4:
         try:
@@ -2187,6 +2190,7 @@ def _render_screen(state: _State, console: Console) -> None:
             state.error = _ErrorState(
                 kind="history-preview", title="Could not preview report", detail=str(exc)
             )
+            state.screen = Screen.RECOVERABLE_ERROR
             render_recoverable_error(
                 console,
                 title=state.error.title,

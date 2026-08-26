@@ -2168,9 +2168,12 @@ def render_history(
     if offset > 0:
         _print_viewport_line(console, f"↑ {offset} more", style="dim")
     for index in range(offset, end):
+        entry = entries[index]
+        missing = not Path(entry.output_path).exists()
         _print_viewport_line(
             console,
-            _history_entry_line(entries[index], selected=index == selected),
+            _history_entry_line(entry, selected=index == selected),
+            style="dim" if missing else "",
         )
     if end < len(entries):
         _print_viewport_line(console, f"↓ {len(entries) - end} more", style="dim")
