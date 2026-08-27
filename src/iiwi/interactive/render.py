@@ -1347,14 +1347,39 @@ def report_preview_capacity(terminal_height: int, terminal_width: int) -> int:
     reservation is derived from these hints at the given width.
     """
 
+    return max(0, terminal_height - 7 - len(_hint_lines(_PREVIEW_HINTS, terminal_width)))
+
+
+_HISTORY_PREVIEW_HINTS = [
+    "↑↓ jk Scroll",
+    "PgUp/PgDn",
+    "g/G Top/Bottom",
+    "o Open",
+    "? Help",
+    "b Back",
+]
+
+
+def history_preview_capacity(terminal_height: int, terminal_width: int) -> int:
+    """Content lines for the history preview, which carries its own footer.
+
+    It cannot borrow ``report_preview_capacity``: the extra ``o Open`` hint
+    wraps the bar onto a second line at widths where the shared preview hints
+    still fit on one, and the header carries a dim path line the dry-run
+    preview does not.
+    """
+
     return max(
-        0, terminal_height - 7 - len(_hint_lines(_PREVIEW_HINTS, terminal_width))
+        0,
+        terminal_height - 8 - len(_hint_lines(_HISTORY_PREVIEW_HINTS, terminal_width)),
     )
 
 
 _HISTORY_HINTS = [
     "↑↓ jk Scroll",
-    "Enter Path",
+    "Enter/p Preview",
+    "o Open",
+    "h Toggle missing",
     "PgUp/PgDn",
     "g/G Top/Bottom",
     "? Help",
@@ -1362,15 +1387,24 @@ _HISTORY_HINTS = [
 ]
 
 
-def history_capacity(terminal_height: int, terminal_width: int) -> int:
+def history_capacity(
+    terminal_height: int,
+    terminal_width: int,
+    *,
+    hidden_banner: bool = False,
+) -> int:
     """History rows that fit while reserving the header, blanks, and hints.
 
     Like every capacity helper, the hint-bar reservation is width-aware: the
     bar wraps onto a second line when the hints exceed ``terminal_width``.
+    ``hidden_banner`` reserves the extra row `render_history` spends on the
+    "N hidden (missing)" line, which is otherwise the row the frame leaves
+    free — the whole frame would then run one row past the terminal.
     """
 
     return max(
-        0, terminal_height - 7 - len(_hint_lines(_HISTORY_HINTS, terminal_width))
+        0,
+        terminal_height - 7 - int(hidden_banner) - len(_hint_lines(_HISTORY_HINTS, terminal_width)),
     )
 
 
@@ -2116,16 +2150,18 @@ def _pad_cells(value: str, width: int) -> str:
     return " " * max(0, width - cell_len(value)) + value
 
 
-def _history_entry_line(entry: HistoryEntry, *, selected: bool) -> str:
+def _history_entry_line(entry: HistoryEntry, *, selected: bool, missing: bool = False) -> str:
     period = f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}"
     is_daily = entry.kind is HistoryKind.DAILY_STANDUP
     label = "Daily Standup" if is_daily else (entry.harness or "")
     narrative = "—" if is_daily else ("narrative" if entry.narrative else "structure")
+    missing_suffix = "  · missing" if missing else ""
     return (
         f"{_CURSOR if selected else ' '} "
         f"{entry.generated_at:%Y-%m-%d %H:%M}  {period}  "
         f"{_pad_cells(label, 10)}  {_pad_cells(str(entry.session_count), 3)} sess "
-        f"{_pad_cells(str(entry.repository_count), 2)} repos  {narrative}  {entry.output_path}"
+        f"{_pad_cells(str(entry.repository_count), 2)} repos  "
+        f"{narrative}  {entry.output_path}{missing_suffix}"
     )
 
 
@@ -2135,6 +2171,7 @@ def render_history(
     entries: Sequence[HistoryEntry],
     selected: int,
     offset: int,
+    hidden_count: int = 0,
 ) -> None:
     """Render the generated-report log, newest first, as a scrollable list.
 
@@ -2144,22 +2181,45 @@ def render_history(
 
     _print_header(console, "Past Reports")
     console.print()
-    capacity = history_capacity(console.size.height, console.size.width)
+    if hidden_count:
+        _print_viewport_line(
+            console,
+            f"{hidden_count} hidden (missing) — press h to show",
+            style="dim",
+        )
+    capacity = history_capacity(
+        console.size.height,
+        console.size.width,
+        hidden_banner=bool(hidden_count),
+    )
     if not entries:
-        _print_viewport_line(console, "No reports generated yet.", style="dim")
+        # With a banner above, the list is empty because every entry was
+        # filtered out, not because nothing was ever generated; saying "none
+        # yet" there contradicts the banner directly above it, and the default
+        # hint bar would not even mention the toggle that brings them back.
+        _print_viewport_line(
+            console,
+            "Every past report's file is missing." if hidden_count else "No reports generated yet.",
+            style="dim",
+        )
         console.print()
         _print_hints(
             console,
-            ["↑↓ jk Scroll", "? Help", "b Back"],
+            ["↑↓ jk Scroll", "h Toggle missing", "? Help", "b Back"]
+            if hidden_count
+            else ["↑↓ jk Scroll", "? Help", "b Back"],
         )
         return
     end = min(len(entries), offset + capacity)
     if offset > 0:
         _print_viewport_line(console, f"↑ {offset} more", style="dim")
     for index in range(offset, end):
+        entry = entries[index]
+        missing = not entry.output_path.exists()
         _print_viewport_line(
             console,
-            _history_entry_line(entries[index], selected=index == selected),
+            _history_entry_line(entry, selected=index == selected, missing=missing),
+            style="dim" if missing else "",
         )
     if end < len(entries):
         _print_viewport_line(console, f"↓ {len(entries) - end} more", style="dim")
@@ -2167,20 +2227,26 @@ def render_history(
     _print_hints(console, _HISTORY_HINTS)
 
 
-def render_report_preview(console: Console, *, content: str, offset: int) -> None:
-    """Render a literal, scrollable dry-run report preview."""
+def _print_preview_window(
+    console: Console,
+    lines: Sequence[str],
+    *,
+    offset: int,
+    capacity: int,
+    hints: list[str],
+) -> None:
+    """Print one scrollable content window, its scroll markers, and its footer.
 
-    _print_header(console, "Report Preview")
-    console.print()
-    lines = content.splitlines() or [""]
-    capacity = report_preview_capacity(console.size.height, console.size.width)
+    Every preview screen shows the same window: the clamped slice, an `↑ N
+    more` / `↓ N more` marker for whatever it hides, and the caller's hints.
+    """
+
     if capacity <= 0:
         _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
         _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
-        _print_hints(console, _PREVIEW_HINTS)
+        _print_hints(console, hints)
         return
-    max_start = max(0, len(lines) - capacity)
-    start = min(max(offset, 0), max_start)
+    start = min(max(offset, 0), max(0, len(lines) - capacity))
     end = min(len(lines), start + capacity)
     if start:
         _print_viewport_line(console, f"↑ {start} more", style="dim")
@@ -2188,7 +2254,48 @@ def render_report_preview(console: Console, *, content: str, offset: int) -> Non
         _print_viewport_line(console, line)
     if end < len(lines):
         _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
-    _print_hints(console, _PREVIEW_HINTS)
+    _print_hints(console, hints)
+
+
+def render_history_preview(
+    console: Console,
+    *,
+    content: str,
+    offset: int,
+    file_name: str,
+    path: str = "",
+) -> None:
+    """Render a past report's Markdown, with its full path above the content.
+
+    The title carries only the file name so it stays readable on a narrow
+    terminal; the dim path line below it is the only place the recorded
+    `output_path` is shown in full, which the list rows truncate.
+    """
+
+    _print_header(console, f"Report Preview — {file_name}" if file_name else "Report Preview")
+    console.print()
+    _print_viewport_line(console, path, style="dim")
+    _print_preview_window(
+        console,
+        content.splitlines() or [""],
+        offset=offset,
+        capacity=history_preview_capacity(console.size.height, console.size.width),
+        hints=_HISTORY_PREVIEW_HINTS,
+    )
+
+
+def render_report_preview(console: Console, *, content: str, offset: int) -> None:
+    """Render a literal, scrollable dry-run report preview."""
+
+    _print_header(console, "Report Preview")
+    console.print()
+    _print_preview_window(
+        console,
+        content.splitlines() or [""],
+        offset=offset,
+        capacity=report_preview_capacity(console.size.height, console.size.width),
+        hints=_PREVIEW_HINTS,
+    )
 
 
 _ACTIVITY_LABELS = {
@@ -2244,23 +2351,13 @@ def render_session_preview(
 
     _print_header(console, "Session Preview")
     console.print()
-    lines = build_session_preview_lines(session) or [""]
-    capacity = report_preview_capacity(console.size.height, console.size.width)
-    if capacity <= 0:
-        _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
-        _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
-        _print_hints(console, _PREVIEW_HINTS)
-        return
-    max_start = max(0, len(lines) - capacity)
-    start = min(max(offset, 0), max_start)
-    end = min(len(lines), start + capacity)
-    if start:
-        _print_viewport_line(console, f"↑ {start} more", style="dim")
-    for line in lines[start:end]:
-        _print_viewport_line(console, line)
-    if end < len(lines):
-        _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
-    _print_hints(console, _PREVIEW_HINTS)
+    _print_preview_window(
+        console,
+        build_session_preview_lines(session) or [""],
+        offset=offset,
+        capacity=report_preview_capacity(console.size.height, console.size.width),
+        hints=_PREVIEW_HINTS,
+    )
 
 
 def _detail_window(
@@ -2336,7 +2433,7 @@ def render_recoverable_error(
 # reads as authoritative on a screen where `a`, `e`, `p` and `g` all differ.
 _HELP_LINES = (
     "↑↓ / jk        Move selection or scroll one line",
-    "←→ / hl        Collapse / expand tree rows or change setup values",
+    "←→ / hl *      Collapse / expand tree rows or change setup values",
     "Enter / Space  Activate / toggle",
     "a *            Select all sessions",
     "n              Select no sessions",
@@ -2352,7 +2449,9 @@ _HELP_LINES = (
     "q              Back / quit from the main menu",
     "Ctrl-C         Cancel the current operation and go back",
     "",
-    "Quick Review   * these keys mean something else here",
+    "* these keys mean something else on the screens below",
+    "",
+    "Quick Review",
     "Space          Include or exclude the focused outcome",
     "e              Edit the focused outcome's title, status and impact",
     "J / K          Reorder the focused outcome within its section",
@@ -2361,6 +2460,11 @@ _HELP_LINES = (
     "a              Add an outcome of your own",
     "p              Preview the report without writing it",
     "g              Generate the report",
+    "",
+    "History",
+    "Enter / p      Preview the selected report",
+    "o              Open the report in $VISUAL / $EDITOR, or the system viewer",
+    "h              Show or hide reports whose file is gone",
 )
 _DAILY_HELP_LINES = (
     "Daily Quick Review",

@@ -201,14 +201,10 @@ Q_CONTRACT: dict[Screen, tuple[QCase, ...]] = {
             Screen.SESSION_REVIEW,
         ),
     ),
-    Screen.OUTCOME_REVIEW: (
-        QCase("quick review", (_REPORT, char("g")), Screen.SESSION_REVIEW),
-    ),
+    Screen.OUTCOME_REVIEW: (QCase("quick review", (_REPORT, char("g")), Screen.SESSION_REVIEW),),
     Screen.DAILY_REVIEW: (QCase("daily review", (_DAILY,), Screen.MAIN),),
     Screen.DAILY_RESULT: (QCase("daily result", (_DAILY, char("g")), Screen.MAIN),),
-    Screen.REPORT_RESULT: (
-        QCase("report result", (_REPORT, char("g"), char("g")), Screen.MAIN),
-    ),
+    Screen.REPORT_RESULT: (QCase("report result", (_REPORT, char("g"), char("g")), Screen.MAIN),),
     Screen.REPORT_PREVIEW: (
         QCase(
             "preview opened from daily review",
@@ -234,6 +230,7 @@ Q_CONTRACT: dict[Screen, tuple[QCase, ...]] = {
         QCase("help opened from review", (_ACTIVITY, char("?")), Screen.SESSION_REVIEW),
     ),
     Screen.HISTORY: (QCase("history", (_HISTORY,), Screen.MAIN),),
+    Screen.HISTORY_PREVIEW: (QCase("history preview", (_HISTORY, ENTER), Screen.HISTORY),),
     Screen.SETTINGS: (QCase("settings", (_SETTINGS,), Screen.MAIN),),
 }
 
@@ -245,7 +242,30 @@ _CASES = [(screen, case) for screen, cases in Q_CONTRACT.items() for case in cas
     _CASES,
     ids=[case.label for _, case in _CASES],
 )
-def test_q_returns_to_the_declared_screen(screen: Screen, case: QCase) -> None:
+def test_q_returns_to_the_declared_screen(
+    screen: Screen, case: QCase, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # HISTORY_PREVIEW needs a real file so Enter finds a visible entry.
+    if screen is Screen.HISTORY_PREVIEW:
+        from datetime import datetime
+
+        from iiwi.history import HistoryEntry, HistoryKind, append_history
+
+        report = tmp_path / "preview.md"
+        report.write_text("preview", encoding="utf-8")
+        monkeypatch.setenv("IIWI_HISTORY_FILE", str(tmp_path / "history.jsonl"))
+        append_history(
+            HistoryEntry(
+                generated_at=datetime.now(TZ),
+                since=datetime.now(TZ),
+                until=datetime.now(TZ),
+                output_path=report,
+                repository_count=1,
+                session_count=1,
+                kind=HistoryKind.REPORT,
+                harness="opencode",
+            )
+        )
     actions = _actions()
     console = _console()
     state = controller._State()

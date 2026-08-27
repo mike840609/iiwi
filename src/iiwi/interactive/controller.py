@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import os
+import shlex
+import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,12 +45,14 @@ from iiwi.interactive.render import (
     help_capacity,
     help_lines,
     history_capacity,
+    history_preview_capacity,
     main_menu_options,
     recoverable_error_detail_capacity,
     render_daily_result,
     render_daily_review,
     render_help,
     render_history,
+    render_history_preview,
     render_main_menu,
     render_outcome_review,
     render_recoverable_error,
@@ -198,6 +204,14 @@ class _State:
     result_cursor: int = 0
     history_cursor: int = 0
     history_offset: int = 0
+    history_show_missing: bool = False
+    history_preview_entry: HistoryEntry | None = None
+    history_preview_content: str | None = None
+    history_preview_offset: int = 0
+    # Set by anything that hands the terminal to another program, so the next
+    # frame is painted in full instead of diffed against a frame that is no
+    # longer on screen.
+    force_repaint: bool = False
     preview_offset: int = 0
     draft: ReportDraft | None = None
     selection: SelectionState | None = None
@@ -589,6 +603,10 @@ def _main_key(
     elif state.main_cursor == 3:
         state.history_cursor = 0
         state.history_offset = 0
+        state.history_show_missing = False
+        state.history_preview_entry = None
+        state.history_preview_content = None
+        state.history_preview_offset = 0
         state.screen = Screen.HISTORY
     elif state.main_cursor == 4:
         try:
@@ -1666,7 +1684,7 @@ def _error_options(error: _ErrorState) -> list[str]:
         return ["Back", "Main menu"]
     if error.kind == "report-path":
         return ["Back"]
-    if error.kind == "history-path":
+    if error.kind in {"history-missing", "history-open", "history-preview"}:
         return ["Back"]
     if error.kind == "daily-path":
         return ["Back"]
@@ -1700,7 +1718,7 @@ def _error_back_screen(error: _ErrorState) -> Screen:
         return Screen.SESSION_REVIEW
     if error.kind == "report-path":
         return Screen.REPORT_RESULT
-    if error.kind == "history-path":
+    if error.kind in {"history-missing", "history-open", "history-preview"}:
         return Screen.HISTORY
     if error.kind == "daily-path":
         return Screen.DAILY_RESULT
@@ -1831,15 +1849,110 @@ def _history_entries() -> list[HistoryEntry]:
     return list(reversed(read_history()))
 
 
+def _filtered_history(
+    entries: list[HistoryEntry], show_missing: bool
+) -> tuple[list[HistoryEntry], int]:
+    if show_missing:
+        return entries, 0
+    visible = [e for e in entries if e.output_path.exists()]
+    return visible, len(entries) - len(visible)
+
+
+class _MissingReportError(FileNotFoundError):
+    """The recorded report file is gone.
+
+    Distinct from the `FileNotFoundError` `subprocess.run` raises when the
+    *editor* is missing: reporting that one as "File not found" tells the user
+    their report was deleted when in fact `$EDITOR` names nothing executable.
+    """
+
+
+# `open`/`xdg-open` hand the file to another application and return at once, so
+# a stall there is the launcher hanging and would freeze the whole TUI. A
+# terminal editor legitimately blocks for as long as the user edits, so it gets
+# no timeout — killing it mid-edit would lose their work.
+_LAUNCHER_TIMEOUT_SECONDS = 20.0
+
+
+def _open_command(path: Path) -> tuple[list[str], float | None]:
+    """The command that shows `path` to the user, and its timeout if it has one."""
+
+    editor = shlex.split(os.environ.get("VISUAL") or os.environ.get("EDITOR") or "")
+    if editor:
+        return [*editor, str(path)], None
+    if sys.platform == "darwin":
+        return ["open", str(path)], _LAUNCHER_TIMEOUT_SECONDS
+    if sys.platform == "win32":
+        return ["cmd", "/c", "start", "", str(path)], _LAUNCHER_TIMEOUT_SECONDS
+    return ["xdg-open", str(path)], _LAUNCHER_TIMEOUT_SECONDS
+
+
+def _open_history_entry(entry: HistoryEntry) -> None:
+    path = entry.output_path
+    if not path.exists():
+        raise _MissingReportError(f"{path} — file no longer exists")
+    cmd, timeout = _open_command(path)
+    try:
+        subprocess.run(cmd, check=True, timeout=timeout)
+    except FileNotFoundError as exc:
+        raise OSError(f"{cmd[0]} — command not found") from exc
+
+
+def _clamp_history_viewport(state: _State, console: Console, count: int, hidden: int) -> None:
+    """Keep the cursor inside the visible list and the viewport around the cursor."""
+
+    if count <= 0:
+        state.history_cursor = 0
+        state.history_offset = 0
+        return
+    capacity = history_capacity(console.size.height, console.size.width, hidden_banner=bool(hidden))
+    state.history_cursor = min(max(0, state.history_cursor), count - 1)
+    state.history_offset = min(state.history_offset, max(0, count - capacity))
+    if state.history_cursor < state.history_offset:
+        state.history_offset = state.history_cursor
+    if state.history_cursor >= state.history_offset + capacity:
+        state.history_offset = max(0, state.history_cursor - capacity + 1)
+
+
+def _open_report(state: _State, entry: HistoryEntry) -> None:
+    """Hand one report to the user's editor, routing either failure to its own screen."""
+
+    # `o` works from both the list and the preview, so the error has to carry
+    # where it came from; the kind alone would send a reader of one report back
+    # to the list they had already left.
+    origin = state.screen
+    # The editor repaints the whole terminal; the frame painter only rewrites
+    # rows that differ from the frame it painted last, so without this the
+    # editor's leftovers survive every row iiwi would have redrawn identically.
+    state.force_repaint = True
+    try:
+        _open_history_entry(entry)
+    except _MissingReportError as exc:
+        state.error = _ErrorState(
+            kind="history-missing", title="File not found", detail=str(exc), back=origin
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+    except (OSError, subprocess.SubprocessError) as exc:
+        state.error = _ErrorState(
+            kind="history-open", title="Could not open report", detail=str(exc), back=origin
+        )
+        state.screen = Screen.RECOVERABLE_ERROR
+
+
 def _history_key(state: _State, key: KeyPress, console: Console) -> None:
     if key.key is Key.ESCAPE or _char(key, "q") or _char(key, "b"):
         state.screen = Screen.MAIN
         return
-    entries = _history_entries()
-    count = len(entries)
+    if _exact_char(key, "h"):
+        state.history_show_missing = not state.history_show_missing
+        visible, hidden = _filtered_history(_history_entries(), state.history_show_missing)
+        _clamp_history_viewport(state, console, len(visible), hidden)
+        return
+    visible, hidden = _filtered_history(_history_entries(), state.history_show_missing)
+    count = len(visible)
     if not count:
         return
-    capacity = history_capacity(console.size.height, console.size.width)
+    capacity = history_capacity(console.size.height, console.size.width, hidden_banner=bool(hidden))
     page = max(1, capacity)
     state.history_cursor = _move(state.history_cursor, key, count)
     if key.key is Key.PAGE_UP:
@@ -1850,21 +1963,41 @@ def _history_key(state: _State, key: KeyPress, console: Console) -> None:
         state.history_cursor = 0
     elif key.key is Key.END or _exact_char(key, "G"):
         state.history_cursor = count - 1
-    state.history_offset = min(state.history_offset, max(0, count - capacity))
-    if state.history_cursor < state.history_offset:
-        state.history_offset = state.history_cursor
-    if state.history_cursor >= state.history_offset + capacity:
-        state.history_offset = max(0, state.history_cursor - capacity + 1)
-    if key.key is not Key.ENTER:
+    # Entries can vanish from disk between keystrokes, so this is the single
+    # point that clamps the cursor against the list this keystroke actually
+    # sees, before the actions below index into it — `_move` and the paging
+    # branches only run for movement keys, and `o`/`Enter`/`p` are not those.
+    _clamp_history_viewport(state, console, count, hidden)
+    # Actions on visible entry
+    if _exact_char(key, "o"):
+        _open_report(state, visible[state.history_cursor])
         return
-
-    entry = entries[state.history_cursor]
-    state.error = _ErrorState(
-        kind="history-path",
-        title="Report path",
-        detail=str(entry.output_path),
-    )
-    state.screen = Screen.RECOVERABLE_ERROR
+    if key.key is Key.ENTER or _exact_char(key, "p"):
+        entry = visible[state.history_cursor]
+        if not entry.output_path.exists():
+            state.error = _ErrorState(
+                kind="history-missing",
+                title="File not found",
+                detail=f"{entry.output_path} — file no longer exists",
+            )
+            state.screen = Screen.RECOVERABLE_ERROR
+            return
+        try:
+            # Read before switching screen so a failure stays on History. The
+            # content is kept: every later frame and scroll key reads it from
+            # state instead of hitting the disk again.
+            content = entry.output_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            state.error = _ErrorState(
+                kind="history-preview", title="Could not preview report", detail=str(exc)
+            )
+            state.screen = Screen.RECOVERABLE_ERROR
+            return
+        state.history_preview_entry = entry
+        state.history_preview_content = content
+        state.history_preview_offset = 0
+        state.screen = Screen.HISTORY_PREVIEW
+        return
 
 
 def _result_key(state: _State, key: KeyPress) -> None:
@@ -1910,6 +2043,31 @@ def _result_key(state: _State, key: KeyPress) -> None:
         state.screen = Screen.RECOVERABLE_ERROR
 
 
+def _scrolled_offset(offset: int, key: KeyPress, *, line_count: int, capacity: int) -> int:
+    """Apply one scroll key to a preview viewport's offset.
+
+    Every preview screen scrolls identically, so they share this instead of
+    each keeping its own copy of the clamping — which is where an off-by-one
+    between a screen and its renderer would hide.
+    """
+
+    max_offset = max(0, line_count - capacity) if capacity else max(0, line_count - 1)
+    page = max(1, capacity)
+    if key.key is Key.UP or _char(key, "k"):
+        return max(0, offset - 1)
+    if key.key is Key.DOWN or _char(key, "j"):
+        return min(max_offset, offset + 1)
+    if key.key is Key.PAGE_UP:
+        return max(0, offset - page)
+    if key.key is Key.PAGE_DOWN:
+        return min(max_offset, offset + page)
+    if key.key is Key.HOME or _exact_char(key, "g"):
+        return 0
+    if key.key is Key.END or _exact_char(key, "G"):
+        return max_offset
+    return offset
+
+
 def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
     assert state.result is not None
     if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
@@ -1917,21 +2075,12 @@ def _preview_key(state: _State, key: KeyPress, console: Console) -> None:
         state.preview_return_screen = None
         return
     lines = state.result.content.splitlines() or [""]
-    capacity = report_preview_capacity(console.size.height, console.size.width)
-    max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
-    page = max(1, capacity)
-    if key.key is Key.UP or _char(key, "k"):
-        state.preview_offset = max(0, state.preview_offset - 1)
-    elif key.key is Key.DOWN or _char(key, "j"):
-        state.preview_offset = min(max_offset, state.preview_offset + 1)
-    elif key.key is Key.PAGE_UP:
-        state.preview_offset = max(0, state.preview_offset - page)
-    elif key.key is Key.PAGE_DOWN:
-        state.preview_offset = min(max_offset, state.preview_offset + page)
-    elif key.key is Key.HOME or _exact_char(key, "g"):
-        state.preview_offset = 0
-    elif key.key is Key.END or _exact_char(key, "G"):
-        state.preview_offset = max_offset
+    state.preview_offset = _scrolled_offset(
+        state.preview_offset,
+        key,
+        line_count=len(lines),
+        capacity=report_preview_capacity(console.size.height, console.size.width),
+    )
 
 
 def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None:
@@ -1941,21 +2090,36 @@ def _session_preview_key(state: _State, key: KeyPress, console: Console) -> None
         state.preview_return_screen = None
         return
     lines = build_session_preview_lines(state.preview_session) or [""]
-    capacity = report_preview_capacity(console.size.height, console.size.width)
-    max_offset = max(0, len(lines) - capacity) if capacity else max(0, len(lines) - 1)
-    page = max(1, capacity)
-    if key.key is Key.UP or _char(key, "k"):
-        state.session_preview_offset = max(0, state.session_preview_offset - 1)
-    elif key.key is Key.DOWN or _char(key, "j"):
-        state.session_preview_offset = min(max_offset, state.session_preview_offset + 1)
-    elif key.key is Key.PAGE_UP:
-        state.session_preview_offset = max(0, state.session_preview_offset - page)
-    elif key.key is Key.PAGE_DOWN:
-        state.session_preview_offset = min(max_offset, state.session_preview_offset + page)
-    elif key.key is Key.HOME or _exact_char(key, "g"):
-        state.session_preview_offset = 0
-    elif key.key is Key.END or _exact_char(key, "G"):
-        state.session_preview_offset = max_offset
+    state.session_preview_offset = _scrolled_offset(
+        state.session_preview_offset,
+        key,
+        line_count=len(lines),
+        capacity=report_preview_capacity(console.size.height, console.size.width),
+    )
+
+
+def _history_preview_key(state: _State, key: KeyPress, console: Console) -> None:
+    assert state.history_preview_entry is not None
+    if _char(key, "q") or key.key is Key.ESCAPE or _char(key, "b"):
+        state.screen = Screen.HISTORY
+        return
+    if _exact_char(key, "o"):
+        _open_report(state, state.history_preview_entry)
+        if state.screen is Screen.HISTORY_PREVIEW:
+            # The editor may have saved changes; the preview must not keep
+            # showing what the file said before it was handed over.
+            with contextlib.suppress(OSError):
+                state.history_preview_content = state.history_preview_entry.output_path.read_text(
+                    encoding="utf-8", errors="replace"
+                )
+        return
+    lines = (state.history_preview_content or "").splitlines() or [""]
+    state.history_preview_offset = _scrolled_offset(
+        state.history_preview_offset,
+        key,
+        line_count=len(lines),
+        capacity=history_preview_capacity(console.size.height, console.size.width),
+    )
 
 
 def _help_key(state: _State, key: KeyPress, console: Console) -> None:
@@ -2062,11 +2226,23 @@ def _render_screen(state: _State, console: Console) -> None:
             selected=state.daily_result_cursor,
         )
     elif state.screen is Screen.HISTORY:
+        all_entries = _history_entries()
+        visible, hidden = _filtered_history(all_entries, state.history_show_missing)
         render_history(
             console,
-            entries=_history_entries(),
+            entries=visible,
             selected=state.history_cursor,
             offset=state.history_offset,
+            hidden_count=hidden,
+        )
+    elif state.screen is Screen.HISTORY_PREVIEW:
+        assert state.history_preview_entry is not None
+        render_history_preview(
+            console,
+            content=state.history_preview_content or "",
+            offset=state.history_preview_offset,
+            file_name=state.history_preview_entry.output_path.name,
+            path=str(state.history_preview_entry.output_path),
         )
     elif state.screen is Screen.REPORT_PREVIEW:
         assert state.result is not None
@@ -2112,6 +2288,8 @@ def _idle_interrupt(state: _State, actions: InteractiveActions) -> None:
         Screen.HISTORY,
     }:
         state.screen = Screen.MAIN
+    elif state.screen is Screen.HISTORY_PREVIEW:
+        state.screen = Screen.HISTORY
     elif state.screen is Screen.REPORT_PREVIEW:
         state.screen = state.preview_return_screen or Screen.REPORT_RESULT
         state.preview_return_screen = None
@@ -2157,6 +2335,8 @@ def _dispatch(
         _daily_result_key(state, key)
     elif state.screen is Screen.HISTORY:
         _history_key(state, key, console)
+    elif state.screen is Screen.HISTORY_PREVIEW:
+        _history_preview_key(state, key, console)
     elif state.screen is Screen.REPORT_PREVIEW:
         _preview_key(state, key, console)
     elif state.screen is Screen.SESSION_PREVIEW:
@@ -2199,6 +2379,11 @@ def run_interactive(
         _begin_daily_review(state, actions, console)
     previous_frame: list[str] | None = None
     while state.screen is not Screen.EXIT:
+        if state.force_repaint:
+            # Something else owned the terminal since the last frame, so the
+            # rows _paint would skip as unchanged no longer hold what it wrote.
+            previous_frame = None
+            state.force_repaint = False
         previous_frame = _render(state, console, previous_frame)
         try:
             key = _read_key(input_source)
