@@ -6,6 +6,7 @@ from io import StringIO
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
 from rich.cells import cell_len
 from rich.console import Console
 
@@ -1642,16 +1643,22 @@ def test_history_state_has_preview_fields() -> None:
     s = _State()
     assert s.history_show_missing is False
     assert s.history_preview_entry is None
+    assert s.history_preview_content is None
     assert s.history_preview_offset == 0
 
 
-def test_history_renders_hidden_banner_and_missing_dim(tmp_path) -> None:
+def test_history_renders_hidden_banner_and_missing_dim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from datetime import UTC, datetime
 
     from iiwi.history import HistoryEntry, HistoryKind
 
-    missing = tmp_path / "gone.md"
-    existing = tmp_path / "exists.md"
+    # Relative names keep the row short enough that the assertions below test
+    # the suffix rather than the console's ellipsis truncation.
+    monkeypatch.chdir(tmp_path)
+    missing = Path("gone.md")
+    existing = Path("exists.md")
     existing.write_text("# hello", encoding="utf-8")
     now = datetime(2026, 8, 27, 12, 0, tzinfo=UTC)
     e1 = HistoryEntry(
@@ -1680,16 +1687,29 @@ def test_history_renders_hidden_banner_and_missing_dim(tmp_path) -> None:
     )
     from iiwi.interactive.render import render_history
 
-    console, stream = _color_console(height=24, width=120)
+    console, stream = _color_console(height=24, width=200)
     render_history(console, entries=[e1], selected=0, offset=0, hidden_count=1)
     text = stream.getvalue()
-    assert "hidden" in text.lower()
-    assert "press h to show" in text.lower()
+    assert "1 hidden (missing) — press h to show" in text
 
-    console2, stream2 = _color_console(height=24, width=120)
+    console2, stream2 = _color_console(height=24, width=200)
     render_history(console2, entries=[e1, e2], selected=1, offset=0, hidden_count=0)
     text2 = stream2.getvalue()
-    assert "missing" in text2.lower()
+    # `h Toggle missing` in the hint bar also contains "missing", so pin the
+    # row suffix itself rather than the bare word.
+    assert "· missing" in text2
+
+
+def test_history_empty_because_everything_is_hidden_offers_the_toggle() -> None:
+    """"No reports generated yet" would contradict the banner right above it."""
+
+    console, stream = _color_console(height=24, width=200)
+    render_history(console, entries=[], selected=0, offset=0, hidden_count=4)
+
+    text = stream.getvalue()
+    assert "4 hidden (missing)" in text
+    assert "No reports generated yet" not in text
+    assert "h Toggle missing" in text
 
 
 def test_history_preview_renders_and_scrolls() -> None:
@@ -1698,9 +1718,29 @@ def test_history_preview_renders_and_scrolls() -> None:
     content = "\n".join([f"line {i}" for i in range(30)])
     console, stream = _color_console(height=24, width=80)
     render_history_preview(
-        console, content=content, offset=0, file_name="worklog-2026-08-26.md"
+        console,
+        content=content,
+        offset=0,
+        file_name="worklog-2026-08-26.md",
+        path="/tmp/reports/worklog-2026-08-26.md",
     )
     text = stream.getvalue()
     assert "Report Preview" in text
     assert "worklog-2026-08-26.md" in text
     assert "line 0" in text
+    # The list rows truncate long paths, so the preview is the one place the
+    # recorded output_path is readable in full.
+    assert "/tmp/reports/worklog-2026-08-26.md" in text
+
+    console2, stream2 = _color_console(height=24, width=80)
+    render_history_preview(
+        console2,
+        content=content,
+        offset=12,
+        file_name="worklog-2026-08-26.md",
+        path="/tmp/reports/worklog-2026-08-26.md",
+    )
+    scrolled = stream2.getvalue()
+    assert "↑ 12 more" in scrolled
+    assert "line 12" in scrolled
+    assert "line 0\n" not in scrolled

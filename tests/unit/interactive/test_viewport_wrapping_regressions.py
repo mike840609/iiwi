@@ -527,9 +527,40 @@ def test_report_preview_capacity_counts_a_wrapping_hint_bar() -> None:
 
 
 def test_history_capacity_counts_hidden_banner() -> None:
-    import iiwi.interactive.render as render
+    """The `N hidden (missing)` banner is a viewport row, so capacity loses one.
 
-    assert render.history_capacity(24, 100) == 15
+    Without the reservation the banner spent the row the frame leaves free, and
+    a full list with both scroll indicators ran one row past the terminal —
+    which scrolls the screen out from under the absolutely-positioned repaint.
+    """
+
+    assert render.history_capacity(24, 100, hidden_banner=True) == (
+        render.history_capacity(24, 100) - 1
+    )
+
+    console, stream = _console(width=100, height=24)
+    render.render_history(
+        console, entries=_history_entries(40), selected=20, offset=10, hidden_count=3
+    )
+    assert len(_display_lines(stream)) <= console.size.height - 1
+
+
+def test_history_preview_capacity_counts_its_own_wider_hint_bar() -> None:
+    """The history preview adds `o Open`, so it cannot borrow the preview footer.
+
+    At 60-69 columns the extra hint wraps the bar onto a second line while the
+    shared preview hints still fit on one; reserving the shared bar there left
+    the frame a row short.
+    """
+
+    assert render.history_preview_capacity(24, 66) < render.report_preview_capacity(24, 66)
+
+    content = "\n".join(f"Line {index}" for index in range(60))
+    console, stream = _console(width=66, height=24)
+    render.render_history_preview(
+        console, content=content, offset=10, file_name="worklog.md", path="/tmp/worklog.md"
+    )
+    assert len(_display_lines(stream)) <= console.size.height - 1
 
 
 def test_session_preview_capacity_counts_a_wrapping_hint_bar() -> None:

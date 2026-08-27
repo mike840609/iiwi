@@ -119,8 +119,7 @@ _SETTINGS_HELP = {
     "harnesses.opencode.cli.model": "Deprecated; use narrator.model.",
     "harnesses.opencode.cli.sanitize": "Ask opencode export to redact session content.",
     "narrator.provider": (
-        "Which CLI writes the prose; empty follows the harness; "
-        "\u2190\u2192 cycles claude/codex."
+        "Which CLI writes the prose; empty follows the harness; \u2190\u2192 cycles claude/codex."
     ),
     "narrator.executable": "Path to the narration CLI; empty uses the provider's name.",
     "narrator.model": "Model passed to the narration CLI; empty uses its default.",
@@ -134,8 +133,7 @@ _SETTINGS_HELP = {
     "harnesses.codex.enabled": "False forbids reading ~/.codex.",
     "harnesses.codex.home_directory": "Directory holding the Codex state database and sessions.",
     "report.output_directory": (
-        "Default Markdown output directory; relative paths resolve against "
-        "where Iiwi runs."
+        "Default Markdown output directory; relative paths resolve against where Iiwi runs."
     ),
     "report.exclude_repositories": "Comma-separated repository ids left out of every scan.",
     "report.quick_review_report_type": "Default Quick Review audience.",
@@ -366,9 +364,7 @@ def outcome_review_rows(draft: OutcomeReviewDraft) -> list[OutcomeReviewRow]:
     if more:
         rows.append(OutcomeReviewRow("more"))
         rows.extend(OutcomeReviewRow("outcome", outcome.id) for outcome in more)
-    ungrouped = [
-        outcome for outcome in ordered if outcome.bucket is OutcomeBucket.UNGROUPED
-    ]
+    ungrouped = [outcome for outcome in ordered if outcome.bucket is OutcomeBucket.UNGROUPED]
     if ungrouped:
         rows.append(OutcomeReviewRow("ungrouped"))
         rows.extend(OutcomeReviewRow("outcome", outcome.id) for outcome in ungrouped)
@@ -470,9 +466,7 @@ def _labelled_wrapped_lines(
     lines: list[Text] = []
     for index, value_line in enumerate(wrapped):
         lead = prefix if index == 0 else " " * cell_len(prefix)
-        lines.append(
-            _truncated_text(Text.assemble((lead, "dim"), value_line), console.size.width)
-        )
+        lines.append(_truncated_text(Text.assemble((lead, "dim"), value_line), console.size.width))
     return lines
 
 
@@ -706,11 +700,7 @@ def _outcome_review_body(
         return []
 
     def used() -> int:
-        return (
-            sum(len(lines) for lines in window)
-            + (above is not None)
-            + (below is not None)
-        )
+        return sum(len(lines) for lines in window) + (above is not None) + (below is not None)
 
     if used() > capacity and above is not None:
         above = None
@@ -810,11 +800,7 @@ def _daily_section_item(
     row: DailyReviewRow,
 ) -> tuple[DailyStandupWorkItem, DailySectionItem]:
     assert row.work_item_id is not None
-    return next(
-        pair
-        for pair in draft.ordered_items(row.section)
-        if pair[0].id == row.work_item_id
-    )
+    return next(pair for pair in draft.ordered_items(row.section) if pair[0].id == row.work_item_id)
 
 
 def _daily_section_line(
@@ -1019,19 +1005,13 @@ def _daily_review_body(
     capacity: int,
 ) -> list[Text]:
     above = Text(f"↑ {start} more", style="dim") if start > 0 else None
-    below = (
-        Text(f"↓ {len(blocks) - end} more", style="dim")
-        if end < len(blocks)
-        else None
-    )
+    below = Text(f"↓ {len(blocks) - end} more", style="dim") if end < len(blocks) else None
     window = [list(block.lines) for block in blocks[start:end]]
     if not window:
         return []
 
     def used() -> int:
-        return sum(len(lines) for lines in window) + int(above is not None) + int(
-            below is not None
-        )
+        return sum(len(lines) for lines in window) + int(above is not None) + int(below is not None)
 
     if used() > capacity:
         above = None
@@ -1347,8 +1327,31 @@ def report_preview_capacity(terminal_height: int, terminal_width: int) -> int:
     reservation is derived from these hints at the given width.
     """
 
+    return max(0, terminal_height - 7 - len(_hint_lines(_PREVIEW_HINTS, terminal_width)))
+
+
+_HISTORY_PREVIEW_HINTS = [
+    "↑↓ jk Scroll",
+    "PgUp/PgDn",
+    "g/G Top/Bottom",
+    "o Open",
+    "? Help",
+    "b Back",
+]
+
+
+def history_preview_capacity(terminal_height: int, terminal_width: int) -> int:
+    """Content lines for the history preview, which carries its own footer.
+
+    It cannot borrow ``report_preview_capacity``: the extra ``o Open`` hint
+    wraps the bar onto a second line at widths where the shared preview hints
+    still fit on one, and the header carries a dim path line the dry-run
+    preview does not.
+    """
+
     return max(
-        0, terminal_height - 7 - len(_hint_lines(_PREVIEW_HINTS, terminal_width))
+        0,
+        terminal_height - 8 - len(_hint_lines(_HISTORY_PREVIEW_HINTS, terminal_width)),
     )
 
 
@@ -1364,15 +1367,24 @@ _HISTORY_HINTS = [
 ]
 
 
-def history_capacity(terminal_height: int, terminal_width: int) -> int:
+def history_capacity(
+    terminal_height: int,
+    terminal_width: int,
+    *,
+    hidden_banner: bool = False,
+) -> int:
     """History rows that fit while reserving the header, blanks, and hints.
 
     Like every capacity helper, the hint-bar reservation is width-aware: the
     bar wraps onto a second line when the hints exceed ``terminal_width``.
+    ``hidden_banner`` reserves the extra row `render_history` spends on the
+    "N hidden (missing)" line, which is otherwise the row the frame leaves
+    free — the whole frame would then run one row past the terminal.
     """
 
     return max(
-        0, terminal_height - 7 - len(_hint_lines(_HISTORY_HINTS, terminal_width))
+        0,
+        terminal_height - 7 - int(hidden_banner) - len(_hint_lines(_HISTORY_HINTS, terminal_width)),
     )
 
 
@@ -1394,10 +1406,7 @@ def _print_wordmark(console: Console) -> None:
 def render_main_menu(console: Console, *, selected: int) -> None:
     title = "Iiwi"
     version = f"v{__version__}"
-    if (
-        console.size.height >= _MIN_WORDMARK_HEIGHT
-        and console.size.width >= _MIN_WORDMARK_WIDTH
-    ):
+    if console.size.height >= _MIN_WORDMARK_HEIGHT and console.size.width >= _MIN_WORDMARK_WIDTH:
         _print_wordmark(console)
         _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
         # The wordmark's height gate already clears _MIN_SUBTITLE_HEIGHT.
@@ -1511,10 +1520,7 @@ def render_report_setup(
         )
         cursor = _CURSOR if focused else " "
         if field in _ADVANCED_SETUP_FIELDS:
-            line = (
-                f"{cursor}   {field:<{_SETUP_LABEL_CELLS - 2}}"
-                f"{_setup_value(draft, field)}"
-            )
+            line = f"{cursor}   {field:<{_SETUP_LABEL_CELLS - 2}}{_setup_value(draft, field)}"
         else:
             line = f"{cursor} {field:<{_SETUP_LABEL_CELLS}}{_setup_value(draft, field)}"
         _print_viewport_line(console, line, style=style)
@@ -1556,9 +1562,7 @@ def _settings_value_text(row: SettingsRow, *, muted: bool = False) -> Text:
             if index:
                 parts.append(Text(" / ", style="dim" if muted else ""))
             display = choice if choice else "(default)"
-            parts.append(
-                Text(display, style=active if choice == row.value else "dim")
-            )
+            parts.append(Text(display, style=active if choice == row.value else "dim"))
         text = Text.assemble(*parts)
         if row.locked:
             return Text.assemble(text, ("  [environment]", "dim"))
@@ -1864,9 +1868,7 @@ def _session_titles(scan: ScanResult) -> dict[str, str]:
 
 
 def _sessions_by_id(scan: ScanResult) -> dict[str, AgentSession]:
-    return {
-        item.session.session_id: item.session for item in scan.resolved_sessions
-    }
+    return {item.session.session_id: item.session for item in scan.resolved_sessions}
 
 
 def build_filtered_rows(
@@ -1886,9 +1888,7 @@ def build_filtered_rows(
     for repository_id, sessions in _ordered_repositories(scan):
         repository_matches = needle in _repository_display_name(scan, repository_id).casefold()
         matching_sessions = [
-            item
-            for item in sessions
-            if needle in titles[item.session.session_id].casefold()
+            item for item in sessions if needle in titles[item.session.session_id].casefold()
         ]
         if not repository_matches and not matching_sessions:
             continue
@@ -1994,7 +1994,8 @@ def render_session_review(
         rows,
         cursor=cursor,
         terminal_height=console.size.height,
-        reserved_lines=(3 if message else 2) + _header_lines(console, _REVIEW_SUBTITLE)
+        reserved_lines=(3 if message else 2)
+        + _header_lines(console, _REVIEW_SUBTITLE)
         + len(_hint_lines(hints, console.size.width))
         + (1 if warning_label else 0)
         + (1 if searching or query else 0),
@@ -2118,12 +2119,12 @@ def _pad_cells(value: str, width: int) -> str:
     return " " * max(0, width - cell_len(value)) + value
 
 
-def _history_entry_line(entry: HistoryEntry, *, selected: bool) -> str:
+def _history_entry_line(entry: HistoryEntry, *, selected: bool, missing: bool = False) -> str:
     period = f"{entry.since:%Y-%m-%d} – {entry.until:%Y-%m-%d}"
     is_daily = entry.kind is HistoryKind.DAILY_STANDUP
     label = "Daily Standup" if is_daily else (entry.harness or "")
     narrative = "—" if is_daily else ("narrative" if entry.narrative else "structure")
-    missing_suffix = "  · missing" if not Path(entry.output_path).exists() else ""
+    missing_suffix = "  · missing" if missing else ""
     return (
         f"{_CURSOR if selected else ' '} "
         f"{entry.generated_at:%Y-%m-%d %H:%M}  {period}  "
@@ -2155,13 +2156,27 @@ def render_history(
             f"{hidden_count} hidden (missing) — press h to show",
             style="dim",
         )
-    capacity = history_capacity(console.size.height, console.size.width)
+    capacity = history_capacity(
+        console.size.height,
+        console.size.width,
+        hidden_banner=bool(hidden_count),
+    )
     if not entries:
-        _print_viewport_line(console, "No reports generated yet.", style="dim")
+        # With a banner above, the list is empty because every entry was
+        # filtered out, not because nothing was ever generated; saying "none
+        # yet" there contradicts the banner directly above it, and the default
+        # hint bar would not even mention the toggle that brings them back.
+        _print_viewport_line(
+            console,
+            "Every past report's file is missing." if hidden_count else "No reports generated yet.",
+            style="dim",
+        )
         console.print()
         _print_hints(
             console,
-            ["↑↓ jk Scroll", "? Help", "b Back"],
+            ["↑↓ jk Scroll", "h Toggle missing", "? Help", "b Back"]
+            if hidden_count
+            else ["↑↓ jk Scroll", "? Help", "b Back"],
         )
         return
     end = min(len(entries), offset + capacity)
@@ -2172,7 +2187,7 @@ def render_history(
         missing = not Path(entry.output_path).exists()
         _print_viewport_line(
             console,
-            _history_entry_line(entry, selected=index == selected),
+            _history_entry_line(entry, selected=index == selected, missing=missing),
             style="dim" if missing else "",
         )
     if end < len(entries):
@@ -2181,23 +2196,26 @@ def render_history(
     _print_hints(console, _HISTORY_HINTS)
 
 
-def _history_preview_file_name(entry: HistoryEntry) -> str:
-    return Path(entry.output_path).name or str(entry.output_path)
+def _print_preview_window(
+    console: Console,
+    lines: Sequence[str],
+    *,
+    offset: int,
+    capacity: int,
+    hints: list[str],
+) -> None:
+    """Print one scrollable content window, its scroll markers, and its footer.
 
+    Every preview screen shows the same window: the clamped slice, an `↑ N
+    more` / `↓ N more` marker for whatever it hides, and the caller's hints.
+    """
 
-def render_history_preview(console: Console, *, content: str, offset: int, file_name: str) -> None:
-    title = f"Report Preview — {file_name}" if file_name else "Report Preview"
-    _print_header(console, title)
-    console.print()
-    lines = content.splitlines() or [""]
-    capacity = report_preview_capacity(console.size.height, console.size.width)
     if capacity <= 0:
         _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
         _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
-        _print_hints(console, _PREVIEW_HINTS)
+        _print_hints(console, hints)
         return
-    max_start = max(0, len(lines) - capacity)
-    start = min(max(offset, 0), max_start)
+    start = min(max(offset, 0), max(0, len(lines) - capacity))
     end = min(len(lines), start + capacity)
     if start:
         _print_viewport_line(console, f"↑ {start} more", style="dim")
@@ -2205,9 +2223,33 @@ def render_history_preview(console: Console, *, content: str, offset: int, file_
         _print_viewport_line(console, line)
     if end < len(lines):
         _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
-    _print_hints(
+    _print_hints(console, hints)
+
+
+def render_history_preview(
+    console: Console,
+    *,
+    content: str,
+    offset: int,
+    file_name: str,
+    path: str = "",
+) -> None:
+    """Render a past report's Markdown, with its full path above the content.
+
+    The title carries only the file name so it stays readable on a narrow
+    terminal; the dim path line below it is the only place the recorded
+    `output_path` is shown in full, which the list rows truncate.
+    """
+
+    _print_header(console, f"Report Preview — {file_name}" if file_name else "Report Preview")
+    console.print()
+    _print_viewport_line(console, path, style="dim")
+    _print_preview_window(
         console,
-        ["↑↓ jk Scroll", "PgUp/PgDn", "g/G Top/Bottom", "o Open", "? Help", "b Back"],
+        content.splitlines() or [""],
+        offset=offset,
+        capacity=history_preview_capacity(console.size.height, console.size.width),
+        hints=_HISTORY_PREVIEW_HINTS,
     )
 
 
@@ -2216,23 +2258,13 @@ def render_report_preview(console: Console, *, content: str, offset: int) -> Non
 
     _print_header(console, "Report Preview")
     console.print()
-    lines = content.splitlines() or [""]
-    capacity = report_preview_capacity(console.size.height, console.size.width)
-    if capacity <= 0:
-        _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
-        _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
-        _print_hints(console, _PREVIEW_HINTS)
-        return
-    max_start = max(0, len(lines) - capacity)
-    start = min(max(offset, 0), max_start)
-    end = min(len(lines), start + capacity)
-    if start:
-        _print_viewport_line(console, f"↑ {start} more", style="dim")
-    for line in lines[start:end]:
-        _print_viewport_line(console, line)
-    if end < len(lines):
-        _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
-    _print_hints(console, _PREVIEW_HINTS)
+    _print_preview_window(
+        console,
+        content.splitlines() or [""],
+        offset=offset,
+        capacity=report_preview_capacity(console.size.height, console.size.width),
+        hints=_PREVIEW_HINTS,
+    )
 
 
 _ACTIVITY_LABELS = {
@@ -2265,9 +2297,7 @@ def build_session_preview_lines(session: AgentSession) -> list[str]:
         lines.append(volume_label(volume))
     lines.append("")
     for activity in session.activities:
-        label = _ACTIVITY_LABELS.get(
-            activity.activity_type, activity.activity_type.value
-        )
+        label = _ACTIVITY_LABELS.get(activity.activity_type, activity.activity_type.value)
         if activity.tool_name:
             label = f"{label}: {redact_text(activity.tool_name)}"
         stamp = f"[{activity.timestamp:%m-%d %H:%M}] " if activity.timestamp else ""
@@ -2288,23 +2318,13 @@ def render_session_preview(
 
     _print_header(console, "Session Preview")
     console.print()
-    lines = build_session_preview_lines(session) or [""]
-    capacity = report_preview_capacity(console.size.height, console.size.width)
-    if capacity <= 0:
-        _print_viewport_line(console, "Content needs a taller terminal.", style="dim")
-        _print_viewport_line(console, f"↓ {len(lines)} more", style="dim")
-        _print_hints(console, _PREVIEW_HINTS)
-        return
-    max_start = max(0, len(lines) - capacity)
-    start = min(max(offset, 0), max_start)
-    end = min(len(lines), start + capacity)
-    if start:
-        _print_viewport_line(console, f"↑ {start} more", style="dim")
-    for line in lines[start:end]:
-        _print_viewport_line(console, line)
-    if end < len(lines):
-        _print_viewport_line(console, f"↓ {len(lines) - end} more", style="dim")
-    _print_hints(console, _PREVIEW_HINTS)
+    _print_preview_window(
+        console,
+        build_session_preview_lines(session) or [""],
+        offset=offset,
+        capacity=report_preview_capacity(console.size.height, console.size.width),
+        hints=_PREVIEW_HINTS,
+    )
 
 
 def _detail_window(
