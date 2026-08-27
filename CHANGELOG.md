@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 0.16.0 - 2026-08-27
+
+- Past Reports now previews a report in place: **Enter**/**p** opens the
+  recorded Markdown in a scrollable viewport, **o** hands the file to
+  `$VISUAL`/`$EDITOR` (or the platform viewer when neither is set), and
+  **b**/**Esc** returns to the list — previously **Enter** could only show the
+  file's path on an error screen.
+- Past Reports now hides entries whose file is no longer on disk behind an
+  `N hidden (missing) — press h to show` banner; **h** brings them back, where
+  they render dimmed with a `· missing` suffix. The filter is view-only —
+  `history.jsonl` stays append-only and nothing is ever removed from it.
+- Five open-ended settings now cycle through presets with ←→ while **Enter**
+  still accepts any value: OpenCode's CLI and run timeouts, the narrator
+  timeout, Quick Review's maximum evidence bytes, and the narrator provider.
+  These rows render every choice inline with the current one highlighted.
+- `report.timezone` is no longer shown in the interactive settings editor and
+  is ignored at runtime — times now follow the system's local timezone,
+  falling back to UTC. The config field is still accepted so existing files
+  keep loading.
+
 ## 0.15.2 - 2026-08-26
 
 - Settings rows under a disabled harness (e.g. `harnesses.codex.*` while
