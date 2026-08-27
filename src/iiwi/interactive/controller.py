@@ -1917,6 +1917,10 @@ def _clamp_history_viewport(state: _State, console: Console, count: int, hidden:
 def _open_report(state: _State, entry: HistoryEntry) -> None:
     """Hand one report to the user's editor, routing either failure to its own screen."""
 
+    # `o` works from both the list and the preview, so the error has to carry
+    # where it came from; the kind alone would send a reader of one report back
+    # to the list they had already left.
+    origin = state.screen
     # The editor repaints the whole terminal; the frame painter only rewrites
     # rows that differ from the frame it painted last, so without this the
     # editor's leftovers survive every row iiwi would have redrawn identically.
@@ -1924,11 +1928,13 @@ def _open_report(state: _State, entry: HistoryEntry) -> None:
     try:
         _open_history_entry(entry)
     except _MissingReportError as exc:
-        state.error = _ErrorState(kind="history-missing", title="File not found", detail=str(exc))
+        state.error = _ErrorState(
+            kind="history-missing", title="File not found", detail=str(exc), back=origin
+        )
         state.screen = Screen.RECOVERABLE_ERROR
     except (OSError, subprocess.SubprocessError) as exc:
         state.error = _ErrorState(
-            kind="history-open", title="Could not open report", detail=str(exc)
+            kind="history-open", title="Could not open report", detail=str(exc), back=origin
         )
         state.screen = Screen.RECOVERABLE_ERROR
 

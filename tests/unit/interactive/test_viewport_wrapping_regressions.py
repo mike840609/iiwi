@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from io import StringIO
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from rich.console import Console
@@ -425,7 +426,7 @@ def _history_entries(count: int) -> list[HistoryEntry]:
             narrative=False,
             session_count=12,
             repository_count=3,
-            output_path="/tmp/report.md",
+            output_path=Path("/tmp/report.md"),
         )
         for _ in range(count)
     ]

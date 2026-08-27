@@ -13,6 +13,7 @@ from rich.console import Console
 
 from iiwi.history import HistoryEntry, HistoryKind
 from iiwi.interactive.controller import (
+    _error_back_screen,
     _filtered_history,
     _history_key,
     _history_preview_key,
@@ -275,3 +276,33 @@ def test_history_preview_open_missing_returns_error(tmp_path: pathlib.Path) -> N
     assert state.screen is Screen.RECOVERABLE_ERROR
     assert state.error is not None
     assert state.error.kind == "history-missing"
+
+
+def test_open_failure_returns_to_the_screen_it_was_raised_from(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`o` fires from both History and its preview, so "Back" cannot be a constant.
+
+    Routing on the error kind alone sent a reader of one report back to the
+    list they had already left, losing the report they were looking at.
+    """
+
+    exists = tmp_path / "exists.md"
+    exists.write_text("hello")
+    monkeypatch.setenv("VISUAL", "myeditor")
+    failure = subprocess.CalledProcessError(1, ["myeditor"])
+
+    preview = _State(screen=Screen.HISTORY_PREVIEW, history_preview_entry=_entry(exists))
+    with mock.patch("subprocess.run", side_effect=failure):
+        _history_preview_key(preview, KeyPress(char="o"), _console())
+    assert preview.error is not None
+    assert _error_back_screen(preview.error) is Screen.HISTORY_PREVIEW
+
+    listing = _State(screen=Screen.HISTORY, history_cursor=0)
+    with (
+        mock.patch("iiwi.interactive.controller._history_entries", return_value=[_entry(exists)]),
+        mock.patch("subprocess.run", side_effect=failure),
+    ):
+        _history_key(listing, KeyPress(char="o"), _console())
+    assert listing.error is not None
+    assert _error_back_screen(listing.error) is Screen.HISTORY
