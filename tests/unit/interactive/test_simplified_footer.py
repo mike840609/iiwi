@@ -175,3 +175,32 @@ def test_q_reads_the_same_on_both_result_screens_and_in_daily_help() -> None:
     daily_help = help_stream.getvalue()
     assert "b / Esc        Back to the main menu" in daily_help
     assert "q              Back to the main menu" in daily_help
+
+
+def test_help_documents_the_history_keys_and_marks_the_overloaded_one() -> None:
+    """`h` is documented as expanding tree rows, so History's meaning must be listed too.
+
+    `o` exists on no other screen, so without this block the help screen is the
+    one place a user looking for it would come up empty.
+    """
+
+    stream = StringIO()
+    console = Console(
+        file=stream,
+        color_system=None,
+        force_terminal=False,
+        width=100,
+        height=44,
+    )
+
+    render_help(console)
+
+    text = stream.getvalue()
+    assert "History" in text
+    assert "Enter / p      Preview the selected report" in text
+    assert "o              Open the report in $VISUAL / $EDITOR, or the system viewer" in text
+    assert "h              Show or hide reports whose file is gone" in text
+    # `h` scrolls a tree row everywhere else; the marker is what sends a reader
+    # down to the per-screen blocks.
+    assert "←→ / hl *" in text
+    assert "* these keys mean something else on the screens below" in text

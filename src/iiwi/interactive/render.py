@@ -119,7 +119,8 @@ _SETTINGS_HELP = {
     "harnesses.opencode.cli.model": "Deprecated; use narrator.model.",
     "harnesses.opencode.cli.sanitize": "Ask opencode export to redact session content.",
     "narrator.provider": (
-        "Which CLI writes the prose; empty follows the harness; \u2190\u2192 cycles claude/codex."
+        "Which CLI writes the prose; empty follows the harness; "
+        "\u2190\u2192 cycles claude/codex."
     ),
     "narrator.executable": "Path to the narration CLI; empty uses the provider's name.",
     "narrator.model": "Model passed to the narration CLI; empty uses its default.",
@@ -133,7 +134,8 @@ _SETTINGS_HELP = {
     "harnesses.codex.enabled": "False forbids reading ~/.codex.",
     "harnesses.codex.home_directory": "Directory holding the Codex state database and sessions.",
     "report.output_directory": (
-        "Default Markdown output directory; relative paths resolve against where Iiwi runs."
+        "Default Markdown output directory; relative paths resolve against "
+        "where Iiwi runs."
     ),
     "report.exclude_repositories": "Comma-separated repository ids left out of every scan.",
     "report.quick_review_report_type": "Default Quick Review audience.",
@@ -364,7 +366,9 @@ def outcome_review_rows(draft: OutcomeReviewDraft) -> list[OutcomeReviewRow]:
     if more:
         rows.append(OutcomeReviewRow("more"))
         rows.extend(OutcomeReviewRow("outcome", outcome.id) for outcome in more)
-    ungrouped = [outcome for outcome in ordered if outcome.bucket is OutcomeBucket.UNGROUPED]
+    ungrouped = [
+        outcome for outcome in ordered if outcome.bucket is OutcomeBucket.UNGROUPED
+    ]
     if ungrouped:
         rows.append(OutcomeReviewRow("ungrouped"))
         rows.extend(OutcomeReviewRow("outcome", outcome.id) for outcome in ungrouped)
@@ -466,7 +470,9 @@ def _labelled_wrapped_lines(
     lines: list[Text] = []
     for index, value_line in enumerate(wrapped):
         lead = prefix if index == 0 else " " * cell_len(prefix)
-        lines.append(_truncated_text(Text.assemble((lead, "dim"), value_line), console.size.width))
+        lines.append(
+            _truncated_text(Text.assemble((lead, "dim"), value_line), console.size.width)
+        )
     return lines
 
 
@@ -700,7 +706,11 @@ def _outcome_review_body(
         return []
 
     def used() -> int:
-        return sum(len(lines) for lines in window) + (above is not None) + (below is not None)
+        return (
+            sum(len(lines) for lines in window)
+            + (above is not None)
+            + (below is not None)
+        )
 
     if used() > capacity and above is not None:
         above = None
@@ -800,7 +810,11 @@ def _daily_section_item(
     row: DailyReviewRow,
 ) -> tuple[DailyStandupWorkItem, DailySectionItem]:
     assert row.work_item_id is not None
-    return next(pair for pair in draft.ordered_items(row.section) if pair[0].id == row.work_item_id)
+    return next(
+        pair
+        for pair in draft.ordered_items(row.section)
+        if pair[0].id == row.work_item_id
+    )
 
 
 def _daily_section_line(
@@ -1005,13 +1019,19 @@ def _daily_review_body(
     capacity: int,
 ) -> list[Text]:
     above = Text(f"↑ {start} more", style="dim") if start > 0 else None
-    below = Text(f"↓ {len(blocks) - end} more", style="dim") if end < len(blocks) else None
+    below = (
+        Text(f"↓ {len(blocks) - end} more", style="dim")
+        if end < len(blocks)
+        else None
+    )
     window = [list(block.lines) for block in blocks[start:end]]
     if not window:
         return []
 
     def used() -> int:
-        return sum(len(lines) for lines in window) + int(above is not None) + int(below is not None)
+        return sum(len(lines) for lines in window) + int(above is not None) + int(
+            below is not None
+        )
 
     if used() > capacity:
         above = None
@@ -1406,7 +1426,10 @@ def _print_wordmark(console: Console) -> None:
 def render_main_menu(console: Console, *, selected: int) -> None:
     title = "Iiwi"
     version = f"v{__version__}"
-    if console.size.height >= _MIN_WORDMARK_HEIGHT and console.size.width >= _MIN_WORDMARK_WIDTH:
+    if (
+        console.size.height >= _MIN_WORDMARK_HEIGHT
+        and console.size.width >= _MIN_WORDMARK_WIDTH
+    ):
         _print_wordmark(console)
         _print_viewport_line(console, _RULE_CHAR * console.size.width, style="dim")
         # The wordmark's height gate already clears _MIN_SUBTITLE_HEIGHT.
@@ -1520,7 +1543,10 @@ def render_report_setup(
         )
         cursor = _CURSOR if focused else " "
         if field in _ADVANCED_SETUP_FIELDS:
-            line = f"{cursor}   {field:<{_SETUP_LABEL_CELLS - 2}}{_setup_value(draft, field)}"
+            line = (
+                f"{cursor}   {field:<{_SETUP_LABEL_CELLS - 2}}"
+                f"{_setup_value(draft, field)}"
+            )
         else:
             line = f"{cursor} {field:<{_SETUP_LABEL_CELLS}}{_setup_value(draft, field)}"
         _print_viewport_line(console, line, style=style)
@@ -1562,7 +1588,9 @@ def _settings_value_text(row: SettingsRow, *, muted: bool = False) -> Text:
             if index:
                 parts.append(Text(" / ", style="dim" if muted else ""))
             display = choice if choice else "(default)"
-            parts.append(Text(display, style=active if choice == row.value else "dim"))
+            parts.append(
+                Text(display, style=active if choice == row.value else "dim")
+            )
         text = Text.assemble(*parts)
         if row.locked:
             return Text.assemble(text, ("  [environment]", "dim"))
@@ -1868,7 +1896,9 @@ def _session_titles(scan: ScanResult) -> dict[str, str]:
 
 
 def _sessions_by_id(scan: ScanResult) -> dict[str, AgentSession]:
-    return {item.session.session_id: item.session for item in scan.resolved_sessions}
+    return {
+        item.session.session_id: item.session for item in scan.resolved_sessions
+    }
 
 
 def build_filtered_rows(
@@ -1888,7 +1918,9 @@ def build_filtered_rows(
     for repository_id, sessions in _ordered_repositories(scan):
         repository_matches = needle in _repository_display_name(scan, repository_id).casefold()
         matching_sessions = [
-            item for item in sessions if needle in titles[item.session.session_id].casefold()
+            item
+            for item in sessions
+            if needle in titles[item.session.session_id].casefold()
         ]
         if not repository_matches and not matching_sessions:
             continue
@@ -1994,8 +2026,7 @@ def render_session_review(
         rows,
         cursor=cursor,
         terminal_height=console.size.height,
-        reserved_lines=(3 if message else 2)
-        + _header_lines(console, _REVIEW_SUBTITLE)
+        reserved_lines=(3 if message else 2) + _header_lines(console, _REVIEW_SUBTITLE)
         + len(_hint_lines(hints, console.size.width))
         + (1 if warning_label else 0)
         + (1 if searching or query else 0),
@@ -2297,7 +2328,9 @@ def build_session_preview_lines(session: AgentSession) -> list[str]:
         lines.append(volume_label(volume))
     lines.append("")
     for activity in session.activities:
-        label = _ACTIVITY_LABELS.get(activity.activity_type, activity.activity_type.value)
+        label = _ACTIVITY_LABELS.get(
+            activity.activity_type, activity.activity_type.value
+        )
         if activity.tool_name:
             label = f"{label}: {redact_text(activity.tool_name)}"
         stamp = f"[{activity.timestamp:%m-%d %H:%M}] " if activity.timestamp else ""
@@ -2400,7 +2433,7 @@ def render_recoverable_error(
 # reads as authoritative on a screen where `a`, `e`, `p` and `g` all differ.
 _HELP_LINES = (
     "↑↓ / jk        Move selection or scroll one line",
-    "←→ / hl        Collapse / expand tree rows or change setup values",
+    "←→ / hl *      Collapse / expand tree rows or change setup values",
     "Enter / Space  Activate / toggle",
     "a *            Select all sessions",
     "n              Select no sessions",
@@ -2416,7 +2449,9 @@ _HELP_LINES = (
     "q              Back / quit from the main menu",
     "Ctrl-C         Cancel the current operation and go back",
     "",
-    "Quick Review   * these keys mean something else here",
+    "* these keys mean something else on the screens below",
+    "",
+    "Quick Review",
     "Space          Include or exclude the focused outcome",
     "e              Edit the focused outcome's title, status and impact",
     "J / K          Reorder the focused outcome within its section",
@@ -2425,6 +2460,11 @@ _HELP_LINES = (
     "a              Add an outcome of your own",
     "p              Preview the report without writing it",
     "g              Generate the report",
+    "",
+    "History",
+    "Enter / p      Preview the selected report",
+    "o              Open the report in $VISUAL / $EDITOR, or the system viewer",
+    "h              Show or hide reports whose file is gone",
 )
 _DAILY_HELP_LINES = (
     "Daily Quick Review",

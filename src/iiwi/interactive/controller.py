@@ -161,19 +161,21 @@ class InteractiveActions:
     restore_selection: Callable[[str, DateRange, bool], set[str] | None]
     save_selection: Callable[[str, DateRange, bool, set[str]], None]
     exclude_repository: Callable[[str, str], str]
-    start_daily: Callable[[DailyStandupDraft | None], DailyStandupDraft] = (
-        _daily_start_not_configured
-    )
+    start_daily: Callable[
+        [DailyStandupDraft | None], DailyStandupDraft
+    ] = _daily_start_not_configured
     continue_daily_empty: Callable[
         [DailySourceUnavailableError, DailyStandupDraft | None], DailyStandupDraft
     ] = _daily_continue_not_configured
-    persist_daily: Callable[[DailyStandupDraft], str | None] = _daily_persist_not_configured
-    preview_daily: Callable[[DailyStandupDraft], InteractiveReportResult] = (
-        _daily_report_not_configured
-    )
-    generate_daily: Callable[[DailyStandupDraft], InteractiveReportResult] = (
-        _daily_report_not_configured
-    )
+    persist_daily: Callable[
+        [DailyStandupDraft], str | None
+    ] = _daily_persist_not_configured
+    preview_daily: Callable[
+        [DailyStandupDraft], InteractiveReportResult
+    ] = _daily_report_not_configured
+    generate_daily: Callable[
+        [DailyStandupDraft], InteractiveReportResult
+    ] = _daily_report_not_configured
     edit_daily_statement: Callable[[str], str | None] = _daily_edit_not_configured
     add_daily_statement: Callable[[DailySection], str | None] = _daily_add_not_configured
 
@@ -439,7 +441,9 @@ def _load_activity(
         state.screen = Screen.RECOVERABLE_ERROR
         return
     draft.set_scan(scan)
-    restored = actions.restore_selection(draft.harness, draft.period, draft.include_subagents)
+    restored = actions.restore_selection(
+        draft.harness, draft.period, draft.include_subagents
+    )
     if restored is not None:
         available = {item.session.session_id for item in scan.resolved_sessions}
         draft.selected_session_ids = restored & available
@@ -543,7 +547,9 @@ def _finish_review_selection(
     draft = state.draft
     scan = draft.scan
     assert scan is not None
-    restored = actions.restore_selection(draft.harness, draft.period, draft.include_subagents)
+    restored = actions.restore_selection(
+        draft.harness, draft.period, draft.include_subagents
+    )
     if restored is not None:
         available = {item.session.session_id for item in scan.resolved_sessions}
         draft.selected_session_ids = restored & available
@@ -1048,9 +1054,8 @@ def _review_key(
             try:
                 message = actions.exclude_repository(
                     row.repository_id,
-                    state.selection.scan.sessions_by_repository[row.repository_id][
-                        0
-                    ].repository.display_name,
+                    state.selection.scan.sessions_by_repository[row.repository_id][0]
+                    .repository.display_name,
                 )
             except IiwiError as exc:
                 state.error = _ErrorState(
@@ -1065,7 +1070,9 @@ def _review_key(
             _clear_outcome_review(state)
             _sync_selection(state, actions)
             rows = _tree_rows(state.selection.scan, state)
-            state.review_cursor = min(state.review_cursor, max(0, len(rows) - 1))
+            state.review_cursor = min(
+                state.review_cursor, max(0, len(rows) - 1)
+            )
             state.review_message = message
         return
     if key.key is Key.SPACE and rows:
@@ -1126,7 +1133,9 @@ def _begin_daily_review(
 ) -> None:
     """Start or refresh Daily while preserving its independent review draft."""
 
-    message = "Scanning sessions and synthesizing outcomes… this can take a few minutes."
+    message = (
+        "Scanning sessions and synthesizing outcomes… this can take a few minutes."
+    )
     state.daily_message = message
     _paint_pending(state, console, message)
     try:
@@ -1189,7 +1198,8 @@ def _move_daily_item(
         return False
     assert neighbour.work_item_id is not None
     section_items = {
-        work_item.id: item for work_item, item in state.daily_review.ordered_items(target.section)
+        work_item.id: item
+        for work_item, item in state.daily_review.ordered_items(target.section)
     }
     item = section_items[target.work_item_id]
     neighbour_item = section_items[neighbour.work_item_id]
@@ -1246,7 +1256,9 @@ def _generate_daily_review(
     except IiwiError as exc:
         state.error = _ErrorState(
             kind="daily-preview" if preview else "daily-write",
-            title="Could not preview Daily Standup" if preview else "Could not write Daily Standup",
+            title="Could not preview Daily Standup"
+            if preview
+            else "Could not write Daily Standup",
             detail=str(exc),
             retry="daily-preview" if preview else None,
         )
@@ -1396,7 +1408,10 @@ def _begin_outcome_review(
     # The cache short-circuit comes first. A review only exists because this
     # selection already cleared the guard, and synthesizing again re-extracts
     # every session — the whole cost this screen switch exists to avoid.
-    if state.outcome_review is not None and state.outcome_review_selection_key == selection_key:
+    if (
+        state.outcome_review is not None
+        and state.outcome_review_selection_key == selection_key
+    ):
         state.outcome_cursor = min(
             state.outcome_cursor,
             max(0, len(_outcome_review_rows(state)) - 1),
@@ -1515,7 +1530,9 @@ def _cycle_report_type(state: _State, actions: InteractiveActions) -> None:
     assert state.outcome_review is not None
     review = state.outcome_review
     report_type = (
-        ReportType.ENGINEERING if review.report_type is ReportType.MANAGER else ReportType.MANAGER
+        ReportType.ENGINEERING
+        if review.report_type is ReportType.MANAGER
+        else ReportType.MANAGER
     )
     review.set_report_type(report_type)
     assert review.detail is not None
@@ -1533,7 +1550,8 @@ def _cycle_report_type(state: _State, actions: InteractiveActions) -> None:
         actions.save_report_type(report_type)
     except ConfigurationError as exc:
         state.outcome_message = (
-            f"Report type changed, but the preference could not be remembered: {exc}"
+            "Report type changed, but the preference could not be remembered: "
+            f"{exc}"
         )
 
 
@@ -1591,7 +1609,9 @@ def _outcome_review_key(
             )
             rows = _outcome_review_rows(state)
             state.outcome_cursor = next(
-                index for index, row in enumerate(rows) if row.outcome_id == created.id
+                index
+                for index, row in enumerate(rows)
+                if row.outcome_id == created.id
             )
         return
     if target.kind != "outcome":
@@ -1629,7 +1649,9 @@ def _outcome_review_key(
         return
     if _exact_char(key, "e"):
         outcome = next(
-            item for item in state.outcome_review.outcomes if item.id == target.outcome_id
+            item
+            for item in state.outcome_review.outcomes
+            if item.id == target.outcome_id
         )
         edited = actions.edit_outcome(outcome.model_copy(deep=True))
         state.outcome_review.edit(
