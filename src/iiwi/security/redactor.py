@@ -24,11 +24,22 @@ _AWS_SECRET_ASSIGNMENT = re.compile(
     r"(?P<prefix>[\"']?\b(?:AWS_SECRET_ACCESS_KEY|aws_secret_access_key)\b[\"']?\s*[=:]\s*[\"']?)[^\s,;\"'}]+",
     re.I,
 )
+_SLACK_TOKEN = re.compile(r"\bxox[abeoprs]-[A-Za-z0-9-]{10,}\b")
+_STRIPE_KEY = re.compile(r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}\b")
+_GOOGLE_API_KEY = re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")
+_NPM_TOKEN = re.compile(r"\bnpm_[A-Za-z0-9]{36}\b")
+# Keyword may carry env-style prefix or suffix segments (DB_PASSWORD, OPENAI_API_KEY);
+# the segment bound keeps a long base64url run linear instead of quadratic.
 _ASSIGNMENT = re.compile(
-    r"(?P<prefix>[\"']?\b(?:password|passwd|pwd|token|secret|api[_-]?key)\b[\"']?\s*[=:]\s*[\"']?)[^\s,;\"'}]+",
+    r"(?P<prefix>[\"']?(?<![A-Za-z0-9])(?:[A-Za-z0-9]+[_-]){0,8}"
+    r"(?:password|passwd|token|secret|api[_-]?key)(?:[_-]?key)?[\"']?\s*[=:]\s*[\"']?)"
+    r"[^\s,;\"'}]+",
     re.I,
 )
-_JWT = re.compile(r"\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")
+# `pwd` only with `=` (SQL Server DSNs); `pwd: <path>` is shell output, not a secret.
+_PWD_ASSIGNMENT = re.compile(r"(?P<prefix>[\"']?\bpwd[\"']?\s*=\s*[\"']?)[^\s,;\"'}]+", re.I)
+# Both JWT segments are base64url-encoded JSON, so they always start with `eyJ`.
+_JWT = re.compile(r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{8,}\b")
 
 
 def _replace_with_prefix(match: re.Match[str]) -> str:
@@ -46,7 +57,12 @@ def redact_text(text: str) -> str:
     value = _PROVIDER_KEY.sub(REDACTED, value)
     value = _AWS_ACCESS_KEY.sub(REDACTED, value)
     value = _AWS_SECRET_ASSIGNMENT.sub(_replace_with_prefix, value)
+    value = _SLACK_TOKEN.sub(REDACTED, value)
+    value = _STRIPE_KEY.sub(REDACTED, value)
+    value = _GOOGLE_API_KEY.sub(REDACTED, value)
+    value = _NPM_TOKEN.sub(REDACTED, value)
     value = _ASSIGNMENT.sub(_replace_with_prefix, value)
+    value = _PWD_ASSIGNMENT.sub(_replace_with_prefix, value)
     return _JWT.sub(REDACTED, value)
 
 
