@@ -60,9 +60,12 @@ The redactor covers common patterns including:
 - OpenAI-style provider keys;
 - GitHub tokens;
 - AWS access keys and secret assignments;
-- password, token, secret, and API-key assignments;
+- password, token, secret, and API-key assignments, including prefixed env-style names
+  such as `DB_PASSWORD=` and `OPENAI_API_KEY=`;
+- `pwd=` connection-string passwords, but not `pwd:` shell output;
+- Slack, Stripe, Google, and npm tokens recognised by their fixed prefixes;
 - credentials embedded in URLs and `curl -u` arguments;
-- JWT-like tokens;
+- JWT-like tokens, detected only when both segments carry the `eyJ` JSON header marker;
 - private-key blocks.
 
 Redaction is applied recursively to evidence metadata, to OpenCode, Claude Code, and Codex

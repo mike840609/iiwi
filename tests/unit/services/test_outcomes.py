@@ -1218,7 +1218,7 @@ def test_branch_is_redacted_before_it_reaches_the_model() -> None:
 def test_a_linkage_signal_repeating_the_redacted_branch_is_observed_locally() -> None:
     """The model can only echo the branch it was shown, so both sides are redacted."""
 
-    branch = "feature/checkout.rendering.regression"
+    branch = "feature/checkout-token=rendering-regression"
     redacted_branch = outcomes.redact_text(branch)
     assert redacted_branch != branch
     runner = StaticRunner(
