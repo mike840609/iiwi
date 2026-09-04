@@ -28,9 +28,7 @@ _AUTHORIZATION = re.compile(
     re.I,
 )
 
-_GITHUB_TOKEN = re.compile(
-    r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"
-)
+_GITHUB_TOKEN = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b")
 
 _PROVIDER_KEY = re.compile(
     r"\b(?:"
@@ -42,9 +40,7 @@ _PROVIDER_KEY = re.compile(
     r")\b"
 )
 
-_AWS_ACCESS_KEY = re.compile(
-    r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"
-)
+_AWS_ACCESS_KEY = re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")
 
 _AWS_SECRET_ASSIGNMENT = re.compile(
     r"(?P<prefix>[\"']?\b(?:AWS_SECRET_ACCESS_KEY|aws_secret_access_key)"
@@ -86,10 +82,19 @@ _ASSIGNMENT = re.compile(
     r"|"
     # quoted JSON token keys using `:`
     r"[\"']token[\"']\s*:\s*[\"']?"
+    r"|"
+    # YAML/config-style token keys using `:`.
+    # Restrict this to the beginning of a line so prose such as
+    # `the token: refresh flow` is not treated as a secret.
+    r"^[ \t]*"
+    r"(?:[A-Za-z0-9]+[_-]){0,8}"
+    r"token"
+    r"(?:[_-][A-Za-z0-9]+)*"
+    r"\s*:\s*[\"']?"
     r")"
     r")"
     r"[^\s,;\"'}]+",
-    re.I,
+    re.I | re.MULTILINE,
 )
 
 # `pwd` is treated as a secret only when used with `=`.
@@ -103,9 +108,7 @@ _PWD_ASSIGNMENT = re.compile(
 
 # A real JWT has base64url-encoded JSON in its first two segments,
 # so both segments start with `eyJ`.
-_JWT = re.compile(
-    r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{8,}\b"
-)
+_JWT = re.compile(r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{8,}\b")
 
 
 def _replace_with_prefix(match: re.Match[str]) -> str:
@@ -175,21 +178,12 @@ def redact_value(value: Any) -> Any:
         return redact_text(value)
 
     if isinstance(value, dict):
-        return {
-            key: redact_value(item)
-            for key, item in value.items()
-        }
+        return {key: redact_value(item) for key, item in value.items()}
 
     if isinstance(value, list):
-        return [
-            redact_value(item)
-            for item in value
-        ]
+        return [redact_value(item) for item in value]
 
     if isinstance(value, tuple):
-        return tuple(
-            redact_value(item)
-            for item in value
-        )
+        return tuple(redact_value(item) for item in value)
 
     return value

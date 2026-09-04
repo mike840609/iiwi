@@ -1,6 +1,26 @@
 from iiwi.security.redactor import redact_text, redact_value
 
 
+def test_redacts_yaml_style_secret_assignments() -> None:
+    cases = [
+        ("token: abc12345", "abc12345"),
+        ("GITHUB_TOKEN: abc12345", "abc12345"),
+        ("MY_TOKEN_VALUE: secret123", "secret123"),
+    ]
+
+    for text, secret in cases:
+        redacted = redact_text(text)
+
+        assert secret not in redacted
+        assert "[REDACTED]" in redacted
+
+
+def test_does_not_redact_prose_token_colon() -> None:
+    text = "the token: refresh flow"
+
+    assert redact_text(text) == text
+
+
 def test_does_not_redact_pwd_colon_or_prose_token() -> None:
     text = "pwd: /home/user/project; the token: refresh flow"
 
@@ -83,6 +103,7 @@ def test_redacts_github_fine_grained_pat() -> None:
     redacted = redact_text(text)
     assert "11AABCDEF0123456789" not in redacted
     assert "[REDACTED]" in redacted
+
 
 def test_redacts_prefixed_env_style_secrets_and_provider_tokens() -> None:
     cases = [
