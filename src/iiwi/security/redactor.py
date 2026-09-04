@@ -53,20 +53,41 @@ _AWS_SECRET_ASSIGNMENT = re.compile(
 )
 
 # Secret-related environment variable names can have prefixes/suffixes.
+#
 # Examples:
 # DB_PASSWORD
 # OPENAI_API_KEY
+# OPENAI_API_KEY_PROD
+# DATABASE_PASSWORD_BACKUP
 # SLACK_BOT_TOKEN
 # MY_SECRET
 #
-# The maximum of 8 prefix segments prevents pathological regex behavior.
+# `pwd` is handled separately by _PWD_ASSIGNMENT.
+#
+# Plain `token:` is intentionally not matched because it can be normal prose
+# such as `the token: refresh flow`. However, quoted JSON keys such as
+# `"token": "abc123"` are still treated as secret assignments.
 _ASSIGNMENT = re.compile(
-    r"(?P<prefix>[\"']?"
-    r"(?<![A-Za-z0-9])"
+    r"(?P<prefix>"
+    r"(?:"
+    # password / passwd / secret / api-key style assignments
+    r"[\"']?(?<![A-Za-z0-9])"
     r"(?:[A-Za-z0-9]+[_-]){0,8}"
-    r"(?:password|passwd|pwd|token|secret|api[_-]?key)"
-    r"(?:[_-]?key)?"
-    r"[\"']?\s*[=:]\s*[\"']?)"
+    r"(?:password|passwd|secret|api[_-]?key)"
+    r"(?:[_-][A-Za-z0-9]+)*"
+    r"[\"']?\s*[=:]\s*[\"']?"
+    r"|"
+    # token assignments using `=`
+    r"[\"']?"
+    r"(?:[A-Za-z0-9]+[_-]){0,8}"
+    r"token"
+    r"(?:[_-][A-Za-z0-9]+)*"
+    r"[\"']?\s*=\s*[\"']?"
+    r"|"
+    # quoted JSON token keys using `:`
+    r"[\"']token[\"']\s*:\s*[\"']?"
+    r")"
+    r")"
     r"[^\s,;\"'}]+",
     re.I,
 )

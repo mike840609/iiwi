@@ -1,6 +1,35 @@
 from iiwi.security.redactor import redact_text, redact_value
 
 
+def test_does_not_redact_pwd_colon_or_prose_token() -> None:
+    text = "pwd: /home/user/project; the token: refresh flow"
+
+    redacted = redact_text(text)
+
+    assert redacted == text
+
+
+def test_redacts_secret_assignments_with_suffix_segments() -> None:
+    cases = [
+        ("OPENAI_API_KEY_PROD=production-secret", "production-secret"),
+        ("DATABASE_PASSWORD_BACKUP=backup-secret", "backup-secret"),
+        ("MY_TOKEN_VALUE=token-secret", "token-secret"),
+    ]
+
+    for text, secret in cases:
+        redacted = redact_text(text)
+
+        assert secret not in redacted
+        assert "[REDACTED]" in redacted
+
+
+def test_pwd_equals_is_still_redacted() -> None:
+    redacted = redact_text("pwd=my-password")
+
+    assert "my-password" not in redacted
+    assert "pwd=[REDACTED]" in redacted
+
+
 def test_recursive_metadata_redaction() -> None:
     value = {
         "headers": {"Authorization": "Bearer abc.def.ghi"},
